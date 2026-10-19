@@ -1,0 +1,24 @@
+{
+  "mcp": {
+    "blades": {
+      "hello-world": {
+        "title": "Hello world blade"
+      }
+    }
+  },
+  "permissions": {
+    "mcp:access": "Open Mcp menu",
+    "mcp:create": "Create Mcp related data",
+    "mcp:read": "View Mcp related data",
+    "mcp:update": "Update Mcp related data",
+    "mcp:delete": "Delete Mcp related data"
+  },
+  "settings": {
+    "Mcp": {
+      "Enabled": {
+        "title": "Mcp Enabled",
+        "description": "Mcp Enabled setting"
+      }
+    }
+  }
+}
