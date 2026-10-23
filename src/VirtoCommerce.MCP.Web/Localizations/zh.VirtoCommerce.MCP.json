@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "将 AI 代理连接到 Backoffice 的 MCP 服务器",
+    "mcp:approve": "审核、批准和拒绝 MCP 工具提交的变更",
+    "mcp:audit:read": "查看 MCP 工具调用的审计日志"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "允许自我批准",
+          "description": "启用后，用户可以批准自己请求的变更。默认禁用：变更必须由其他用户批准。"
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "待处理变更的有效期（小时）",
+          "description": "在此时间内未审核的变更将过期，且无法再被批准。"
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "审计 MCP 工具调用",
+          "description": "记录通过 MCP 范围进行的每次工具调用：用户、工具、结果和耗时。"
+        },
+        "LogArguments": {
+          "title": "记录工具调用参数",
+          "description": "将每次工具调用的参数保存到审计日志中。如果参数可能包含个人数据，请禁用此项。"
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "清理 MCP 数据",
+          "description": "定期删除旧的审计记录和已审核的待处理变更。"
+        },
+        "Cron": {
+          "title": "清理计划",
+          "description": "清理的运行时间。"
+        },
+        "AuditRetentionDays": {
+          "title": "审计记录保留期（天）",
+          "description": "早于此期限的审计记录将被删除。"
+        },
+        "PendingChangeRetentionDays": {
+          "title": "待处理变更保留期（天）",
+          "description": "早于此期限的已应用、失败、已拒绝和已过期的变更将被删除。已批准但从未完成的变更将被保留。"
+        }
+      }
+    }
+  }
+}

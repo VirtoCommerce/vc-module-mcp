@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "Łączenie agentów AI z serwerem MCP Backoffice",
+    "mcp:approve": "Przeglądanie, zatwierdzanie i odrzucanie zmian zgłoszonych przez narzędzia MCP",
+    "mcp:audit:read": "Odczyt dziennika audytu wywołań narzędzi MCP"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Zezwalaj na samodzielne zatwierdzanie",
+          "description": "Po włączeniu użytkownik może zatwierdzić zmianę, o którą sam poprosił. Domyślnie wyłączone: zmianę musi zatwierdzić inny użytkownik."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Okres ważności oczekujących zmian (godziny)",
+          "description": "Zmiana, która nie zostanie przejrzana w tym czasie, wygasa i nie można jej już zatwierdzić."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Audyt wywołań narzędzi MCP",
+          "description": "Rejestruj każde wywołanie narzędzia wykonane przez zakres MCP: użytkownika, narzędzie, wynik i czas trwania."
+        },
+        "LogArguments": {
+          "title": "Rejestruj argumenty wywołań",
+          "description": "Zapisuj argumenty każdego wywołania narzędzia w dzienniku audytu. Wyłącz, jeśli argumenty mogą zawierać dane osobowe."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Czyszczenie danych MCP",
+          "description": "Okresowo usuwaj stare wpisy audytu i przejrzane oczekujące zmiany."
+        },
+        "Cron": {
+          "title": "Harmonogram czyszczenia",
+          "description": "Kiedy uruchamiane jest czyszczenie."
+        },
+        "AuditRetentionDays": {
+          "title": "Przechowywanie audytu (dni)",
+          "description": "Starsze wpisy audytu są usuwane."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Przechowywanie oczekujących zmian (dni)",
+          "description": "Starsze zastosowane, nieudane, odrzucone i wygasłe zmiany są usuwane. Zatwierdzone zmiany, które nigdy nie zostały ukończone, są zachowywane."
+        }
+      }
+    }
+  }
+}

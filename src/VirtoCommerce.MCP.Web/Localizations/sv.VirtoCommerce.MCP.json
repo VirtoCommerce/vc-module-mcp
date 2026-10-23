@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "Ansluta AI-agenter till MCP-servern i Backoffice",
+    "mcp:approve": "Granska, godkänna och avvisa ändringar som skickats in av MCP-verktyg",
+    "mcp:audit:read": "Läsa granskningsloggen för MCP-verktygsanrop"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Tillåt eget godkännande",
+          "description": "När inställningen är aktiverad kan en användare godkänna en ändring som användaren själv har begärt. Inaktiverad som standard: en ändring måste godkännas av en annan användare."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Giltighetstid för väntande ändringar (timmar)",
+          "description": "En ändring som inte granskas inom denna tid upphör att gälla och kan inte längre godkännas."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Granska MCP-verktygsanrop",
+          "description": "Registrera varje verktygsanrop som görs via ett MCP-omfång: användaren, verktyget, utfallet och varaktigheten."
+        },
+        "LogArguments": {
+          "title": "Registrera argument i verktygsanrop",
+          "description": "Spara argumenten för varje verktygsanrop i granskningsloggen. Inaktivera om argumenten kan innehålla personuppgifter."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Rensa MCP-data",
+          "description": "Ta regelbundet bort gamla granskningsposter och granskade väntande ändringar."
+        },
+        "Cron": {
+          "title": "Schema för rensning",
+          "description": "När rensningen körs."
+        },
+        "AuditRetentionDays": {
+          "title": "Lagring av granskningslogg (dagar)",
+          "description": "Äldre granskningsposter tas bort."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Lagring av väntande ändringar (dagar)",
+          "description": "Äldre genomförda, misslyckade, avvisade och utgångna ändringar tas bort. Godkända ändringar som aldrig slutfördes behålls."
+        }
+      }
+    }
+  }
+}

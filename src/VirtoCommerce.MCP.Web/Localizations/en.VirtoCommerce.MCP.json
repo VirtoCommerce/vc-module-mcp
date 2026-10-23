@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "Connect AI agents to the back-office MCP server",
+    "mcp:approve": "Review, approve and reject changes submitted by MCP tools",
+    "mcp:audit:read": "Read the MCP tool call audit log"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Allow self-approval",
+          "description": "When enabled, a user can approve a change that they requested themselves. Disabled by default: a change must be approved by another user."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Pending change lifetime (hours)",
+          "description": "A change that is not reviewed within this time expires and can no longer be approved."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Audit MCP tool calls",
+          "description": "Record every tool call made through an MCP scope: the user, the tool, the outcome and the duration."
+        },
+        "LogArguments": {
+          "title": "Record tool call arguments",
+          "description": "Store the arguments of each tool call in the audit log. Disable if tool arguments may contain personal data."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Clean up MCP data",
+          "description": "Periodically delete old audit entries and reviewed pending changes."
+        },
+        "Cron": {
+          "title": "Cleanup schedule",
+          "description": "When the cleanup runs."
+        },
+        "AuditRetentionDays": {
+          "title": "Audit retention (days)",
+          "description": "Audit entries older than this are deleted."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Pending change retention (days)",
+          "description": "Applied, failed, rejected and expired changes older than this are deleted. Approved changes that never completed are kept."
+        }
+      }
+    }
+  }
+}

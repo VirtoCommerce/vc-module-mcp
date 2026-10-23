@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "Koble KI-agenter til MCP-serveren i Backoffice",
+    "mcp:approve": "Gjennomgå, godkjenne og avvise endringer sendt inn av MCP-verktøy",
+    "mcp:audit:read": "Lese revisjonsloggen for MCP-verktøykall"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Tillat egengodkjenning",
+          "description": "Når dette er aktivert, kan en bruker godkjenne en endring vedkommende selv har bedt om. Deaktivert som standard: en endring må godkjennes av en annen bruker."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Gyldighetstid for ventende endringer (timer)",
+          "description": "En endring som ikke blir gjennomgått innen denne tiden, utløper og kan ikke lenger godkjennes."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Revider MCP-verktøykall",
+          "description": "Registrer hvert verktøykall gjort gjennom et MCP-omfang: brukeren, verktøyet, resultatet og varigheten."
+        },
+        "LogArguments": {
+          "title": "Registrer argumentene i verktøykall",
+          "description": "Lagre argumentene i hvert verktøykall i revisjonsloggen. Deaktiver hvis argumentene kan inneholde personopplysninger."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Rydd opp i MCP-data",
+          "description": "Slett jevnlig gamle revisjonsoppføringer og gjennomgåtte ventende endringer."
+        },
+        "Cron": {
+          "title": "Tidsplan for opprydding",
+          "description": "Når oppryddingen kjøres."
+        },
+        "AuditRetentionDays": {
+          "title": "Oppbevaring av revisjonslogg (dager)",
+          "description": "Eldre revisjonsoppføringer slettes."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Oppbevaring av ventende endringer (dager)",
+          "description": "Eldre utførte, mislykkede, avviste og utløpte endringer slettes. Godkjente endringer som aldri ble fullført, beholdes."
+        }
+      }
+    }
+  }
+}

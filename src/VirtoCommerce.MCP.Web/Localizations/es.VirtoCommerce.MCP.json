@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "Conectar agentes de IA al servidor MCP del Backoffice",
+    "mcp:approve": "Revisar, aprobar y rechazar los cambios enviados por las herramientas MCP",
+    "mcp:audit:read": "Leer el registro de auditoría de las llamadas a herramientas MCP"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Permitir la autoaprobación",
+          "description": "Si está activado, un usuario puede aprobar un cambio que él mismo ha solicitado. Desactivado de forma predeterminada: otro usuario debe aprobar el cambio."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Vigencia de los cambios pendientes (horas)",
+          "description": "Un cambio que no se revisa en este plazo caduca y ya no se puede aprobar."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Auditar las llamadas a herramientas MCP",
+          "description": "Registrar cada llamada a una herramienta realizada a través de un ámbito MCP: el usuario, la herramienta, el resultado y la duración."
+        },
+        "LogArguments": {
+          "title": "Registrar los argumentos de las llamadas",
+          "description": "Guardar los argumentos de cada llamada a una herramienta en el registro de auditoría. Desactívelo si los argumentos pueden contener datos personales."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Limpiar los datos de MCP",
+          "description": "Eliminar periódicamente las entradas de auditoría antiguas y los cambios pendientes ya revisados."
+        },
+        "Cron": {
+          "title": "Programación de la limpieza",
+          "description": "Cuándo se ejecuta la limpieza."
+        },
+        "AuditRetentionDays": {
+          "title": "Retención de la auditoría (días)",
+          "description": "Se eliminan las entradas de auditoría más antiguas."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Retención de los cambios pendientes (días)",
+          "description": "Se eliminan los cambios aplicados, fallidos, rechazados y caducados más antiguos. Los cambios aprobados que nunca se completaron se conservan."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "mcp:access": "Yhdistä tekoälyagentit Backofficen MCP-palvelimeen",
+    "mcp:approve": "Tarkista, hyväksy ja hylkää MCP-työkalujen lähettämät muutokset",
+    "mcp:audit:read": "Lue MCP-työkalukutsujen auditointiloki"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Salli oman muutoksen hyväksyminen",
+          "description": "Kun asetus on käytössä, käyttäjä voi hyväksyä itse pyytämänsä muutoksen. Oletuksena poissa käytöstä: muutoksen hyväksyy toinen käyttäjä."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Odottavan muutoksen voimassaoloaika (tuntia)",
+          "description": "Muutos, jota ei tarkisteta tässä ajassa, vanhenee eikä sitä voi enää hyväksyä."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Auditoi MCP-työkalukutsut",
+          "description": "Kirjaa jokainen MCP-alueen kautta tehty työkalukutsu: käyttäjä, työkalu, tulos ja kesto."
+        },
+        "LogArguments": {
+          "title": "Kirjaa työkalukutsujen argumentit",
+          "description": "Tallenna kunkin työkalukutsun argumentit auditointilokiin. Poista käytöstä, jos argumentit voivat sisältää henkilötietoja."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Siivoa MCP-tiedot",
+          "description": "Poista säännöllisesti vanhat auditointimerkinnät ja tarkistetut odottavat muutokset."
+        },
+        "Cron": {
+          "title": "Siivouksen aikataulu",
+          "description": "Milloin siivous suoritetaan."
+        },
+        "AuditRetentionDays": {
+          "title": "Auditoinnin säilytysaika (päivää)",
+          "description": "Tätä vanhemmat auditointimerkinnät poistetaan."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Odottavien muutosten säilytysaika (päivää)",
+          "description": "Tätä vanhemmat toteutetut, epäonnistuneet, hylätyt ja vanhentuneet muutokset poistetaan. Hyväksytyt muutokset, joita ei koskaan suoritettu loppuun, säilytetään."
+        }
+      }
+    }
+  }
+}
