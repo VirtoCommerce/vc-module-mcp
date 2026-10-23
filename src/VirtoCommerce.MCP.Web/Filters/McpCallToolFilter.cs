@@ -42,81 +42,36 @@ public class McpCallToolFilter(
             return await next(context, cancellationToken);
         }
 
-        var toolName = context.Params?.Name;
-        var arguments = context.Params?.Arguments;
-        var audit = auditWriter.Create(scope.Name, toolName, context.User);
+        var audit = auditWriter.Create(scope.Name, context.Params?.Name, context.User);
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            var tool = context.MatchedPrimitive as McpServerTool;
-            if (tool != null && !await toolAuthorizationService.IsAuthorizedAsync(context.User, tool))
-            {
-                audit.Outcome = McpAuditOutcome.Forbidden;
-                throw new McpProtocolException(ForbiddenMessage, McpErrorCode.InvalidRequest);
-            }
-
-            ValidateRequiredArguments(context);
-
-            CallToolResult result;
-            if (tool != null && tool.RequiresApproval() && !IsDryRunCall(tool, arguments))
-            {
-                if (!CanBeApprovedIn(scope.Name))
-                {
-                    audit.Outcome = McpAuditOutcome.Error;
-                    throw new McpException($"Tool '{toolName}' requires approval, which is available in the '{McpScopes.Admin}' scope only. The call was not executed.");
-                }
-
-                var change = await SubmitForApprovalAsync(next, context, scope, tool, cancellationToken);
-                audit.Outcome = McpAuditOutcome.PendingApproval;
-                audit.PendingChangeId = change.Id;
-                result = CreatePendingApprovalResult(change);
-            }
-            else
-            {
-                result = await next(context, cancellationToken);
-                audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;
-                audit.ErrorMessage = result.IsError == true ? GetText(result) : null;
-            }
-
-            return result;
-        }
-        catch (McpProtocolException ex)
-        {
-            audit.Outcome ??= McpAuditOutcome.Error;
-            audit.ErrorMessage = ex.Message;
-            throw;
+            return await ExecuteAuditedAsync(next, context, scope, audit, cancellationToken);
         }
         catch (McpException ex)
         {
-            audit.Outcome ??= McpAuditOutcome.Failed;
+            audit.Outcome ??= McpAuditWriter.GetFailureOutcome(ex);
             audit.ErrorMessage = ex.Message;
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "MCP tool {ToolName} failed in scope {ScopeName}", toolName, scope.Name);
+            logger.LogError(ex, "MCP tool {ToolName} failed in scope {ScopeName}", audit.ToolName, scope.Name);
             audit.Outcome = McpAuditOutcome.Error;
             audit.ErrorMessage = ex.Message;
 
             return new CallToolResult
             {
                 IsError = true,
-                Content = [new TextContentBlock { Text = $"An unexpected error occurred while executing tool '{toolName}'." }],
+                Content = [new TextContentBlock { Text = $"An unexpected error occurred while executing tool '{audit.ToolName}'." }],
             };
         }
         finally
         {
-            stopwatch.Stop();
             audit.DurationMs = stopwatch.ElapsedMilliseconds;
             audit.PendingChangeId ??= context.GetAuditPendingChangeId();
-
-            if (audit.Outcome != null)
-            {
-                logger.LogInformation("MCP tool {ToolName} called in scope {ScopeName} by {UserName}: {Outcome} in {DurationMs} ms",
-                    toolName, scope.Name, audit.UserName, audit.Outcome, audit.DurationMs);
-                await auditWriter.WriteAsync(audit, arguments);
-            }
+            await WriteAuditAsync(audit, context.Params?.Arguments);
         }
     }
 
@@ -138,6 +93,71 @@ public class McpCallToolFilter(
             })
             .Distinct()
             .ToList();
+    }
+
+    private async Task<CallToolResult> ExecuteAuditedAsync(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+        RequestContext<CallToolRequestParams> context,
+        McpScope scope,
+        McpAuditEntry audit,
+        CancellationToken cancellationToken)
+    {
+        var tool = context.MatchedPrimitive as McpServerTool;
+        if (tool != null && !await toolAuthorizationService.IsAuthorizedAsync(context.User, tool))
+        {
+            audit.Outcome = McpAuditOutcome.Forbidden;
+            throw new McpProtocolException(ForbiddenMessage, McpErrorCode.InvalidRequest);
+        }
+
+        ValidateRequiredArguments(context);
+
+        if (tool != null && tool.RequiresApproval() && !IsDryRunCall(tool, context.Params?.Arguments))
+        {
+            return await HoldForApprovalAsync(next, context, scope, tool, audit, cancellationToken);
+        }
+
+        var result = await next(context, cancellationToken);
+        audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;
+        audit.ErrorMessage = result.IsError == true ? GetText(result) : null;
+
+        return result;
+    }
+
+    private async Task<CallToolResult> HoldForApprovalAsync(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+        RequestContext<CallToolRequestParams> context,
+        McpScope scope,
+        McpServerTool tool,
+        McpAuditEntry audit,
+        CancellationToken cancellationToken)
+    {
+        if (!CanBeApprovedIn(scope.Name))
+        {
+            audit.Outcome = McpAuditOutcome.Error;
+            throw new McpException($"Tool '{audit.ToolName}' requires approval, which is available in the '{McpScopes.Admin}' scope only. The call was not executed.");
+        }
+
+        var change = await SubmitForApprovalAsync(next, context, scope, tool, cancellationToken);
+        audit.Outcome = McpAuditOutcome.PendingApproval;
+        audit.PendingChangeId = change.Id;
+
+        return CreatePendingApprovalResult(change);
+    }
+
+    private async Task WriteAuditAsync(McpAuditEntry audit, IDictionary<string, JsonElement> arguments)
+    {
+        if (audit.Outcome == null)
+        {
+            return;
+        }
+
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("MCP tool {ToolName} called in scope {ScopeName} by {UserName}: {Outcome} in {DurationMs} ms",
+                audit.ToolName, audit.ScopeName, audit.UserName, audit.Outcome, audit.DurationMs);
+        }
+
+        await auditWriter.WriteAsync(audit, arguments);
     }
 
     protected virtual async Task<McpPendingChange> SubmitForApprovalAsync(
@@ -212,23 +232,31 @@ public class McpCallToolFilter(
 
     protected static void ValidateRequiredArguments(RequestContext<CallToolRequestParams> context)
     {
-        if (context.MatchedPrimitive is not McpServerTool tool ||
-            tool.ProtocolTool.InputSchema.ValueKind != JsonValueKind.Object ||
-            !tool.ProtocolTool.InputSchema.TryGetProperty("required", out var required) ||
-            required.ValueKind != JsonValueKind.Array)
+        if (context.MatchedPrimitive is not McpServerTool tool)
         {
             return;
         }
 
-        foreach (var name in required.EnumerateArray().Select(x => x.GetString()))
+        var arguments = context.Params?.Arguments;
+        var missingArgument = GetRequiredArgumentNames(tool).FirstOrDefault(name => !HasValue(arguments, name));
+        if (missingArgument != null)
         {
-            if (context.Params?.Arguments == null ||
-                !context.Params.Arguments.TryGetValue(name, out var value) ||
-                value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-            {
-                throw new McpProtocolException($"Argument '{name}' is required.", McpErrorCode.InvalidParams);
-            }
+            throw new McpProtocolException($"Argument '{missingArgument}' is required.", McpErrorCode.InvalidParams);
         }
+    }
+
+    private static IEnumerable<string> GetRequiredArgumentNames(McpServerTool tool)
+    {
+        var schema = tool.ProtocolTool.InputSchema;
+
+        return schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("required", out var required) && required.ValueKind == JsonValueKind.Array
+            ? required.EnumerateArray().Select(x => x.GetString())
+            : [];
+    }
+
+    private static bool HasValue(IDictionary<string, JsonElement> arguments, string name)
+    {
+        return arguments != null && arguments.TryGetValue(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
     }
 
     protected static bool IsDryRunCall(McpServerTool tool, IDictionary<string, JsonElement> arguments)

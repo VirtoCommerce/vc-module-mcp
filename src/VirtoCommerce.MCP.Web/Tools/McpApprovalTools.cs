@@ -1,15 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -32,8 +28,7 @@ public class McpApprovalTools(
     IMcpApprovalService approvalService,
     IAuthorizationService authorizationService,
     McpToolAuthorizationService toolAuthorizationService,
-    McpAuditWriter auditWriter,
-    ILogger<McpApprovalTools> logger,
+    McpPendingChangeExecutor pendingChangeExecutor,
     TimeProvider timeProvider)
 {
     private const int MaxTake = 50;
@@ -121,7 +116,7 @@ public class McpApprovalTools(
 
         change = await approvalService.ApproveAsync(change_id, user.GetUserId(), user.GetUserName(), comment);
 
-        var result = await ExecuteAsync(requestContext, tool, change);
+        var result = await pendingChangeExecutor.ExecuteAsync(requestContext, tool, change);
         var succeeded = result.IsError != true;
         change = await approvalService.CompleteAsync(change, JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions), succeeded);
 
@@ -143,62 +138,6 @@ public class McpApprovalTools(
         var change = await approvalService.RejectAsync(change_id, user.GetUserId(), user.GetUserName(), reason);
 
         return ToDetails(change);
-    }
-
-    protected virtual async Task<CallToolResult> ExecuteAsync(
-        RequestContext<CallToolRequestParams> requestContext,
-        McpServerTool tool,
-        McpPendingChange change)
-    {
-        var audit = auditWriter.Create(change.ScopeName, change.ToolName, requestContext.User);
-        audit.PendingChangeId = change.Id;
-        var stopwatch = Stopwatch.StartNew();
-
-        Dictionary<string, JsonElement> arguments = null;
-        CallToolResult result;
-        try
-        {
-            arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(change.Arguments ?? "{}", McpJsonUtilities.DefaultOptions);
-            var parameters = new CallToolRequestParams { Name = change.ToolName, Arguments = arguments };
-            var jsonRpcRequest = new JsonRpcRequest
-            {
-                Id = requestContext.JsonRpcRequest.Id,
-                Method = RequestMethods.ToolsCall,
-                Params = JsonSerializer.SerializeToNode(parameters, McpJsonUtilities.DefaultOptions),
-            };
-
-            var toolContext = new RequestContext<CallToolRequestParams>(requestContext.Server, jsonRpcRequest, parameters)
-            {
-                Services = requestContext.Services,
-                User = requestContext.User,
-                MatchedPrimitive = tool,
-            };
-
-            result = await tool.InvokeAsync(toolContext, CancellationToken.None);
-            audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Approved MCP change {ChangeId} failed in tool {ToolName}", change.Id, change.ToolName);
-            audit.Outcome = IsRefusedByTool(ex) ? McpAuditOutcome.Failed : McpAuditOutcome.Error;
-            audit.ErrorMessage = ex.Message;
-            result = new CallToolResult
-            {
-                IsError = true,
-                Content = [new TextContentBlock { Text = ex is McpException ? ex.Message : $"An unexpected error occurred while executing tool '{change.ToolName}'." }],
-            };
-        }
-
-        stopwatch.Stop();
-        audit.DurationMs = stopwatch.ElapsedMilliseconds;
-        await auditWriter.WriteAsync(audit, arguments);
-
-        return result;
-    }
-
-    private static bool IsRefusedByTool(Exception exception)
-    {
-        return exception is McpException and not McpProtocolException;
     }
 
     private async Task<McpPendingChange> GetAdminChangeAsync(string changeId)

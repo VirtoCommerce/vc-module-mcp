@@ -56,8 +56,11 @@ public class McpCleanupService(
             GenericSearchCachingRegion<McpPendingChange>.ExpireRegion();
         }
 
-        logger.LogInformation("MCP cleanup deleted {AuditEntries} audit entries older than {AuditThreshold:u} and {PendingChanges} pending changes older than {ChangeThreshold:u}",
-            result.DeletedAuditEntries, auditThreshold, result.DeletedPendingChanges, changeThreshold);
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("MCP cleanup deleted {AuditEntries} audit entries older than {AuditThreshold:u} and {PendingChanges} pending changes older than {ChangeThreshold:u}",
+                result.DeletedAuditEntries, auditThreshold, result.DeletedPendingChanges, changeThreshold);
+        }
 
         return result;
     }

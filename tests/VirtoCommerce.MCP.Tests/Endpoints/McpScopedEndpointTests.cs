@@ -48,6 +48,10 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string WritePermission = "test:write";
     private const string PartnerScope = "partner";
 
+    private static readonly string[] _readerTools = ["canceled_tool", "read_tool", "static_tool"];
+    private static readonly string[] _writerTools = ["canceled_tool", "read_tool", "static_tool", "submit_tool", "write_tool"];
+    private static readonly string[] _policyPermissions = [McpPermissions.Access, McpPermissions.Approve, WritePermission];
+
     private readonly ConcurrentBag<McpAuditEntry> _auditEntries = [];
     private readonly ConcurrentBag<McpPendingChange> _submittedChanges = [];
     private readonly ConcurrentBag<(McpPendingChange Change, string Result, bool Succeeded)> _completedChanges = [];
@@ -58,9 +62,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        TestTools.DryRuns = 0;
-        TestTools.Executions = 0;
-        PartnerTools.Executions = 0;
+        TestTools.Reset();
+        PartnerTools.Reset();
 
         UseIdentityClaimTypes();
 
@@ -133,8 +136,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var writer = await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsList());
 
         // Assert
-        Assert.Equal(new[] { "canceled_tool", "read_tool", "static_tool" }.Concat(AuthorTools).Order(), ToolNames(reader));
-        Assert.Equal(new[] { "canceled_tool", "read_tool", "static_tool", "submit_tool", "write_tool" }.Concat(AuthorTools).Order(), ToolNames(writer));
+        Assert.Equal(_readerTools.Concat(AuthorTools).Order(), ToolNames(reader));
+        Assert.Equal(_writerTools.Concat(AuthorTools).Order(), ToolNames(writer));
     }
 
     [Fact]
@@ -487,7 +490,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, null);
         services.AddAuthorization(options =>
         {
-            foreach (var permission in new[] { McpPermissions.Access, McpPermissions.Approve, WritePermission })
+            foreach (var permission in _policyPermissions)
             {
                 options.AddPolicy(permission, policy => policy.RequireClaim("permission", permission));
             }
@@ -499,6 +502,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddTransient<McpTokenValidator, ActiveTokenValidator>();
         services.AddTransient<McpToolAuthorizationService>();
         services.AddTransient<McpAuditWriter>();
+        services.AddTransient<McpPendingChangeExecutor>();
         services.AddScoped<McpCallToolFilter>();
         services.AddSingleton(Mock.Of<IOpenIddictTokenManager>());
         services.AddSingleton(CreateSettingsManagerWithDefaults());
@@ -764,8 +768,18 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     [McpScope(McpScopes.Admin)]
     public sealed class TestTools
     {
-        public static int DryRuns;
-        public static int Executions;
+        private static int _dryRuns;
+        private static int _executions;
+
+        public static int DryRuns => _dryRuns;
+
+        public static int Executions => _executions;
+
+        public static void Reset()
+        {
+            _dryRuns = 0;
+            _executions = 0;
+        }
 
         [McpServerTool(Name = "read_tool"), Description("Reads.")]
         public static string ReadTool() => "read";
@@ -774,7 +788,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [Authorize(WritePermission)]
         public static string WriteTool(string value)
         {
-            Interlocked.Increment(ref Executions);
+            Interlocked.Increment(ref _executions);
             return $"wrote {value}";
         }
 
@@ -785,11 +799,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         {
             if (dryRun)
             {
-                Interlocked.Increment(ref DryRuns);
+                Interlocked.Increment(ref _dryRuns);
                 return $"would activate {promotionId}";
             }
 
-            Interlocked.Increment(ref Executions);
+            Interlocked.Increment(ref _executions);
             return $"activated {promotionId}";
         }
     }
@@ -815,13 +829,20 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     [McpScope(PartnerScope)]
     public static class PartnerTools
     {
-        public static int Executions;
+        private static int _executions;
+
+        public static int Executions => _executions;
+
+        public static void Reset()
+        {
+            _executions = 0;
+        }
 
         [McpServerTool(Name = "partner_submit_tool"), Description("Requires approval in a scope without the approval tools.")]
         [McpRequiresApproval]
         public static string PartnerSubmitTool()
         {
-            Interlocked.Increment(ref Executions);
+            Interlocked.Increment(ref _executions);
             return "submitted";
         }
     }

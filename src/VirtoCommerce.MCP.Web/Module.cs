@@ -82,6 +82,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpTokenValidator>();
         serviceCollection.AddTransient<McpToolAuthorizationService>();
         serviceCollection.AddTransient<McpAuditWriter>();
+        serviceCollection.AddTransient<McpPendingChangeExecutor>();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
 
@@ -166,10 +167,17 @@ public class Module : IModule, IHasConfiguration
     private static bool IsValidOrigin(string origin)
     {
         return string.IsNullOrEmpty(origin) ||
-            (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
-             (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
-             uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment) &&
-             string.IsNullOrEmpty(uri.UserInfo));
+            (Uri.TryCreate(origin, UriKind.Absolute, out var uri) && IsHttpScheme(uri) && IsBareOrigin(uri));
+    }
+
+    private static bool IsHttpScheme(Uri uri)
+    {
+        return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+    }
+
+    private static bool IsBareOrigin(Uri uri)
+    {
+        return uri.PathAndQuery == "/" && string.IsNullOrEmpty(uri.Fragment) && string.IsNullOrEmpty(uri.UserInfo);
     }
 
     public void Uninstall()

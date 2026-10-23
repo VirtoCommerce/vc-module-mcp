@@ -1,5 +1,6 @@
 using System;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -29,59 +30,96 @@ public class McpScopeAuthenticationMiddleware(
         var scope = context.GetMcpScope();
         var origin = originResolver.GetOrigin(context, scope);
 
-        if (!HasBearerHeader(context.Request))
+        string tokenError = null;
+        if (HasBearerHeader(context.Request))
+        {
+            tokenError = await GetTokenErrorAsync(context.User, origin + scope.Path, tokenValidator, context.RequestAborted);
+        }
+        else
         {
             context.User = new ClaimsPrincipal(new ClaimsIdentity());
         }
-        else if (context.User?.Identity?.IsAuthenticated != true)
+
+        if (tokenError != null)
         {
-            await WriteChallengeAsync(context, scope, origin, "invalid_token", "The access token is invalid or expired.");
-            return;
-        }
-        else if (!McpTokenValidator.HasExpectedAudience(context.User, origin + scope.Path))
-        {
-            await WriteChallengeAsync(context, scope, origin, "invalid_token", "The access token was not issued for this MCP resource.");
-            return;
-        }
-        else if (!await tokenValidator.IsActiveAsync(context.User, context.RequestAborted))
-        {
-            await WriteChallengeAsync(context, scope, origin, "invalid_token", "The OAuth session has ended. Sign in again to continue.");
+            await WriteChallengeAsync(context, scope, origin, "invalid_token", tokenError);
             return;
         }
 
         var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
-
-        if (scope.RequireAuthenticatedUser && !isAuthenticated)
+        if (!isAuthenticated && scope.RequireAuthenticatedUser)
         {
             await WriteChallengeAsync(context, scope, origin, error: null, "Sign in to use this MCP server.");
             return;
         }
 
-        if (isAuthenticated)
+        var missingPermission = isAuthenticated
+            ? await FindMissingPermissionAsync(context.User, scope, policyProvider, authorizationService)
+            : null;
+        if (missingPermission != null)
         {
-            foreach (var permission in scope.Permissions)
-            {
-                var policy = await policyProvider.GetPolicyAsync(permission);
-                if (policy == null)
-                {
-                    logger.LogWarning("MCP scope {ScopeName} requires permission {Permission}, which is not registered. Is the module that defines it installed?",
-                        scope.Name, permission);
-                    await WriteForbiddenAsync(context, $"The '{permission}' permission is required to use this MCP server.");
-                    return;
-                }
-
-                var result = await authorizationService.AuthorizeAsync(context.User, resource: null, policy);
-                if (!result.Succeeded)
-                {
-                    logger.LogInformation("MCP scope {ScopeName} refused user {UserName}: permission {Permission} is missing",
-                        scope.Name, context.User.Identity?.Name, permission);
-                    await WriteForbiddenAsync(context, $"The '{permission}' permission is required to use this MCP server.");
-                    return;
-                }
-            }
+            await WriteForbiddenAsync(context, $"The '{missingPermission}' permission is required to use this MCP server.");
+            return;
         }
 
         await next(context);
+    }
+
+    private static async Task<string> GetTokenErrorAsync(
+        ClaimsPrincipal user,
+        string resource,
+        McpTokenValidator tokenValidator,
+        CancellationToken cancellationToken)
+    {
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return "The access token is invalid or expired.";
+        }
+
+        if (!McpTokenValidator.HasExpectedAudience(user, resource))
+        {
+            return "The access token was not issued for this MCP resource.";
+        }
+
+        return await tokenValidator.IsActiveAsync(user, cancellationToken)
+            ? null
+            : "The OAuth session has ended. Sign in again to continue.";
+    }
+
+    private async Task<string> FindMissingPermissionAsync(
+        ClaimsPrincipal user,
+        McpScope scope,
+        IAuthorizationPolicyProvider policyProvider,
+        IAuthorizationService authorizationService)
+    {
+        foreach (var permission in scope.Permissions)
+        {
+            var policy = await policyProvider.GetPolicyAsync(permission);
+            if (policy == null)
+            {
+                logger.LogWarning("MCP scope {ScopeName} requires permission {Permission}, which is not registered. Is the module that defines it installed?",
+                    scope.Name, permission);
+                return permission;
+            }
+
+            var result = await authorizationService.AuthorizeAsync(user, resource: null, policy);
+            if (!result.Succeeded)
+            {
+                LogMissingPermission(scope, user, permission);
+                return permission;
+            }
+        }
+
+        return null;
+    }
+
+    private void LogMissingPermission(McpScope scope, ClaimsPrincipal user, string permission)
+    {
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("MCP scope {ScopeName} refused user {UserName}: permission {Permission} is missing",
+                scope.Name, user.Identity?.Name, permission);
+        }
     }
 
     private static bool HasBearerHeader(HttpRequest request)

@@ -198,7 +198,7 @@ The behaviour of the module can be replaced through DI:
 - `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration.
 - `IMcpApprovalService` implements the pending change lifecycle; `McpApprovalService` has virtual methods for the self-approval and expiration rules.
 - `IMcpCleanupService` decides what the cleanup deletes; `McpCleanupService.GetObsoleteAuditEntries` and `GetObsoletePendingChanges` are virtual.
-- `McpCallToolFilter`, `McpAuditWriter`, `McpToolAuthorizationService` and `McpTokenValidator` have virtual methods for the execution pipeline, the audit entry, the tool permission check and the token check.
+- `McpCallToolFilter`, `McpPendingChangeExecutor`, `McpAuditWriter`, `McpToolAuthorizationService` and `McpTokenValidator` have virtual methods for the execution pipeline, the execution of an approved change, the audit entry, the tool permission check and the token check.
 
 ## References
 

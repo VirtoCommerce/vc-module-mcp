@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using VirtoCommerce.MCP.Core.Models;
@@ -65,14 +66,25 @@ public class McpPendingChangeSearchService(
     protected virtual IQueryable<McpPendingChangeEntity> FilterByStatus(IQueryable<McpPendingChangeEntity> query, IList<string> statuses)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var includePending = statuses.Contains(McpPendingChangeStatus.Pending);
-        var includeExpired = statuses.Contains(McpPendingChangeStatus.Expired);
-        var otherStatuses = statuses.Except([McpPendingChangeStatus.Pending, McpPendingChangeStatus.Expired]).ToList();
+        var storedStatuses = statuses.Except([McpPendingChangeStatus.Pending, McpPendingChangeStatus.Expired]).ToList();
+        var conditions = new List<Expression<Func<McpPendingChangeEntity, bool>>>();
 
-        return query.Where(x =>
-            otherStatuses.Contains(x.Status) ||
-            (includePending && x.Status == McpPendingChangeStatus.Pending && x.ExpirationDate > now) ||
-            (includeExpired && (x.Status == McpPendingChangeStatus.Expired || (x.Status == McpPendingChangeStatus.Pending && x.ExpirationDate <= now))));
+        if (storedStatuses.Count > 0)
+        {
+            conditions.Add(x => storedStatuses.Contains(x.Status));
+        }
+
+        if (statuses.Contains(McpPendingChangeStatus.Pending))
+        {
+            conditions.Add(x => x.Status == McpPendingChangeStatus.Pending && x.ExpirationDate > now);
+        }
+
+        if (statuses.Contains(McpPendingChangeStatus.Expired))
+        {
+            conditions.Add(x => x.Status == McpPendingChangeStatus.Expired || (x.Status == McpPendingChangeStatus.Pending && x.ExpirationDate <= now));
+        }
+
+        return query.Where(conditions.Or());
     }
 
     protected static bool IsTimeDependent(McpPendingChangeSearchCriteria criteria)

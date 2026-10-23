@@ -32,6 +32,8 @@ public static class ModuleConstants
     {
         public static class Approval
         {
+            public const int DefaultPendingChangeLifetimeHours = 72;
+
             public static SettingDescriptor AllowSelfApproval { get; } = new()
             {
                 Name = "MCP.Approval.AllowSelfApproval",
@@ -45,17 +47,8 @@ public static class ModuleConstants
                 Name = "MCP.Approval.PendingChangeLifetimeHours",
                 GroupName = "MCP|Approval",
                 ValueType = SettingValueType.PositiveInteger,
-                DefaultValue = 72,
+                DefaultValue = DefaultPendingChangeLifetimeHours,
             };
-
-            public static IEnumerable<SettingDescriptor> AllSettings
-            {
-                get
-                {
-                    yield return AllowSelfApproval;
-                    yield return PendingChangeLifetimeHours;
-                }
-            }
         }
 
         public static class Audit
@@ -75,19 +68,12 @@ public static class ModuleConstants
                 ValueType = SettingValueType.Boolean,
                 DefaultValue = true,
             };
-
-            public static IEnumerable<SettingDescriptor> AllSettings
-            {
-                get
-                {
-                    yield return Enabled;
-                    yield return LogArguments;
-                }
-            }
         }
 
         public static class Cleanup
         {
+            public const int DefaultRetentionDays = 90;
+
             public static SettingDescriptor Enabled { get; } = new()
             {
                 Name = "MCP.Cleanup.Enabled",
@@ -109,7 +95,7 @@ public static class ModuleConstants
                 Name = "MCP.Cleanup.AuditRetentionDays",
                 GroupName = "MCP|Cleanup",
                 ValueType = SettingValueType.PositiveInteger,
-                DefaultValue = 90,
+                DefaultValue = DefaultRetentionDays,
             };
 
             public static SettingDescriptor PendingChangeRetentionDays { get; } = new()
@@ -117,39 +103,22 @@ public static class ModuleConstants
                 Name = "MCP.Cleanup.PendingChangeRetentionDays",
                 GroupName = "MCP|Cleanup",
                 ValueType = SettingValueType.PositiveInteger,
-                DefaultValue = 90,
+                DefaultValue = DefaultRetentionDays,
             };
-
-            public static IEnumerable<SettingDescriptor> AllSettings
-            {
-                get
-                {
-                    yield return Enabled;
-                    yield return Cron;
-                    yield return AuditRetentionDays;
-                    yield return PendingChangeRetentionDays;
-                }
-            }
         }
 
         public static IEnumerable<SettingDescriptor> AllSettings
         {
             get
             {
-                foreach (var setting in Approval.AllSettings)
-                {
-                    yield return setting;
-                }
-
-                foreach (var setting in Audit.AllSettings)
-                {
-                    yield return setting;
-                }
-
-                foreach (var setting in Cleanup.AllSettings)
-                {
-                    yield return setting;
-                }
+                yield return Approval.AllowSelfApproval;
+                yield return Approval.PendingChangeLifetimeHours;
+                yield return Audit.Enabled;
+                yield return Audit.LogArguments;
+                yield return Cleanup.Enabled;
+                yield return Cleanup.Cron;
+                yield return Cleanup.AuditRetentionDays;
+                yield return Cleanup.PendingChangeRetentionDays;
             }
         }
     }

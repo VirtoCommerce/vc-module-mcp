@@ -24,6 +24,13 @@ public class McpAuditWriter(
 
     private static readonly string[] _clientIdClaimTypes = ["client_id", "azp", "oi_prst"];
 
+    public static string GetFailureOutcome(Exception exception)
+    {
+        return exception is McpException and not McpProtocolException
+            ? McpAuditOutcome.Failed
+            : McpAuditOutcome.Error;
+    }
+
     public virtual McpAuditEntry Create(string scopeName, string toolName, ClaimsPrincipal user)
     {
         var entry = AbstractTypeFactory<McpAuditEntry>.TryCreateInstance();

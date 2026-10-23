@@ -23,10 +23,15 @@ public class McpApprovalService(
     TimeProvider timeProvider)
     : IMcpApprovalService
 {
-    public virtual async Task<McpPendingChange> SubmitAsync(McpPendingChange change)
+    public virtual Task<McpPendingChange> SubmitAsync(McpPendingChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
 
+        return SubmitPendingAsync(change);
+    }
+
+    private async Task<McpPendingChange> SubmitPendingAsync(McpPendingChange change)
+    {
         var lifetimeHours = await settingsManager.GetValueAsync<int>(ModuleConstants.Settings.Approval.PendingChangeLifetimeHours);
 
         change.Id = null;

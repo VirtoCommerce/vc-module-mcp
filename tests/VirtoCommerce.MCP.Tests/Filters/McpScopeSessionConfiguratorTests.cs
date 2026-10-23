@@ -107,7 +107,7 @@ public class McpScopeSessionConfiguratorTests
         return (new McpServerOptions { ToolCollection = collection }, tools);
     }
 
-    private static IList<McpServerTool> CreateTools(params System.Type[] toolTypes)
+    private static List<McpServerTool> CreateTools(params System.Type[] toolTypes)
     {
         return toolTypes
             .SelectMany(x => x.GetMethods())

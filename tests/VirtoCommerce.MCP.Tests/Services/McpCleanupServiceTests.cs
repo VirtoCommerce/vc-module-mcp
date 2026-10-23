@@ -21,7 +21,7 @@ public class McpCleanupServiceTests : McpTestsBase
         _service = new McpCleanupService(CreateRepository, SettingsManager.Object, NullLogger<McpCleanupService>.Instance, TimeProvider);
     }
 
-    private DateTime OlderThanRetention => TimeProvider.UtcNow.AddDays(-100);
+    private DateTime OlderThanRetention => TimeProvider.UtcNow.AddDays(-ModuleConstants.Settings.Cleanup.DefaultRetentionDays - 10);
 
     private DateTime WithinRetention => TimeProvider.UtcNow.AddDays(-10);
 

@@ -95,11 +95,11 @@ public abstract class McpTestsBase : IDisposable
             RequestedByUserName = "requester",
             CreatedDate = createdDate,
             ModifiedDate = modified,
-            ExpirationDate = expiration ?? createdDate.AddHours(72),
+            ExpirationDate = expiration ?? createdDate.AddHours(ModuleConstants.Settings.Approval.DefaultPendingChangeLifetimeHours),
         };
     }
 
-    public McpAuditEntryEntity AuditEntry(string id, DateTime created)
+    public static McpAuditEntryEntity AuditEntry(string id, DateTime created)
     {
         return new McpAuditEntryEntity
         {

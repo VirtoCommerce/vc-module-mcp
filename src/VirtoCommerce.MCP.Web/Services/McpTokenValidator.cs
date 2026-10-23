@@ -54,11 +54,26 @@ public class McpTokenValidator(
     private static bool IsExpectedAudience(string value, Uri expected)
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var audience) &&
-            string.Equals(audience.Scheme, expected.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            HasSameOrigin(audience, expected) &&
+            HasSamePath(audience, expected) &&
+            IsBareResource(audience);
+    }
+
+    private static bool HasSameOrigin(Uri audience, Uri expected)
+    {
+        return string.Equals(audience.Scheme, expected.Scheme, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(audience.IdnHost, expected.IdnHost, StringComparison.OrdinalIgnoreCase) &&
-            audience.Port == expected.Port &&
-            string.Equals(audience.AbsolutePath.TrimEnd('/'), expected.AbsolutePath.TrimEnd('/'), StringComparison.Ordinal) &&
-            string.IsNullOrEmpty(audience.Query.TrimStart('?')) &&
+            audience.Port == expected.Port;
+    }
+
+    private static bool HasSamePath(Uri audience, Uri expected)
+    {
+        return string.Equals(audience.AbsolutePath.TrimEnd('/'), expected.AbsolutePath.TrimEnd('/'), StringComparison.Ordinal);
+    }
+
+    private static bool IsBareResource(Uri audience)
+    {
+        return string.IsNullOrEmpty(audience.Query.TrimStart('?')) &&
             string.IsNullOrEmpty(audience.Fragment) &&
             string.IsNullOrEmpty(audience.UserInfo);
     }
