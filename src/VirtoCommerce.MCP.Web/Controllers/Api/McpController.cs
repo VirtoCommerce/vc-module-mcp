@@ -14,6 +14,9 @@ public class McpController(
     IMcpAuditEntrySearchService auditEntrySearchService)
     : Controller
 {
+    /// <summary>
+    /// Search changes that MCP tools submitted for approval.
+    /// </summary>
     [HttpPost("pending-changes/search")]
     [Authorize(Permissions.Approve)]
     public async Task<ActionResult<McpPendingChangeSearchResult>> SearchPendingChanges([FromBody] McpPendingChangeSearchCriteria criteria)
@@ -21,6 +24,9 @@ public class McpController(
         return Ok(await pendingChangeSearchService.SearchAsync(criteria));
     }
 
+    /// <summary>
+    /// Search the audit log of MCP tool calls.
+    /// </summary>
     [HttpPost("audit/search")]
     [Authorize(Permissions.AuditRead)]
     public async Task<ActionResult<McpAuditEntrySearchResult>> SearchAuditEntries([FromBody] McpAuditEntrySearchCriteria criteria)

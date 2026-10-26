@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -21,28 +20,23 @@ using VirtoCommerce.Platform.Core.Security;
 namespace VirtoCommerce.MCP.Web.Filters;
 
 public class McpCallToolFilter(
-    IHttpContextAccessor httpContextAccessor,
     IMcpApprovalService approvalService,
     McpToolAuthorizationService toolAuthorizationService,
     McpAuditWriter auditWriter,
     ILogger<McpCallToolFilter> logger)
 {
-    private const string ForbiddenMessage = "Access forbidden: This tool requires authorization.";
+    private const string AuditedKey = "VirtoCommerce.MCP.Audit.Written";
 
     private static readonly string[] _dryRunParameterNames = ["dryRun", "dry_run"];
 
     public virtual async ValueTask<CallToolResult> InvokeAsync(
         McpRequestHandler<CallToolRequestParams, CallToolResult> next,
         RequestContext<CallToolRequestParams> context,
+        McpScope scope,
         CancellationToken cancellationToken)
     {
-        var scope = httpContextAccessor.HttpContext.GetMcpScope();
-        if (scope == null)
-        {
-            return await next(context, cancellationToken);
-        }
-
         var audit = auditWriter.Create(scope.Name, context.Params?.Name, context.User);
+        context.Items[AuditedKey] = true;
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -75,6 +69,20 @@ public class McpCallToolFilter(
         }
     }
 
+    public virtual async Task AuditRefusalAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpProtocolException exception)
+    {
+        var audit = auditWriter.Create(scope.Name, context.Params?.Name, context.User);
+        audit.Outcome = await IsForbiddenAsync(context) ? McpAuditOutcome.Forbidden : McpAuditOutcome.Error;
+        audit.ErrorMessage = exception.Message;
+
+        await WriteAuditAsync(audit, context.Params?.Arguments);
+    }
+
+    internal static bool IsAudited(MessageContext context)
+    {
+        return context.Items.ContainsKey(AuditedKey);
+    }
+
     public static bool CanBeApprovedIn(string scopeName)
     {
         return string.Equals(scopeName, McpScopes.Admin, StringComparison.OrdinalIgnoreCase);
@@ -102,14 +110,9 @@ public class McpCallToolFilter(
         McpAuditEntry audit,
         CancellationToken cancellationToken)
     {
-        var tool = context.MatchedPrimitive as McpServerTool;
-        if (tool != null && !await toolAuthorizationService.IsAuthorizedAsync(context.User, tool))
-        {
-            audit.Outcome = McpAuditOutcome.Forbidden;
-            throw new McpProtocolException(ForbiddenMessage, McpErrorCode.InvalidRequest);
-        }
-
         ValidateRequiredArguments(context);
+
+        var tool = context.MatchedPrimitive as McpServerTool;
 
         if (tool != null && tool.RequiresApproval() && !IsDryRunCall(tool, context.Params?.Arguments))
         {
@@ -142,6 +145,11 @@ public class McpCallToolFilter(
         audit.PendingChangeId = change.Id;
 
         return CreatePendingApprovalResult(change);
+    }
+
+    private async Task<bool> IsForbiddenAsync(RequestContext<CallToolRequestParams> context)
+    {
+        return context.MatchedPrimitive is McpServerTool tool && !await toolAuthorizationService.IsAuthorizedAsync(context.User, tool);
     }
 
     private async Task WriteAuditAsync(McpAuditEntry audit, IDictionary<string, JsonElement> arguments)

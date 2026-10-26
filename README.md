@@ -65,6 +65,23 @@ serviceCollection.AddMcpTools<PromotionTools>();
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission. The check happens before the tool runs.
 - Tool methods can take any registered service as a parameter, as well as `RequestContext<CallToolRequestParams>` and `CancellationToken`. `HttpContext.GetMcpScope()` returns the scope of the current request.
 
+### Where to put the MCP code of a module
+
+Keep everything a module exposes through MCP in a project of its own, `VirtoCommerce.<Module>.MCP`, next to `Core`, `Data` and `Web`. The MCP surface of the module is then visible at a glance, and only this project depends on the MCP SDK.
+
+```
+src/
+  VirtoCommerce.Marketing.Core/
+  VirtoCommerce.Marketing.Data/
+  VirtoCommerce.Marketing.MCP/      tools, prompts, resources; references VirtoCommerce.MCP.Core
+    Tools/PromotionTools.cs
+  VirtoCommerce.Marketing.Web/      Module.cs references the MCP project
+```
+
+- Tools stay thin: they validate arguments and call the module's services, which keep the business logic. A service replaced through DI changes the tool too.
+- Register the whole project with one line in `Module.Initialize`: `serviceCollection.AddMcpToolsFromAssembly(typeof(PromotionTools).Assembly)`, and the same for prompts and resources when the project has them.
+- Declare the dependency on `VirtoCommerce.MCP` in `module.manifest`.
+
 ### Common execution pipeline
 
 Every `tools/call` on a registered scope goes through the same steps:
@@ -169,7 +186,7 @@ Invalid origins stop the platform at startup: an origin is an absolute `http` or
 | `MCP.Audit.Enabled` | `true` | Audit tool calls made through MCP scopes. |
 | `MCP.Audit.LogArguments` | `true` | Store tool call arguments in the audit log. |
 | `MCP.Cleanup.Enabled` | `true` | Run the recurring cleanup job (`MCP.Cleanup`). |
-| `MCP.Cleanup.Cron` | `0 3 * * *` | Cleanup schedule. |
+| `MCP.Cleanup.Cron` | `0 3 * * *` | Cleanup schedule, in UTC. |
 | `MCP.Cleanup.AuditRetentionDays` | `90` | Audit entries older than this are deleted. |
 | `MCP.Cleanup.PendingChangeRetentionDays` | `90` | Applied, failed, rejected and expired changes older than this are deleted. An approved change that never completed is kept for investigation. |
 

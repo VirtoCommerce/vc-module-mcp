@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Zeitplan der Bereinigung",
-          "description": "Wann die Bereinigung ausgeführt wird."
+          "description": "Wann die Bereinigung ausgeführt wird, in UTC."
         },
         "AuditRetentionDays": {
           "title": "Aufbewahrung des Audit-Protokolls (Tage)",

@@ -22,6 +22,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using Moq;
 using OpenIddict.Abstractions;
@@ -452,6 +453,32 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ToolsCall_Should_AuditAnUnexpectedExceptionAsError()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("failing_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Error, entry.Outcome);
+        Assert.Equal(FailingTools.UnexpectedMessage, entry.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditARefusalOfTheToolAsFailed_With_ItsOwnMessage()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("refusing_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Failed, entry.Outcome);
+        Assert.Equal(FailingTools.RefusalMessage, entry.ErrorMessage);
+    }
+
+    [Fact]
     public async Task ToolsList_Should_AnswerWithPlainJson_When_TheClientAcceptsJsonOnly()
     {
         // Act
@@ -538,7 +565,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools)]);
         services.AddMcpTools<CanceledTools>();
         services.AddMcpTools<McpApprovalTools>();
-        services.AddMcpTools([typeof(PartnerTools)]);
+        services.AddMcpTools([typeof(PartnerTools), typeof(FailingTools)]);
     }
 
     private static ISettingsManager CreateSettingsManagerWithDefaults()
@@ -845,6 +872,20 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             Interlocked.Increment(ref _executions);
             return "submitted";
         }
+    }
+
+    [McpServerToolType]
+    [McpScope(PartnerScope)]
+    public static class FailingTools
+    {
+        public const string UnexpectedMessage = "The database is not available.";
+        public const string RefusalMessage = "Promotion 'p1' was not found.";
+
+        [McpServerTool(Name = "failing_tool"), Description("Fails with an unexpected exception.")]
+        public static string FailingTool() => throw new InvalidOperationException(UnexpectedMessage);
+
+        [McpServerTool(Name = "refusing_tool"), Description("Refuses the request.")]
+        public static string RefusingTool() => throw new McpException(RefusalMessage);
     }
 
     [McpServerToolType]

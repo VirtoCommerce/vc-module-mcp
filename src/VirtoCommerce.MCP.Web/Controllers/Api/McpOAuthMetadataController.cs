@@ -14,6 +14,9 @@ public class McpOAuthMetadataController(
     IMcpPublicOriginResolver originResolver)
     : ControllerBase
 {
+    /// <summary>
+    /// OAuth protected resource metadata (RFC 9728) of an MCP scope: the resource to request a token for and the authorization server.
+    /// </summary>
     [HttpGet("~/.well-known/oauth-protected-resource/{scopeName}/mcp")]
     [ProducesResponseType(typeof(McpProtectedResourceMetadata), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

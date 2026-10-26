@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Programación de la limpieza",
-          "description": "Cuándo se ejecuta la limpieza."
+          "description": "Cuándo se ejecuta la limpieza, en UTC."
         },
         "AuditRetentionDays": {
           "title": "Retención de la auditoría (días)",

@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "mcp:access": "Connect AI agents to the back-office MCP server",
+    "mcp:access": "Connect AI agents to the Backoffice MCP server",
     "mcp:approve": "Review, approve and reject changes submitted by MCP tools",
     "mcp:audit:read": "Read the MCP tool call audit log"
   },
@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Cleanup schedule",
-          "description": "When the cleanup runs."
+          "description": "When the cleanup runs, in UTC."
         },
         "AuditRetentionDays": {
           "title": "Audit retention (days)",

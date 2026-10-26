@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "清理计划",
-          "description": "清理的运行时间。"
+          "description": "清理的运行时间（UTC）。"
         },
         "AuditRetentionDays": {
           "title": "审计记录保留期（天）",

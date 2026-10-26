@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Filters;
@@ -12,7 +15,7 @@ public static class McpServerRegistrationExtensions
 {
     public static IMcpServerBuilder AddScopedMcpServer(this IServiceCollection services)
     {
-        return services.AddMcpServer()
+        var builder = services.AddMcpServer()
             .WithHttpTransport(options =>
             {
                 options.Stateless = true;
@@ -28,12 +31,11 @@ public static class McpServerRegistrationExtensions
                     McpScopeSessionConfigurator.Configure(httpContext, serverOptions);
                 };
             })
-            .WithRequestFilters(filters =>
-            {
-                filters.AddCallToolFilter(next => (context, cancellationToken) =>
-                    context.Services.GetRequiredService<McpCallToolFilter>().InvokeAsync(next, context, cancellationToken));
-            })
             .AddAuthorizationFilters();
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<McpServerOptions>, McpCallToolFilterSetup>());
+
+        return builder;
     }
 
     public static IApplicationBuilder UseMcpScopes(this IApplicationBuilder app)

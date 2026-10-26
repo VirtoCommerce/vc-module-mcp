@@ -7,7 +7,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
     <PackageReference Include="VirtoCommerce.Platform.Core" Version="3.1085.0" />
   </ItemGroup>
 </Project>

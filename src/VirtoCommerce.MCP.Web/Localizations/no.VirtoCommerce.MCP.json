@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Tidsplan for opprydding",
-          "description": "Når oppryddingen kjøres."
+          "description": "Når oppryddingen kjøres, i UTC."
         },
         "AuditRetentionDays": {
           "title": "Oppbevaring av revisjonslogg (dager)",

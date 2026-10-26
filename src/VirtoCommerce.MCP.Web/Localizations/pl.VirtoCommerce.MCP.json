@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Harmonogram czyszczenia",
-          "description": "Kiedy uruchamiane jest czyszczenie."
+          "description": "Kiedy uruchamiane jest czyszczenie, w czasie UTC."
         },
         "AuditRetentionDays": {
           "title": "Przechowywanie audytu (dni)",

@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Siivouksen aikataulu",
-          "description": "Milloin siivous suoritetaan."
+          "description": "Milloin siivous suoritetaan, UTC-ajassa."
         },
         "AuditRetentionDays": {
           "title": "Auditoinnin säilytysaika (päivää)",

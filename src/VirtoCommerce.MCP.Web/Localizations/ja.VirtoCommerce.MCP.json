@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "クリーンアップのスケジュール",
-          "description": "クリーンアップを実行するタイミング。"
+          "description": "クリーンアップを実行するタイミング（UTC）。"
         },
         "AuditRetentionDays": {
           "title": "監査ログの保持期間（日）",

@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Schema för rensning",
-          "description": "När rensningen körs."
+          "description": "När rensningen körs, i UTC."
         },
         "AuditRetentionDays": {
           "title": "Lagring av granskningslogg (dagar)",

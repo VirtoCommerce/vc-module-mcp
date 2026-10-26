@@ -33,7 +33,7 @@
         },
         "Cron": {
           "title": "Planification du nettoyage",
-          "description": "Moment où le nettoyage s'exécute."
+          "description": "Moment où le nettoyage s'exécute, en UTC."
         },
         "AuditRetentionDays": {
           "title": "Conservation de l'audit (jours)",
