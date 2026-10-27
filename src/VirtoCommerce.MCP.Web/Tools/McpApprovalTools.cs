@@ -26,13 +26,12 @@ public class McpApprovalTools(
     IMcpPendingChangeService pendingChangeService,
     IMcpPendingChangeSearchService pendingChangeSearchService,
     IMcpApprovalService approvalService,
+    IMcpPageSizeResolver pageSizeResolver,
     IAuthorizationService authorizationService,
     McpToolAuthorizationService toolAuthorizationService,
     McpPendingChangeExecutor pendingChangeExecutor,
     TimeProvider timeProvider)
 {
-    private const int MaxTake = 50;
-
     [McpServerTool(Name = ModuleConstants.Tools.ListPendingChanges, ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("List changes that agents submitted for approval, newest first. An approver sees every change, " +
         "any other user only the changes they requested. Returns compact rows; " +
@@ -42,7 +41,7 @@ public class McpApprovalTools(
         [Description("Status filter: Pending (default), Approved, Applied, Failed, Rejected or Expired.")] string status = McpPendingChangeStatus.Pending,
         [Description("Only changes submitted by this tool.")] string tool_name = null,
         [Description("Number of rows to skip.")] int skip = 0,
-        [Description("Number of rows to return, at most 50.")] int take = 20)
+        [Description("Number of rows to return. Omit it for the default page size; larger values are capped.")] int? take = null)
     {
         var criteria = new McpPendingChangeSearchCriteria
         {
@@ -50,7 +49,7 @@ public class McpApprovalTools(
             ToolName = tool_name,
             Statuses = string.IsNullOrEmpty(status) ? null : [status],
             Skip = Math.Max(skip, 0),
-            Take = Math.Clamp(take, 1, MaxTake),
+            Take = await pageSizeResolver.GetPageSizeAsync(take),
         };
 
         if (!await IsApproverAsync(requestContext.User))
@@ -106,7 +105,7 @@ public class McpApprovalTools(
 
         if (requestContext.Server.ServerOptions.ToolCollection?.TryGetPrimitive(change.ToolName, out var tool) != true)
         {
-            throw new McpException($"Tool '{change.ToolName}' of pending change '{change_id}' is not available any more.");
+            throw new McpException($"Tool '{change.ToolName}' of pending change '{change_id}' is not available now: it was removed or disabled by the administrator.");
         }
 
         if (!await toolAuthorizationService.IsAuthorizedAsync(user, tool))
@@ -185,7 +184,7 @@ public class McpApprovalTools(
             change_id = change.Id,
             tool_name = change.ToolName,
             status = change.IsExpired(timeProvider.GetUtcNow().UtcDateTime) ? McpPendingChangeStatus.Expired : change.Status,
-            arguments = ParseJson(change.Arguments),
+            arguments = ParseJson(change.GetMaskedArguments()),
             preview = ParseJson(change.Preview),
             requested_by = change.RequestedByUserName,
             requested_at = change.CreatedDate,

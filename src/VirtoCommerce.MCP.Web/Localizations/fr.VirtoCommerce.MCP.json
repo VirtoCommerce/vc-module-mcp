@@ -43,6 +43,16 @@
           "title": "Conservation des modifications en attente (jours)",
           "description": "Les modifications appliquées, échouées, rejetées et expirées plus anciennes sont supprimées. Les modifications approuvées qui n'ont jamais abouti sont conservées."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Outils désactivés",
+          "description": "Outils que les agents ne peuvent ni voir ni appeler, un par ligne : tool_name pour toutes les portées, scope/tool_name pour une portée ou scope/* pour une portée entière. S'applique dès la requête suivante, sans redémarrage."
+        },
+        "MaxTake": {
+          "title": "Nombre maximal de lignes",
+          "description": "Nombre maximal de lignes renvoyées par un outil de liste en un appel. Les demandes plus grandes sont plafonnées."
+        }
       }
     }
   }

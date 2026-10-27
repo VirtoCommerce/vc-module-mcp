@@ -43,6 +43,16 @@
           "title": "Przechowywanie oczekujących zmian (dni)",
           "description": "Starsze zastosowane, nieudane, odrzucone i wygasłe zmiany są usuwane. Zatwierdzone zmiany, które nigdy nie zostały ukończone, są zachowywane."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Wyłączone narzędzia",
+          "description": "Narzędzia, których agenci nie widzą i nie mogą wywołać, po jednym w wierszu: tool_name dla wszystkich zakresów, scope/tool_name dla jednego zakresu lub scope/* dla całego zakresu. Działa od następnego żądania, bez ponownego uruchamiania."
+        },
+        "MaxTake": {
+          "title": "Maksymalna liczba wierszy",
+          "description": "Największa liczba wierszy zwracana przez narzędzie listy w jednym wywołaniu. Większe żądania są ograniczane."
+        }
       }
     }
   }

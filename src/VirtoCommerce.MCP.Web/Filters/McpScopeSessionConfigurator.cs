@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Web.Services;
 
 namespace VirtoCommerce.MCP.Web.Filters;
 
@@ -14,14 +16,22 @@ public static class McpScopeSessionConfigurator
 {
     private static readonly string _version = typeof(McpScopeSessionConfigurator).Assembly.GetName().Version?.ToString(3);
 
-    public static void Configure(HttpContext context, McpServerOptions options)
+    public static async Task ConfigureAsync(HttpContext context, McpServerOptions options)
     {
         var services = context.RequestServices;
+        var scope = context.GetMcpScope();
+        var tools = services.GetServices<McpServerTool>();
+
+        if (scope != null)
+        {
+            var disabledToolNames = await services.GetRequiredService<McpToolAvailabilityService>().GetDisabledToolNamesAsync(scope.Name);
+            tools = tools.Where(tool => !McpToolAvailabilityService.IsDisabled(disabledToolNames, tool.ProtocolTool.Name));
+        }
 
         ApplyScope(
             options,
-            context.GetMcpScope(),
-            services.GetServices<McpServerTool>(),
+            scope,
+            tools,
             services.GetServices<McpServerPrompt>(),
             services.GetServices<McpServerResource>());
     }

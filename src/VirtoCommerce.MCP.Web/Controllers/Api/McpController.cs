@@ -21,7 +21,14 @@ public class McpController(
     [Authorize(Permissions.Approve)]
     public async Task<ActionResult<McpPendingChangeSearchResult>> SearchPendingChanges([FromBody] McpPendingChangeSearchCriteria criteria)
     {
-        return Ok(await pendingChangeSearchService.SearchAsync(criteria));
+        var result = await pendingChangeSearchService.SearchAsync(criteria);
+
+        foreach (var change in result.Results)
+        {
+            change.Arguments = change.GetMaskedArguments();
+        }
+
+        return Ok(result);
     }
 
     /// <summary>

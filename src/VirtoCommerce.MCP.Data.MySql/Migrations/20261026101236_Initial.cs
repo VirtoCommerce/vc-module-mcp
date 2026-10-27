@@ -64,6 +64,8 @@ namespace VirtoCommerce.MCP.Data.MySql.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Arguments = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
+                    SensitiveArgumentPaths = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
                     Preview = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Status = table.Column<string>(type: "varchar(32)", maxLength: 32, nullable: false)

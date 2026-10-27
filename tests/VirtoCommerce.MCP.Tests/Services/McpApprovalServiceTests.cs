@@ -7,6 +7,7 @@ using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Events;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Data.Models;
 using VirtoCommerce.MCP.Data.Services;
 using VirtoCommerce.Platform.Core.Events;
 using Xunit;
@@ -19,11 +20,23 @@ public class McpApprovalServiceTests : McpTestsBase
 {
     private readonly Mock<IMcpPendingChangeService> _pendingChangeService = new();
     private readonly Mock<IEventPublisher> _eventPublisher = new();
+    private const string SensitiveArguments = "{\"contactId\":\"c1\",\"email\":\"a@b.c\"}";
+    private const string MaskedArguments = "{\"contactId\":\"c1\",\"email\":\"***\"}";
+
     private readonly McpApprovalService _service;
 
     public McpApprovalServiceTests()
     {
         _service = new McpApprovalService(CreateRepository, _pendingChangeService.Object, SettingsManager.Object, _eventPublisher.Object, TimeProvider);
+    }
+
+    private McpPendingChangeEntity SensitiveChange(string id)
+    {
+        var change = PendingChange(id);
+        change.Arguments = SensitiveArguments;
+        change.SensitiveArgumentPaths = "email";
+
+        return change;
     }
 
     [Fact]
@@ -60,6 +73,54 @@ public class McpApprovalServiceTests : McpTestsBase
         Assert.Equal(McpPendingChangeStatus.Approved, (await GetPendingChangeAsync("change-1")).Status);
         _eventPublisher.Verify(x => x.Publish(It.IsAny<McpPendingChangeChangingEvent>(), default), Times.Once);
         _eventPublisher.Verify(x => x.Publish(It.IsAny<McpPendingChangeChangedEvent>(), default), Times.Once);
+    }
+
+    [Fact]
+    public async Task RejectAsync_Should_ScrubTheSensitiveArguments()
+    {
+        // Arrange
+        await SeedAsync(SensitiveChange("change-1"));
+
+        // Act
+        await _service.RejectAsync("change-1", ApproverId, "approver", null);
+
+        // Assert
+        Assert.Equal(MaskedArguments, (await GetPendingChangeAsync("change-1")).Arguments);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_Should_ScrubTheSensitiveArguments_That_TheApprovalKept()
+    {
+        // Arrange
+        await SeedAsync(SensitiveChange("change-1"));
+        var approved = await _service.ApproveAsync("change-1", ApproverId, "approver", null);
+        var argumentsAfterApproval = (await GetPendingChangeAsync("change-1")).Arguments;
+
+        // Act
+        await _service.CompleteAsync(approved, "{}", succeeded: true);
+
+        // Assert
+        Assert.Equal(SensitiveArguments, argumentsAfterApproval);
+        Assert.Equal(MaskedArguments, (await GetPendingChangeAsync("change-1")).Arguments);
+    }
+
+    [Fact]
+    public async Task ExpireOverdueAsync_Should_ExpireOverdueChanges_And_ScrubTheirSensitiveArguments()
+    {
+        // Arrange
+        var overdue = SensitiveChange("overdue");
+        overdue.ExpirationDate = TimeProvider.UtcNow.AddMinutes(-1);
+        await SeedAsync(overdue, SensitiveChange("active"));
+
+        // Act
+        var expired = await _service.ExpireOverdueAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(1, expired);
+        var stored = await GetPendingChangeAsync("overdue");
+        Assert.Equal(McpPendingChangeStatus.Expired, stored.Status);
+        Assert.Equal(MaskedArguments, stored.Arguments);
+        Assert.Equal(McpPendingChangeStatus.Pending, (await GetPendingChangeAsync("active")).Status);
     }
 
     [Fact]

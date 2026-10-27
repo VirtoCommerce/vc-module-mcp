@@ -45,7 +45,7 @@ public class PromotionTools
 {
     [McpServerTool(Name = "search_promotions", ReadOnly = true)]
     [Description("Search promotions. Returns compact rows.")]
-    public Task<object> SearchPromotions(string query, int take = 20) { ... }
+    public Task<object> SearchPromotions(IMcpPageSizeResolver pageSizeResolver, string query, int? take = null) { ... }
 
     [McpServerTool(Name = "activate_promotion", Destructive = true)]
     [Description("Activate a promotion.")]
@@ -64,6 +64,7 @@ serviceCollection.AddMcpTools<PromotionTools>();
 - Names must be unique within a scope; the same name can be used in different scopes. A name registered twice in one scope is reported as an error in the log at startup, and only the first registration is served.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission. The check happens before the tool runs.
 - Tool methods can take any registered service as a parameter, as well as `RequestContext<CallToolRequestParams>` and `CancellationToken`. `HttpContext.GetMcpScope()` returns the scope of the current request.
+- A tool that returns a list takes an optional `take` and passes it through `IMcpPageSizeResolver.GetPageSizeAsync(take)`: an omitted value gets 20 rows, as in `SearchCriteriaBase`, and a larger one is capped at the `MCP.Tools.MaxTake` setting, so an agent cannot load thousands of rows into its context with one call. A tool can apply a lower limit of its own.
 
 ### Where to put the MCP code of a module
 
@@ -81,6 +82,22 @@ src/
 - Tools stay thin: they validate arguments and call the module's services, which keep the business logic. A service replaced through DI changes the tool too.
 - Register the whole project with one line in `Module.Initialize`: `serviceCollection.AddMcpToolsFromAssembly(typeof(PromotionTools).Assembly)`, and the same for prompts and resources when the project has them.
 - Declare the dependency on `VirtoCommerce.MCP` in `module.manifest`.
+
+### Sensitive arguments
+
+Mark the arguments that carry personal data with `[McpSensitive]`, on a tool method parameter or on a property of an argument type, nested types and collections included:
+
+```csharp
+public Task<object> UpdateContact(string contactId, [McpSensitive] string email, ContactInput contact) { ... }
+
+public class ContactInput
+{
+    [McpSensitive]
+    public string Phone { get; set; }
+}
+```
+
+Their values are replaced with `***` in the audit log, in `get_pending_change`, and in the pending changes returned by the Web API. A change waiting for approval keeps the values, because the tool needs them when the change is approved; they are replaced with `***` as soon as the change is applied, fails, is rejected or expires. The dry-run preview and the result of an approved change are stored as the tool returns them, so a tool should not return sensitive values in either.
 
 ### Common execution pipeline
 
@@ -133,11 +150,23 @@ A module that maps its own MCP endpoint, as UCP currently does at `/ucp/mcp`, sh
 
 ### Audit
 
-Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, unexpected error). A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
+Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Disabled` (the tool is switched off by an administrator), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, unexpected error). A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
 
 ### Cleanup
 
-The recurring job `MCP.Cleanup` deletes audit entries, and applied, failed, rejected and expired changes, older than the retention settings. A pending change that expired before the retention period is deleted too. An approved change that never completed is kept: it needs a person to look at it.
+The recurring job `MCP.Cleanup` deletes audit entries, and applied, failed, rejected and expired changes, older than the retention settings. A pending change that expired before the retention period is deleted too. An approved change that never completed is kept: it needs a person to look at it. The job also marks overdue pending changes as expired, which removes their sensitive arguments.
+
+### Switching tools off
+
+An administrator can switch tools off without a release with the `MCP.Tools.Disabled` setting, one entry per line:
+
+| Entry | Switches off |
+| --- | --- |
+| `activate_promotion` | the tool in every scope |
+| `admin/activate_promotion` | the tool in the `admin` scope only |
+| `vendor/*` | every tool of the `vendor` scope |
+
+A tool that is switched off disappears from `tools/list`, a call to it is refused with a message the agent can pass on to the user and audited as `Disabled`, and its pending changes cannot be approved until it is switched on again. The setting applies to the next request, with no restart.
 
 ## Configuration
 
@@ -160,6 +189,10 @@ The recurring job `MCP.Cleanup` deletes audit entries, and applied, failed, reje
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. |
 
 Invalid origins stop the platform at startup: an origin is an absolute `http` or `https` address without a path, query or fragment.
+
+### Rate limiting and CORS
+
+The module does not limit the request rate and does not add CORS headers: both belong to the infrastructure in front of the platform. Limit the rate of requests to `/*/mcp` in the API gateway or the load balancer, because an agent that goes into a loop can call a tool hundreds of times a minute. CORS is needed only for MCP clients that run in a browser; Claude, ChatGPT and other hosted clients call the server from their own back end.
 
 ### Connecting a client to the admin scope
 
@@ -189,6 +222,8 @@ Invalid origins stop the platform at startup: an origin is an absolute `http` or
 | `MCP.Cleanup.Cron` | `0 3 * * *` | Cleanup schedule, in UTC. |
 | `MCP.Cleanup.AuditRetentionDays` | `90` | Audit entries older than this are deleted. |
 | `MCP.Cleanup.PendingChangeRetentionDays` | `90` | Applied, failed, rejected and expired changes older than this are deleted. An approved change that never completed is kept for investigation. |
+| `MCP.Tools.Disabled` | empty | Tools switched off, one per line: `tool`, `scope/tool` or `scope/*`. |
+| `MCP.Tools.MaxTake` | `50` | Largest number of rows a list tool returns in one call. A tool that is not given a number returns 20 rows, or fewer if this limit is lower. |
 
 ### Permissions
 
@@ -213,9 +248,10 @@ Tools, prompts and resources of other modules are added with `AddMcpTools`, `Add
 The behaviour of the module can be replaced through DI:
 
 - `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration.
+- `IMcpPageSizeResolver` decides how many rows a list tool returns.
 - `IMcpApprovalService` implements the pending change lifecycle; `McpApprovalService` has virtual methods for the self-approval and expiration rules.
 - `IMcpCleanupService` decides what the cleanup deletes; `McpCleanupService.GetObsoleteAuditEntries` and `GetObsoletePendingChanges` are virtual.
-- `McpCallToolFilter`, `McpPendingChangeExecutor`, `McpAuditWriter`, `McpToolAuthorizationService` and `McpTokenValidator` have virtual methods for the execution pipeline, the execution of an approved change, the audit entry, the tool permission check and the token check.
+- `McpCallToolFilter`, `McpPendingChangeExecutor`, `McpAuditWriter`, `McpToolAuthorizationService`, `McpToolAvailabilityService` and `McpTokenValidator` have virtual methods for the execution pipeline, the execution of an approved change, the audit entry, the tool permission check, the tools that are switched off and the token check.
 
 ## References
 

@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 using VirtoCommerce.MCP.Core.Models;
 
@@ -12,4 +13,6 @@ public interface IMcpApprovalService
     Task<McpPendingChange> CompleteAsync(McpPendingChange change, string result, bool succeeded);
 
     Task<McpPendingChange> RejectAsync(string changeId, string reviewerUserId, string reviewerUserName, string reason);
+
+    Task<int> ExpireOverdueAsync(CancellationToken cancellationToken = default);
 }

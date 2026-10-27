@@ -156,6 +156,9 @@ namespace VirtoCommerce.MCP.Data.MySql.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<string>("SensitiveArgumentPaths")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

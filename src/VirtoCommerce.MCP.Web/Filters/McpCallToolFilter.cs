@@ -22,6 +22,7 @@ namespace VirtoCommerce.MCP.Web.Filters;
 public class McpCallToolFilter(
     IMcpApprovalService approvalService,
     McpToolAuthorizationService toolAuthorizationService,
+    McpToolAvailabilityService toolAvailabilityService,
     McpAuditWriter auditWriter,
     ILogger<McpCallToolFilter> logger)
 {
@@ -65,7 +66,7 @@ public class McpCallToolFilter(
         {
             audit.DurationMs = stopwatch.ElapsedMilliseconds;
             audit.PendingChangeId ??= context.GetAuditPendingChangeId();
-            await WriteAuditAsync(audit, context.Params?.Arguments);
+            await WriteAuditAsync(audit, context);
         }
     }
 
@@ -75,7 +76,7 @@ public class McpCallToolFilter(
         audit.Outcome = await IsForbiddenAsync(context) ? McpAuditOutcome.Forbidden : McpAuditOutcome.Error;
         audit.ErrorMessage = exception.Message;
 
-        await WriteAuditAsync(audit, context.Params?.Arguments);
+        await WriteAuditAsync(audit, context);
     }
 
     internal static bool IsAudited(MessageContext context)
@@ -110,6 +111,18 @@ public class McpCallToolFilter(
         McpAuditEntry audit,
         CancellationToken cancellationToken)
     {
+        if (await toolAvailabilityService.IsDisabledAsync(scope.Name, audit.ToolName))
+        {
+            audit.Outcome = McpAuditOutcome.Disabled;
+            audit.ErrorMessage = $"Tool '{audit.ToolName}' is disabled by the administrator.";
+
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = audit.ErrorMessage + " Tell the user that this action is not available now." }],
+            };
+        }
+
         ValidateRequiredArguments(context);
 
         var tool = context.MatchedPrimitive as McpServerTool;
@@ -152,7 +165,7 @@ public class McpCallToolFilter(
         return context.MatchedPrimitive is McpServerTool tool && !await toolAuthorizationService.IsAuthorizedAsync(context.User, tool);
     }
 
-    private async Task WriteAuditAsync(McpAuditEntry audit, IDictionary<string, JsonElement> arguments)
+    private async Task WriteAuditAsync(McpAuditEntry audit, RequestContext<CallToolRequestParams> context)
     {
         if (audit.Outcome == null)
         {
@@ -165,7 +178,10 @@ public class McpCallToolFilter(
                 audit.ToolName, audit.ScopeName, audit.UserName, audit.Outcome, audit.DurationMs);
         }
 
-        await auditWriter.WriteAsync(audit, arguments);
+        var arguments = audit.Outcome == McpAuditOutcome.Disabled ? null : context.Params?.Arguments;
+        var sensitiveArgumentPaths = context.MatchedPrimitive?.GetSensitiveArgumentPaths() ?? [];
+
+        await auditWriter.WriteAsync(audit, arguments, sensitiveArgumentPaths);
     }
 
     protected virtual async Task<McpPendingChange> SubmitForApprovalAsync(
@@ -179,6 +195,7 @@ public class McpCallToolFilter(
         change.ScopeName = scope.Name;
         change.ToolName = tool.ProtocolTool.Name;
         change.Arguments = JsonSerializer.Serialize(context.Params.Arguments ?? new Dictionary<string, JsonElement>(), McpJsonUtilities.DefaultOptions);
+        change.SensitiveArgumentPaths = [.. tool.GetSensitiveArgumentPaths()];
         change.RequestedByUserId = context.User?.GetUserId();
         change.RequestedByUserName = context.User?.GetUserName();
 

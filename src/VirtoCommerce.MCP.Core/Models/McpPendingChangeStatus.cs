@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace VirtoCommerce.MCP.Core.Models;
 
 public static class McpPendingChangeStatus
@@ -13,4 +15,6 @@ public static class McpPendingChangeStatus
     public const string Applied = "Applied";
 
     public const string Failed = "Failed";
+
+    public static IReadOnlyList<string> FinalStatuses { get; } = [Applied, Failed, Rejected, Expired];
 }

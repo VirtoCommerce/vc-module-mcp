@@ -43,6 +43,16 @@
           "title": "Retenção das alterações pendentes (dias)",
           "description": "Alterações aplicadas, com falha, rejeitadas e expiradas mais antigas são excluídas. Alterações aprovadas que nunca foram concluídas são mantidas."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Ferramentas desativadas",
+          "description": "Ferramentas que os agentes não podem ver nem chamar, uma por linha: tool_name para todos os escopos, scope/tool_name para um escopo ou scope/* para um escopo inteiro. Vale a partir da próxima solicitação, sem reiniciar."
+        },
+        "MaxTake": {
+          "title": "Número máximo de linhas",
+          "description": "Maior número de linhas que uma ferramenta de lista retorna em uma chamada. Solicitações maiores são limitadas."
+        }
       }
     }
   }

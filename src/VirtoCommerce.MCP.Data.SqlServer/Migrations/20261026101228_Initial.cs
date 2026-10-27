@@ -44,6 +44,7 @@ namespace VirtoCommerce.MCP.Data.SqlServer.Migrations
                     ScopeName = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     ToolName = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     Arguments = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SensitiveArgumentPaths = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Preview = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Status = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     RequestedByUserId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),

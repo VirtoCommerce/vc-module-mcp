@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol;
@@ -23,6 +25,8 @@ public class McpApprovalService(
     TimeProvider timeProvider)
     : IMcpApprovalService
 {
+    private const int BatchSize = 1000;
+
     public virtual Task<McpPendingChange> SubmitAsync(McpPendingChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
@@ -99,6 +103,34 @@ public class McpApprovalService(
         });
     }
 
+    public virtual async Task<int> ExpireOverdueAsync(CancellationToken cancellationToken = default)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var expired = 0;
+        List<string> ids;
+
+        do
+        {
+            using (var repository = repositoryFactory())
+            {
+                ids = await repository.PendingChanges
+                    .Where(x => x.Status == McpPendingChangeStatus.Pending && x.ExpirationDate <= now)
+                    .OrderBy(x => x.Id)
+                    .Select(x => x.Id)
+                    .Take(BatchSize)
+                    .ToListAsync(cancellationToken);
+            }
+
+            foreach (var id in ids)
+            {
+                expired += await TryExpireAsync(id, now) ? 1 : 0;
+            }
+        }
+        while (ids.Count == BatchSize);
+
+        return expired;
+    }
+
     protected virtual async Task<McpPendingChange> GetPendingAsync(string changeId)
     {
         var change = await LoadAsync(changeId) ?? throw new McpException($"Pending change '{changeId}' was not found.");
@@ -124,6 +156,11 @@ public class McpApprovalService(
         apply(updated);
         updated.ModifiedDate = timeProvider.GetUtcNow().UtcDateTime;
 
+        if (updated.IsFinal())
+        {
+            updated.Arguments = updated.GetMaskedArguments();
+        }
+
         var changedEntries = new[] { new GenericChangedEntry<McpPendingChange>(updated, change, EntryState.Modified) };
         await eventPublisher.Publish(new McpPendingChangeChangingEvent(changedEntries));
 
@@ -132,6 +169,7 @@ public class McpApprovalService(
             var affected = await repository.PendingChanges
                 .Where(x => x.Id == change.Id && x.Status == change.Status)
                 .ExecuteUpdateAsync(x => x
+                    .SetProperty(e => e.Arguments, updated.Arguments)
                     .SetProperty(e => e.Status, updated.Status)
                     .SetProperty(e => e.ReviewedByUserId, updated.ReviewedByUserId)
                     .SetProperty(e => e.ReviewedByUserName, updated.ReviewedByUserName)
@@ -152,6 +190,25 @@ public class McpApprovalService(
         await eventPublisher.Publish(new McpPendingChangeChangedEvent(changedEntries));
 
         return updated;
+    }
+
+    private async Task<bool> TryExpireAsync(string changeId, DateTime now)
+    {
+        var change = await LoadAsync(changeId);
+        if (change?.IsExpired(now) != true)
+        {
+            return false;
+        }
+
+        try
+        {
+            await TransitionAsync(change, x => x.Status = McpPendingChangeStatus.Expired);
+            return true;
+        }
+        catch (McpException)
+        {
+            return false;
+        }
     }
 
     protected virtual async Task<McpPendingChange> LoadAsync(string changeId)

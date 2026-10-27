@@ -44,6 +44,7 @@ namespace VirtoCommerce.MCP.Data.PostgreSql.Migrations
                     ScopeName = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     ToolName = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
                     Arguments = table.Column<string>(type: "text", nullable: true),
+                    SensitiveArgumentPaths = table.Column<string>(type: "text", nullable: true),
                     Preview = table.Column<string>(type: "text", nullable: true),
                     Status = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     RequestedByUserId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),

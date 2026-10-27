@@ -43,6 +43,16 @@
           "title": "Oppbevaring av ventende endringer (dager)",
           "description": "Eldre utførte, mislykkede, avviste og utløpte endringer slettes. Godkjente endringer som aldri ble fullført, beholdes."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Deaktiverte verktøy",
+          "description": "Verktøy som agenter verken kan se eller kalle, ett per linje: tool_name for alle omfang, scope/tool_name for ett omfang eller scope/* for et helt omfang. Gjelder fra neste forespørsel, uten omstart."
+        },
+        "MaxTake": {
+          "title": "Maksimalt antall rader",
+          "description": "Høyeste antall rader et listeverktøy returnerer i ett kall. Større forespørsler begrenses."
+        }
       }
     }
   }

@@ -70,6 +70,25 @@ public static class ModuleConstants
             };
         }
 
+        public static class Tools
+        {
+            public static SettingDescriptor Disabled { get; } = new()
+            {
+                Name = "MCP.Tools.Disabled",
+                GroupName = "MCP|Tools",
+                ValueType = SettingValueType.LongText,
+                DefaultValue = string.Empty,
+            };
+
+            public static SettingDescriptor MaxTake { get; } = new()
+            {
+                Name = "MCP.Tools.MaxTake",
+                GroupName = "MCP|Tools",
+                ValueType = SettingValueType.PositiveInteger,
+                DefaultValue = 50,
+            };
+        }
+
         public static class Cleanup
         {
             public const int DefaultRetentionDays = 90;
@@ -119,6 +138,8 @@ public static class ModuleConstants
                 yield return Cleanup.Cron;
                 yield return Cleanup.AuditRetentionDays;
                 yield return Cleanup.PendingChangeRetentionDays;
+                yield return Tools.Disabled;
+                yield return Tools.MaxTake;
             }
         }
     }

@@ -2,10 +2,13 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Data.Models;
 using VirtoCommerce.MCP.Data.Services;
+using VirtoCommerce.Platform.Core.Events;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Services;
@@ -18,7 +21,8 @@ public class McpCleanupServiceTests : McpTestsBase
 
     public McpCleanupServiceTests()
     {
-        _service = new McpCleanupService(CreateRepository, SettingsManager.Object, NullLogger<McpCleanupService>.Instance, TimeProvider);
+        var approvalService = new McpApprovalService(CreateRepository, Mock.Of<IMcpPendingChangeService>(), SettingsManager.Object, Mock.Of<IEventPublisher>(), TimeProvider);
+        _service = new McpCleanupService(CreateRepository, approvalService, SettingsManager.Object, NullLogger<McpCleanupService>.Instance, TimeProvider);
     }
 
     private DateTime OlderThanRetention => TimeProvider.UtcNow.AddDays(-ModuleConstants.Settings.Cleanup.DefaultRetentionDays - 10);
@@ -58,6 +62,8 @@ public class McpCleanupServiceTests : McpTestsBase
 
         // Assert
         Assert.Equal(3, result.DeletedPendingChanges);
+        Assert.Equal(1, result.ExpiredPendingChanges);
+        Assert.Equal(McpPendingChangeStatus.Expired, (await GetPendingChangeAsync("pending-expired-recently")).Status);
         Assert.Equal(
             ["applied-recent", "approved-never-completed", "pending-active", "pending-expired-recently"],
             await GetIdsAsync<McpPendingChangeEntity>());

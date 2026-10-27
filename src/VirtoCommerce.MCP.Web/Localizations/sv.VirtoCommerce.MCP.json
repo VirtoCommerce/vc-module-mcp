@@ -43,6 +43,16 @@
           "title": "Lagring av väntande ändringar (dagar)",
           "description": "Äldre genomförda, misslyckade, avvisade och utgångna ändringar tas bort. Godkända ändringar som aldrig slutfördes behålls."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Inaktiverade verktyg",
+          "description": "Verktyg som agenter varken kan se eller anropa, ett per rad: tool_name för alla omfång, scope/tool_name för ett omfång eller scope/* för ett helt omfång. Gäller från nästa begäran, utan omstart."
+        },
+        "MaxTake": {
+          "title": "Högsta antal rader",
+          "description": "Högsta antal rader som ett listverktyg returnerar i ett anrop. Större förfrågningar begränsas."
+        }
       }
     }
   }

@@ -79,9 +79,11 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         serviceCollection.AddTransient<McpTokenValidator>();
         serviceCollection.AddTransient<McpToolAuthorizationService>();
         serviceCollection.AddTransient<McpAuditWriter>();
+        serviceCollection.AddTransient<McpToolAvailabilityService>();
         serviceCollection.AddTransient<McpPendingChangeExecutor>();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();

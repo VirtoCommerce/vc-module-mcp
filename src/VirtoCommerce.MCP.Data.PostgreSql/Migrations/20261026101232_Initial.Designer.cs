@@ -12,7 +12,7 @@ using VirtoCommerce.MCP.Data.Repositories;
 namespace VirtoCommerce.MCP.Data.PostgreSql.Migrations
 {
     [DbContext(typeof(McpDbContext))]
-    [Migration("20261019121604_Initial")]
+    [Migration("20261026101232_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -158,6 +158,9 @@ namespace VirtoCommerce.MCP.Data.PostgreSql.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SensitiveArgumentPaths")
+                        .HasColumnType("text");
 
                     b.Property<string>("Status")
                         .IsRequired()

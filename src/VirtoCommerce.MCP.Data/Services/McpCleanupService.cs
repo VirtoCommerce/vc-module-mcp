@@ -17,20 +17,13 @@ namespace VirtoCommerce.MCP.Data.Services;
 
 public class McpCleanupService(
     Func<IMcpRepository> repositoryFactory,
+    IMcpApprovalService approvalService,
     ISettingsManager settingsManager,
     ILogger<McpCleanupService> logger,
     TimeProvider timeProvider)
     : IMcpCleanupService
 {
     private const int BatchSize = 1000;
-
-    private static readonly string[] _finalStatuses =
-    [
-        McpPendingChangeStatus.Applied,
-        McpPendingChangeStatus.Failed,
-        McpPendingChangeStatus.Rejected,
-        McpPendingChangeStatus.Expired,
-    ];
 
     public virtual async Task<McpCleanupResult> CleanupAsync(CancellationToken cancellationToken = default)
     {
@@ -42,6 +35,7 @@ public class McpCleanupService(
         {
             DeletedAuditEntries = await DeleteInBatchesAsync(repository => GetObsoleteAuditEntries(repository, auditThreshold), cancellationToken),
             DeletedPendingChanges = await DeleteInBatchesAsync(repository => GetObsoletePendingChanges(repository, changeThreshold), cancellationToken),
+            ExpiredPendingChanges = await approvalService.ExpireOverdueAsync(cancellationToken),
         };
 
         if (result.DeletedAuditEntries > 0)
@@ -58,8 +52,8 @@ public class McpCleanupService(
 
         if (logger.IsEnabled(LogLevel.Information))
         {
-            logger.LogInformation("MCP cleanup deleted {AuditEntries} audit entries older than {AuditThreshold:u} and {PendingChanges} pending changes older than {ChangeThreshold:u}",
-                result.DeletedAuditEntries, auditThreshold, result.DeletedPendingChanges, changeThreshold);
+            logger.LogInformation("MCP cleanup deleted {AuditEntries} audit entries older than {AuditThreshold:u} and {PendingChanges} pending changes older than {ChangeThreshold:u}, and expired {ExpiredChanges} pending changes",
+                result.DeletedAuditEntries, auditThreshold, result.DeletedPendingChanges, changeThreshold, result.ExpiredPendingChanges);
         }
 
         return result;
@@ -73,8 +67,8 @@ public class McpCleanupService(
     protected virtual IQueryable<McpPendingChangeEntity> GetObsoletePendingChanges(IMcpRepository repository, DateTime threshold)
     {
         return repository.PendingChanges.Where(x =>
-            (_finalStatuses.Contains(x.Status) && (x.ModifiedDate ?? x.CreatedDate) < threshold) ||
-            (x.Status == McpPendingChangeStatus.Pending && x.ExpirationDate < threshold));
+            (McpPendingChangeStatus.FinalStatuses.Contains(x.Status) && (x.ModifiedDate ?? x.CreatedDate) < threshold) ||
+            ((x.Status == McpPendingChangeStatus.Pending || x.Status == McpPendingChangeStatus.Expired) && x.ExpirationDate < threshold));
     }
 
     protected virtual async Task<int> DeleteInBatchesAsync<TEntity>(Func<IMcpRepository, IQueryable<TEntity>> query, CancellationToken cancellationToken)

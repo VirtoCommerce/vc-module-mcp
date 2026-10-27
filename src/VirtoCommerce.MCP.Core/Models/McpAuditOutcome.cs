@@ -11,4 +11,6 @@ public static class McpAuditOutcome
     public const string Error = "Error";
 
     public const string PendingApproval = "PendingApproval";
+
+    public const string Disabled = "Disabled";
 }

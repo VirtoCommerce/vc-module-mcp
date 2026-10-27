@@ -43,6 +43,16 @@
           "title": "Conservazione delle modifiche in sospeso (giorni)",
           "description": "Le modifiche applicate, non riuscite, rifiutate e scadute più vecchie vengono eliminate. Le modifiche approvate mai completate vengono conservate."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Strumenti disattivati",
+          "description": "Strumenti che gli agenti non possono né vedere né chiamare, uno per riga: tool_name per tutti gli ambiti, scope/tool_name per un ambito o scope/* per un intero ambito. Si applica dalla richiesta successiva, senza riavvio."
+        },
+        "MaxTake": {
+          "title": "Numero massimo di righe",
+          "description": "Numero massimo di righe restituite da uno strumento di elenco in una chiamata. Le richieste maggiori vengono limitate."
+        }
       }
     }
   }

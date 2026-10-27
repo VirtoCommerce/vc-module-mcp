@@ -44,7 +44,7 @@ public class McpAuditWriter(
         return entry;
     }
 
-    public virtual async Task WriteAsync(McpAuditEntry entry, IDictionary<string, JsonElement> arguments)
+    public virtual async Task WriteAsync(McpAuditEntry entry, IDictionary<string, JsonElement> arguments, IEnumerable<string> sensitiveArgumentPaths)
     {
         try
         {
@@ -55,7 +55,8 @@ public class McpAuditWriter(
 
             if (arguments != null && await settingsManager.GetValueAsync<bool>(ModuleConstants.Settings.Audit.LogArguments))
             {
-                entry.Arguments = Truncate(JsonSerializer.Serialize(arguments, McpJsonUtilities.DefaultOptions), MaxArgumentsLength);
+                var argumentsJson = JsonSerializer.Serialize(arguments, McpJsonUtilities.DefaultOptions);
+                entry.Arguments = Truncate(McpSensitiveArguments.Mask(argumentsJson, sensitiveArgumentPaths), MaxArgumentsLength);
             }
 
             entry.ErrorMessage = Truncate(entry.ErrorMessage, MaxErrorMessageLength);

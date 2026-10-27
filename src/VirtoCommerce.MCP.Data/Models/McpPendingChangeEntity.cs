@@ -9,6 +9,8 @@ namespace VirtoCommerce.MCP.Data.Models;
 
 public class McpPendingChangeEntity : AuditableEntity, IDataEntity<McpPendingChangeEntity, McpPendingChange>
 {
+    private const char PathSeparator = ',';
+
     [Required]
     [StringLength(DbContextBase.Length64)]
     public string ScopeName { get; set; }
@@ -18,6 +20,8 @@ public class McpPendingChangeEntity : AuditableEntity, IDataEntity<McpPendingCha
     public string ToolName { get; set; }
 
     public string Arguments { get; set; }
+
+    public string SensitiveArgumentPaths { get; set; }
 
     public string Preview { get; set; }
 
@@ -59,6 +63,7 @@ public class McpPendingChangeEntity : AuditableEntity, IDataEntity<McpPendingCha
         model.ScopeName = ScopeName;
         model.ToolName = ToolName;
         model.Arguments = Arguments;
+        model.SensitiveArgumentPaths = SensitiveArgumentPaths?.Split(PathSeparator, StringSplitOptions.RemoveEmptyEntries) ?? [];
         model.Preview = Preview;
         model.Status = Status;
         model.RequestedByUserId = RequestedByUserId;
@@ -88,6 +93,7 @@ public class McpPendingChangeEntity : AuditableEntity, IDataEntity<McpPendingCha
         ScopeName = model.ScopeName;
         ToolName = model.ToolName;
         Arguments = model.Arguments;
+        SensitiveArgumentPaths = model.SensitiveArgumentPaths?.Count > 0 ? string.Join(PathSeparator, model.SensitiveArgumentPaths) : null;
         Preview = model.Preview;
         Status = model.Status;
         RequestedByUserId = model.RequestedByUserId;
@@ -106,6 +112,7 @@ public class McpPendingChangeEntity : AuditableEntity, IDataEntity<McpPendingCha
     {
         ArgumentNullException.ThrowIfNull(target);
 
+        target.Arguments = Arguments;
         target.Status = Status;
         target.ReviewedByUserId = ReviewedByUserId;
         target.ReviewedByUserName = ReviewedByUserName;

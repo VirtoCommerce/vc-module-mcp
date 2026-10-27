@@ -28,7 +28,7 @@ public static class McpServerRegistrationExtensions
                         await configureSessionOptions(httpContext, serverOptions, cancellationToken);
                     }
 
-                    McpScopeSessionConfigurator.Configure(httpContext, serverOptions);
+                    await McpScopeSessionConfigurator.ConfigureAsync(httpContext, serverOptions);
                 };
             })
             .AddAuthorizationFilters();

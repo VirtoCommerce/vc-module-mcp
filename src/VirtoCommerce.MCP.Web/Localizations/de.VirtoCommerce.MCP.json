@@ -43,6 +43,16 @@
           "title": "Aufbewahrung ausstehender Änderungen (Tage)",
           "description": "Ältere angewendete, fehlgeschlagene, abgelehnte und abgelaufene Änderungen werden gelöscht. Genehmigte Änderungen, die nie abgeschlossen wurden, bleiben erhalten."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Deaktivierte Tools",
+          "description": "Tools, die Agenten weder sehen noch aufrufen können, eines pro Zeile: tool_name für alle Scopes, scope/tool_name für einen Scope oder scope/* für einen ganzen Scope. Gilt ab der nächsten Anfrage, ohne Neustart."
+        },
+        "MaxTake": {
+          "title": "Maximale Anzahl der Zeilen",
+          "description": "Höchste Anzahl der Zeilen, die ein Listen-Tool in einem Aufruf zurückgibt. Größere Anfragen werden begrenzt."
+        }
       }
     }
   }

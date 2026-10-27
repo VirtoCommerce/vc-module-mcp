@@ -50,13 +50,14 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string PartnerScope = "partner";
 
     private static readonly string[] _readerTools = ["canceled_tool", "read_tool", "static_tool"];
-    private static readonly string[] _writerTools = ["canceled_tool", "read_tool", "static_tool", "submit_tool", "write_tool"];
+    private static readonly string[] _writerTools = ["canceled_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
     private static readonly string[] _policyPermissions = [McpPermissions.Access, McpPermissions.Approve, WritePermission];
 
     private readonly ConcurrentBag<McpAuditEntry> _auditEntries = [];
     private readonly ConcurrentBag<McpPendingChange> _submittedChanges = [];
     private readonly ConcurrentBag<(McpPendingChange Change, string Result, bool Succeeded)> _completedChanges = [];
     private readonly Mock<IMcpApprovalService> _approvalService = new();
+    private readonly Mock<ISettingsManager> _settingsManager = new();
     private readonly ConcurrentBag<McpPendingChangeSearchCriteria> _searchCriteria = [];
     private IHost _host;
     private HttpClient _client;
@@ -438,6 +439,19 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(expectedRequester, Assert.Single(_searchCriteria).RequestedByUserId);
     }
 
+    [Theory]
+    [InlineData(null, 20)]
+    [InlineData(500, 50)]
+    public async Task ListPendingChanges_Should_UseTheDefaultPageSize_And_CapIt(int? take, int expectedTake)
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [McpPermissions.Access]), ToolsCall(ModuleConstants.Tools.ListPendingChanges, new { take }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(expectedTake, Assert.Single(_searchCriteria).Take);
+    }
+
     [Fact]
     public async Task ToolsCall_Should_RefuseAChangeThatNeedsApproval_When_TheScopeHasNoApprovalTools()
     {
@@ -476,6 +490,94 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var entry = Assert.Single(_auditEntries);
         Assert.Equal(McpAuditOutcome.Failed, entry.Outcome);
         Assert.Equal(FailingTools.RefusalMessage, entry.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_HideADisabledTool()
+    {
+        // Arrange
+        DisableTools("read_tool");
+
+        // Act
+        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
+
+        // Assert
+        Assert.DoesNotContain("read_tool", ToolNames(result));
+        Assert.Contains("static_tool", ToolNames(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RefuseADisabledTool_And_AuditItAsDisabled()
+    {
+        // Arrange
+        DisableTools("admin/read_tool");
+
+        // Act
+        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("read_tool", new { }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("disabled by the administrator", Text(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Disabled, entry.Outcome);
+        Assert.Null(entry.Arguments);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheToolIsDisabled()
+    {
+        // Arrange
+        DisableTools("submit_tool");
+
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Access, McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.Tools.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("disabled by the administrator", Text(result));
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_MaskSensitiveArgumentsInTheAudit()
+    {
+        // Act
+        await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId = "c1", email = "a@b.c" }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        var entry = Assert.Single(_auditEntries);
+        Assert.Contains("\"contactId\":\"c1\"", entry.Arguments);
+        Assert.Contains("\"email\":\"***\"", entry.Arguments);
+        Assert.DoesNotContain("a@b.c", entry.Arguments);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_KeepTheSensitiveArgumentsOfASubmittedChange_Only_ForItsExecution()
+    {
+        // Act
+        await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("submit_contact_tool", new { contactId = "c1", email = "a@b.c" }));
+
+        // Assert
+        var change = Assert.Single(_submittedChanges);
+        Assert.Equal(["email"], change.SensitiveArgumentPaths);
+        Assert.Contains("a@b.c", change.Arguments);
+        Assert.DoesNotContain("a@b.c", Assert.Single(_auditEntries).Arguments);
+    }
+
+    [Fact]
+    public async Task GetPendingChange_Should_MaskSensitiveArguments()
+    {
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.Tools.GetPendingChange, new { change_id = SensitiveChange.Id }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.DoesNotContain("a@b.c", Text(result));
+        Assert.Contains("***", Text(result));
     }
 
     [Fact]
@@ -526,13 +628,15 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.Configure<McpOptions>(_ => { });
         services.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         services.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        services.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         services.AddTransient<McpTokenValidator, ActiveTokenValidator>();
         services.AddTransient<McpToolAuthorizationService>();
         services.AddTransient<McpAuditWriter>();
+        services.AddTransient<McpToolAvailabilityService>();
         services.AddTransient<McpPendingChangeExecutor>();
         services.AddScoped<McpCallToolFilter>();
         services.AddSingleton(Mock.Of<IOpenIddictTokenManager>());
-        services.AddSingleton(CreateSettingsManagerWithDefaults());
+        services.AddSingleton(_settingsManager.Object);
         services.AddSingleton(CreateAuditEntryService());
         services.AddSingleton(CreateApprovalService());
         services.AddSingleton(CreatePendingChangeService());
@@ -565,12 +669,15 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools)]);
         services.AddMcpTools<CanceledTools>();
         services.AddMcpTools<McpApprovalTools>();
-        services.AddMcpTools([typeof(PartnerTools), typeof(FailingTools)]);
+        services.AddMcpTools([typeof(PartnerTools), typeof(FailingTools), typeof(SensitiveTools)]);
     }
 
-    private static ISettingsManager CreateSettingsManagerWithDefaults()
+    private void DisableTools(string value)
     {
-        return Mock.Of<ISettingsManager>();
+        var setting = ModuleConstants.Settings.Tools.Disabled;
+        _settingsManager
+            .Setup(x => x.GetObjectSettingAsync(setting.Name, null, null))
+            .ReturnsAsync(new ObjectSettingEntry { Name = setting.Name, Value = value });
     }
 
     private IMcpAuditEntryService CreateAuditEntryService()
@@ -661,7 +768,17 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     private static McpPendingChange CanceledChange { get; } = CreateStoredChange("change-3", "canceled_tool", "{}");
 
-    private static McpPendingChange[] StoredChanges => [StoredChange, CanceledChange];
+    private static McpPendingChange SensitiveChange { get; } = CreateSensitiveChange();
+
+    private static McpPendingChange[] StoredChanges => [StoredChange, CanceledChange, SensitiveChange];
+
+    private static McpPendingChange CreateSensitiveChange()
+    {
+        var change = CreateStoredChange("change-4", "submit_contact_tool", "{\"contactId\":\"c1\",\"email\":\"a@b.c\"}");
+        change.SensitiveArgumentPaths = ["email"];
+
+        return change;
+    }
 
     private static McpPendingChange CreateStoredChange(string id, string toolName, string arguments)
     {
@@ -819,6 +936,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             return $"wrote {value}";
         }
 
+        [McpServerTool(Name = "submit_contact_tool"), Description("Changes the email of a contact after approval.")]
+        [Authorize(WritePermission)]
+        [McpRequiresApproval]
+        public static string SubmitContactTool(string contactId, [McpSensitive] string email) => $"updated {contactId}";
+
         [McpServerTool(Name = "submit_tool"), Description("Activates a promotion after approval.")]
         [Authorize(WritePermission)]
         [McpRequiresApproval]
@@ -872,6 +994,14 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             Interlocked.Increment(ref _executions);
             return "submitted";
         }
+    }
+
+    [McpServerToolType]
+    [McpScope(PartnerScope)]
+    public static class SensitiveTools
+    {
+        [McpServerTool(Name = "sensitive_tool"), Description("Takes a sensitive argument.")]
+        public static string SensitiveTool(string contactId, [McpSensitive] string email) => $"ok {contactId}";
     }
 
     [McpServerToolType]

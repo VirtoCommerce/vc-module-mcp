@@ -12,7 +12,7 @@ using VirtoCommerce.MCP.Data.Repositories;
 namespace VirtoCommerce.MCP.Data.SqlServer.Migrations
 {
     [DbContext(typeof(McpDbContext))]
-    [Migration("20261019121558_Initial")]
+    [Migration("20261026101228_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -158,6 +158,9 @@ namespace VirtoCommerce.MCP.Data.SqlServer.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SensitiveArgumentPaths")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Status")
                         .IsRequired()

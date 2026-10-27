@@ -43,6 +43,16 @@
           "title": "Retención de los cambios pendientes (días)",
           "description": "Se eliminan los cambios aplicados, fallidos, rechazados y caducados más antiguos. Los cambios aprobados que nunca se completaron se conservan."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Herramientas desactivadas",
+          "description": "Herramientas que los agentes no pueden ver ni llamar, una por línea: tool_name para todos los ámbitos, scope/tool_name para un ámbito o scope/* para un ámbito completo. Se aplica desde la siguiente solicitud, sin reiniciar."
+        },
+        "MaxTake": {
+          "title": "Número máximo de filas",
+          "description": "Mayor número de filas que una herramienta de lista devuelve en una llamada. Las solicitudes mayores se limitan."
+        }
       }
     }
   }

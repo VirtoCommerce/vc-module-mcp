@@ -61,7 +61,7 @@ public class McpPendingChangeExecutor(
         }
 
         audit.DurationMs = stopwatch.ElapsedMilliseconds;
-        await auditWriter.WriteAsync(audit, arguments);
+        await auditWriter.WriteAsync(audit, arguments, change.SensitiveArgumentPaths);
 
         return result;
     }

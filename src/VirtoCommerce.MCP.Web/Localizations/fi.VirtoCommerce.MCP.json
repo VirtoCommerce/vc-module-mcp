@@ -43,6 +43,16 @@
           "title": "Odottavien muutosten säilytysaika (päivää)",
           "description": "Tätä vanhemmat toteutetut, epäonnistuneet, hylätyt ja vanhentuneet muutokset poistetaan. Hyväksytyt muutokset, joita ei koskaan suoritettu loppuun, säilytetään."
         }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Poistetut työkalut",
+          "description": "Työkalut, joita agentit eivät näe eivätkä voi kutsua, yksi riviä kohti: tool_name kaikille alueille, scope/tool_name yhdelle alueelle tai scope/* koko alueelle. Tulee voimaan seuraavasta pyynnöstä ilman uudelleenkäynnistystä."
+        },
+        "MaxTake": {
+          "title": "Rivien enimmäismäärä",
+          "description": "Suurin rivimäärä, jonka listatyökalu palauttaa yhdellä kutsulla. Suuremmat pyynnöt rajataan."
+        }
       }
     }
   }
