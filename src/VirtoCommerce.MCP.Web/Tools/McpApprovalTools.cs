@@ -26,18 +26,18 @@ public class McpApprovalTools(
     IMcpPendingChangeService pendingChangeService,
     IMcpPendingChangeSearchService pendingChangeSearchService,
     IMcpApprovalService approvalService,
-    IMcpPageSizeResolver pageSizeResolver,
     IAuthorizationService authorizationService,
     McpToolAuthorizationService toolAuthorizationService,
     McpPendingChangeExecutor pendingChangeExecutor,
     TimeProvider timeProvider)
 {
-    [McpServerTool(Name = ModuleConstants.Tools.ListPendingChanges, ReadOnly = true, Destructive = false, Idempotent = true)]
+    [McpServerTool(Name = ModuleConstants.ToolNames.ListPendingChanges, ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("List changes that agents submitted for approval, newest first. An approver sees every change, " +
         "any other user only the changes they requested. Returns compact rows; " +
         "call get_pending_change for the arguments and the dry-run preview of one change.")]
     public async Task<object> ListPendingChanges(
         RequestContext<CallToolRequestParams> requestContext,
+        IMcpPageSizeResolver pageSizeResolver,
         [Description("Status filter: Pending (default), Approved, Applied, Failed, Rejected or Expired.")] string status = McpPendingChangeStatus.Pending,
         [Description("Only changes submitted by this tool.")] string tool_name = null,
         [Description("Number of rows to skip.")] int skip = 0,
@@ -76,7 +76,7 @@ public class McpApprovalTools(
         };
     }
 
-    [McpServerTool(Name = ModuleConstants.Tools.GetPendingChange, ReadOnly = true, Destructive = false, Idempotent = true)]
+    [McpServerTool(Name = ModuleConstants.ToolNames.GetPendingChange, ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("Get one change submitted for approval: the tool, its exact arguments, the dry-run preview, " +
         "and, once reviewed, the reviewer and the execution result. A user who is not an approver gets only their own changes.")]
     public async Task<object> GetPendingChange(
@@ -89,7 +89,7 @@ public class McpApprovalTools(
         return ToDetails(change);
     }
 
-    [McpServerTool(Name = ModuleConstants.Tools.ApprovePendingChange, ReadOnly = false, Destructive = true, Idempotent = false)]
+    [McpServerTool(Name = ModuleConstants.ToolNames.ApprovePendingChange, ReadOnly = false, Destructive = true, Idempotent = false)]
     [Authorize(ModuleConstants.Security.Permissions.Approve)]
     [Description("Approve a pending change and execute it right away with the stored arguments, as the approving user. " +
         "Only approve after the user has reviewed the change with get_pending_change and explicitly asked to approve it. " +
@@ -122,7 +122,7 @@ public class McpApprovalTools(
         return ToDetails(change);
     }
 
-    [McpServerTool(Name = ModuleConstants.Tools.RejectPendingChange, ReadOnly = false, Destructive = false, Idempotent = false)]
+    [McpServerTool(Name = ModuleConstants.ToolNames.RejectPendingChange, ReadOnly = false, Destructive = false, Idempotent = false)]
     [Description("Reject a pending change so that it is never executed. An approver rejects any change; " +
         "any other user can only withdraw a change they requested.")]
     public async Task<object> RejectPendingChange(

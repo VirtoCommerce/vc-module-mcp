@@ -72,6 +72,8 @@ public static class ModuleConstants
 
         public static class Tools
         {
+            public const int DefaultMaxTake = 50;
+
             public static SettingDescriptor Disabled { get; } = new()
             {
                 Name = "MCP.Tools.Disabled",
@@ -85,7 +87,7 @@ public static class ModuleConstants
                 Name = "MCP.Tools.MaxTake",
                 GroupName = "MCP|Tools",
                 ValueType = SettingValueType.PositiveInteger,
-                DefaultValue = 50,
+                DefaultValue = DefaultMaxTake,
             };
         }
 
@@ -149,7 +151,7 @@ public static class ModuleConstants
         public const string CleanupJobId = "MCP.Cleanup";
     }
 
-    public static class Tools
+    public static class ToolNames
     {
         public const string ListPendingChanges = "list_pending_changes";
         public const string GetPendingChange = "get_pending_change";

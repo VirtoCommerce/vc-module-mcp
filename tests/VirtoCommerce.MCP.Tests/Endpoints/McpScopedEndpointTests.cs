@@ -249,7 +249,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve, WritePermission]),
-            ToolsCall(ModuleConstants.Tools.ApprovePendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -266,7 +266,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(McpAuditOutcome.Succeeded, execution.Outcome);
         Assert.Contains("\"promotionId\":\"p2\"", execution.Arguments);
 
-        var approval = Assert.Single(_auditEntries, x => x.ToolName == ModuleConstants.Tools.ApprovePendingChange);
+        var approval = Assert.Single(_auditEntries, x => x.ToolName == ModuleConstants.ToolNames.ApprovePendingChange);
         Assert.Equal(StoredChange.Id, approval.PendingChangeId);
         Assert.Equal(McpAuditOutcome.Succeeded, approval.Outcome);
     }
@@ -277,7 +277,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
-            ToolsCall(ModuleConstants.Tools.ApprovePendingChange, new { change_id = "missing" }));
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = "missing" }));
 
         // Assert
         Assert.True(IsError(result));
@@ -293,7 +293,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
-            ToolsCall(ModuleConstants.Tools.GetPendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         var entry = Assert.Single(_auditEntries);
@@ -307,7 +307,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
-            ToolsCall(ModuleConstants.Tools.ApprovePendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.True(IsError(result));
@@ -352,7 +352,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
-            ToolsCall(ModuleConstants.Tools.ApprovePendingChange, new { change_id = CanceledChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = CanceledChange.Id }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -370,8 +370,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var operatorUser = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
 
         // Assert
-        Assert.Contains(ModuleConstants.Tools.ApprovePendingChange, ToolNames(approver));
-        Assert.DoesNotContain(ModuleConstants.Tools.ApprovePendingChange, ToolNames(operatorUser));
+        Assert.Contains(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(approver));
+        Assert.DoesNotContain(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(operatorUser));
         Assert.Subset(ToolNames(operatorUser).ToHashSet(), AuthorTools.ToHashSet());
     }
 
@@ -380,7 +380,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(Token(user: StoredChange.RequestedByUserId, permissions: McpPermissions.Access),
-            ToolsCall(ModuleConstants.Tools.GetPendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -392,7 +392,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(Token(permissions: McpPermissions.Access),
-            ToolsCall(ModuleConstants.Tools.GetPendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.True(IsError(result));
@@ -404,7 +404,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(Token(user: StoredChange.RequestedByUserId, permissions: McpPermissions.Access),
-            ToolsCall(ModuleConstants.Tools.RejectPendingChange, new { change_id = StoredChange.Id, reason = "Not needed" }));
+            ToolsCall(ModuleConstants.ToolNames.RejectPendingChange, new { change_id = StoredChange.Id, reason = "Not needed" }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -416,7 +416,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(Token(permissions: McpPermissions.Access),
-            ToolsCall(ModuleConstants.Tools.RejectPendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.RejectPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.True(IsError(result));
@@ -432,11 +432,24 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         string[] permissions = approver ? [McpPermissions.Access, McpPermissions.Approve] : [McpPermissions.Access];
 
         // Act
-        var result = await CallAsync(Token(permissions: permissions), ToolsCall(ModuleConstants.Tools.ListPendingChanges, new { }));
+        var result = await CallAsync(Token(permissions: permissions), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
         Assert.Equal(expectedRequester, Assert.Single(_searchCriteria).RequestedByUserId);
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_NotExposeInjectedServices_InTheInputSchema()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
+
+        // Assert
+        var tool = result["result"]!["tools"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == ModuleConstants.ToolNames.ListPendingChanges);
+        var properties = tool!["inputSchema"]!["properties"]!.AsObject().Select(x => x.Key).ToList();
+        Assert.Contains("take", properties);
+        Assert.DoesNotContain(properties, x => x.Contains("Resolver", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -445,7 +458,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ListPendingChanges_Should_UseTheDefaultPageSize_And_CapIt(int? take, int expectedTake)
     {
         // Act
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access]), ToolsCall(ModuleConstants.Tools.ListPendingChanges, new { take }));
+        var result = await CallAsync(Token(permissions: [McpPermissions.Access]), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { take }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -532,7 +545,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve, WritePermission]),
-            ToolsCall(ModuleConstants.Tools.ApprovePendingChange, new { change_id = StoredChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.True(IsError(result));
@@ -572,7 +585,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Act
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
-            ToolsCall(ModuleConstants.Tools.GetPendingChange, new { change_id = SensitiveChange.Id }));
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = SensitiveChange.Id }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -856,7 +869,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     private static string[] AuthorTools =>
-        [ModuleConstants.Tools.GetPendingChange, ModuleConstants.Tools.ListPendingChanges, ModuleConstants.Tools.RejectPendingChange];
+        [ModuleConstants.ToolNames.GetPendingChange, ModuleConstants.ToolNames.ListPendingChanges, ModuleConstants.ToolNames.RejectPendingChange];
 
     private static class McpPermissions
     {

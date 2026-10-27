@@ -82,7 +82,7 @@ public static class McpSensitiveArguments
             return type.GetElementType();
         }
 
-        return type != typeof(string) && type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type) && type.GetGenericArguments().Length == 1
+        return type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type) && type.GetGenericArguments().Length == 1
             ? type.GetGenericArguments()[0]
             : null;
     }

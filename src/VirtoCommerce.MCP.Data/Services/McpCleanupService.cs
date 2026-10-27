@@ -25,6 +25,8 @@ public class McpCleanupService(
 {
     private const int BatchSize = 1000;
 
+    private static readonly string[] _expirableStatuses = [McpPendingChangeStatus.Pending, McpPendingChangeStatus.Expired];
+
     public virtual async Task<McpCleanupResult> CleanupAsync(CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -68,7 +70,7 @@ public class McpCleanupService(
     {
         return repository.PendingChanges.Where(x =>
             (McpPendingChangeStatus.FinalStatuses.Contains(x.Status) && (x.ModifiedDate ?? x.CreatedDate) < threshold) ||
-            ((x.Status == McpPendingChangeStatus.Pending || x.Status == McpPendingChangeStatus.Expired) && x.ExpirationDate < threshold));
+            (_expirableStatuses.Contains(x.Status) && x.ExpirationDate < threshold));
     }
 
     protected virtual async Task<int> DeleteInBatchesAsync<TEntity>(Func<IMcpRepository, IQueryable<TEntity>> query, CancellationToken cancellationToken)

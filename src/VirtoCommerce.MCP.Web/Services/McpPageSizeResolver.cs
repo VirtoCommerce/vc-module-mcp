@@ -9,7 +9,9 @@ namespace VirtoCommerce.MCP.Web.Services;
 public class McpPageSizeResolver(
     ISettingsManager settingsManager) : IMcpPageSizeResolver
 {
-    protected virtual int DefaultPageSize => 20;
+    private const int DefaultTake = 20;
+
+    protected virtual int DefaultPageSize => DefaultTake;
 
     public virtual async Task<int> GetPageSizeAsync(int? take)
     {
