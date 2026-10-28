@@ -6,11 +6,13 @@ The module is the platform-level MCP infrastructure. It hosts the MCP transport,
 
 Built on the official C# SDK, [ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore).
 
+To see the module at work, follow [Demo: an AI agent in the back office](docs/demo.md): Claude Code signs in to a local platform, calls sample tools, and a second user approves its change.
+
 ## How it works
 
 ### Scopes
 
-A scope is an MCP surface for one kind of agent, served at `/{scope}/mcp`. Only the primitives marked for a scope are visible and callable on it.
+A scope is an MCP surface for one kind of agent, served at `/{scope}/mcp`. Only the primitives (tools, prompts and resources) marked for a scope are visible and callable on it.
 
 | Scope | Endpoint | Registered by | Who connects |
 | --- | --- | --- | --- |
@@ -104,9 +106,10 @@ Their values are replaced with `***` in the audit log, in `get_pending_change`, 
 Every `tools/call` on a registered scope goes through the same steps:
 
 1. The authentication rules of the scope and the permission checks of the tool.
-2. Validation of the required arguments.
-3. For a tool marked `[McpRequiresApproval]`, the call is stored as a pending change instead of being executed. If the tool has a `dryRun` (or `dry_run`) parameter, it is called once in dry-run mode, and the result is stored as the preview shown to the approver.
-4. Logging and an audit entry: user, OAuth client, tool, arguments, outcome and duration.
+2. A tool switched off with `MCP.Tools.Disabled` is refused (see [Switching tools off](#switching-tools-off)).
+3. Validation of the required arguments.
+4. For a tool marked `[McpRequiresApproval]`, the call is stored as a pending change instead of being executed. If the tool has a `dryRun` (or `dry_run`) parameter, it is called once in dry-run mode, and the result is stored as the preview shown to the approver.
+5. Logging and an audit entry: user, OAuth client, tool, arguments, outcome and duration.
 
 ### Approval
 
@@ -207,6 +210,8 @@ The module does not limit the request rate and does not add CORS headers: both b
 1. Register the OAuth client through `POST /api/platform/oauthapps` with the permission `rsrc:https://admin.example.com/admin/mcp`, the redirect URI of the MCP client, and PKCE.
 1. Grant the user the `mcp:access` permission, plus the permissions of the tools they will use.
 
+For a local walkthrough with Claude Code and the sample tools in [`samples/VirtoCommerce.MCP.SampleModule`](samples/VirtoCommerce.MCP.SampleModule/README.md), see [Demo: an AI agent in the back office](docs/demo.md).
+
 > [!NOTE]
 > On a deployment where `Authorization:OAuthLoginPath` points to the storefront login page, the platform host needs the per-host login path from [VirtoCommerce/vc-platform#3121](https://github.com/VirtoCommerce/vc-platform/pull/3121) for the `admin` scope sign-in to work.
 
@@ -255,6 +260,7 @@ The behaviour of the module can be replaced through DI:
 
 ## References
 
+* [Demo: an AI agent in the back office](docs/demo.md)
 * [Model Context Protocol specification](https://modelcontextprotocol.io/specification)
 * [MCP C# SDK](https://github.com/modelcontextprotocol/csharp-sdk)
 * [Deployment](https://docs.virtocommerce.org/platform/developer-guide/Tutorials-and-How-tos/Tutorials/deploy-module-from-source-code/)
