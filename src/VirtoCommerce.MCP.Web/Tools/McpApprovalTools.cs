@@ -54,7 +54,13 @@ public class McpApprovalTools(
 
         if (!await IsApproverAsync(requestContext.User))
         {
-            criteria.RequestedByUserId = requestContext.User.GetUserId();
+            var userId = requestContext.User.GetUserId();
+            if (string.IsNullOrEmpty(userId))
+            {
+                return new { total_count = 0, changes = Array.Empty<object>() };
+            }
+
+            criteria.RequestedByUserId = userId;
         }
 
         var result = await pendingChangeSearchService.SearchAsync(criteria);

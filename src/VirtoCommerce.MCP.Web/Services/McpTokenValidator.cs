@@ -29,6 +29,8 @@ public class McpTokenValidator(
         var tokenId = principal.GetTokenId();
         if (string.IsNullOrEmpty(tokenId))
         {
+            // The platform issues tokens without an id when its token storage is disabled. Such a token is not in the store,
+            // so it cannot be revoked there and stays valid until it expires; refusing it would lock MCP out of such deployments.
             return true;
         }
 

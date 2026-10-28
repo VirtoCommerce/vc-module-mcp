@@ -56,7 +56,7 @@ public class McpAuditWriter(
             if (arguments != null && await settingsManager.GetValueAsync<bool>(ModuleConstants.Settings.Audit.LogArguments))
             {
                 var argumentsJson = JsonSerializer.Serialize(arguments, McpJsonUtilities.DefaultOptions);
-                entry.Arguments = Truncate(McpSensitiveArguments.Mask(argumentsJson, sensitiveArgumentPaths), MaxArgumentsLength);
+                entry.Arguments = LimitArguments(McpSensitiveArguments.Mask(argumentsJson, sensitiveArgumentPaths));
             }
 
             entry.ErrorMessage = Truncate(entry.ErrorMessage, MaxErrorMessageLength);
@@ -67,6 +67,14 @@ public class McpAuditWriter(
         {
             logger.LogError(ex, "Failed to write the MCP audit entry for tool {ToolName} in scope {ScopeName}", entry.ToolName, entry.ScopeName);
         }
+    }
+
+    // A cut JSON document cannot be parsed, so arguments over the limit are replaced with a marker that keeps the JSON valid.
+    private static string LimitArguments(string argumentsJson)
+    {
+        return argumentsJson?.Length > MaxArgumentsLength
+            ? JsonSerializer.Serialize(new { truncated = true, length = argumentsJson.Length })
+            : argumentsJson;
     }
 
     private static string Truncate(string value, int maxLength)

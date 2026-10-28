@@ -9,6 +9,9 @@ using Microsoft.Net.Http.Headers;
 
 namespace VirtoCommerce.MCP.Web.Middleware;
 
+// Some read-only MCP probes (registry crawlers, health checks) send tools/list with "Accept: application/json" only,
+// while the SDK requires text/event-stream as well and answers them with 406. For tools/list alone, the middleware
+// adds text/event-stream to the request and returns the SDK's single event as plain JSON. Other requests are untouched.
 public class McpProbeCompatibilityMiddleware(
     RequestDelegate next)
 {
@@ -112,11 +115,14 @@ public class McpProbeCompatibilityMiddleware(
 
     private static string ExtractEventStreamData(string eventStream)
     {
-        return eventStream
+        var data = eventStream
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Where(line => line.StartsWith("data:", StringComparison.Ordinal))
             .Select(line => line["data:".Length..].TrimStart())
-            .Single();
+            .ToList();
+
+        // The data lines of one event are joined with a line feed, as the event stream format defines.
+        return data.Count > 0 ? string.Join('\n', data) : eventStream;
     }
 
     private static bool IsEventStream(string contentType)

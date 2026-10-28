@@ -7,7 +7,7 @@
   <platformVersion>3.1085.0</platformVersion>
 
   <title>Model Context Protocol</title>
-  <description>Platform MCP infrastructure: scoped MCP endpoints for buyer, back-office and vendor agents, declarative registration of tools, prompts and resources, permission checks, change approval and audit.</description>
+  <description>Platform MCP infrastructure: scoped MCP endpoints for back-office and vendor agents, declarative registration of tools, prompts and resources, permission checks, change approval and audit.</description>
 
   <authors>
     <author>VirtoCommerce</author>

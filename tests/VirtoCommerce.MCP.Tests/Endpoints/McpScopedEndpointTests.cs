@@ -440,6 +440,18 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListPendingChanges_Should_ReturnNoChanges_When_TheUserHasNoId()
+    {
+        // Act
+        var result = await CallAsync(Token(user: "", permissions: McpPermissions.Access), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Empty(_searchCriteria);
+        Assert.Contains("\"total_count\":0", Text(result));
+    }
+
+    [Fact]
     public async Task ToolsList_Should_NotExposeInjectedServices_InTheInputSchema()
     {
         // Act
@@ -564,6 +576,21 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Contains("\"contactId\":\"c1\"", entry.Arguments);
         Assert.Contains("\"email\":\"***\"", entry.Arguments);
         Assert.DoesNotContain("a@b.c", entry.Arguments);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_StoreATruncationMarker_When_TheArgumentsAreTooLongForTheAudit()
+    {
+        // Arrange
+        var contactId = new string('x', 40 * 1024);
+
+        // Act
+        await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId, email = "a@b.c" }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        using var arguments = JsonDocument.Parse(Assert.Single(_auditEntries).Arguments);
+        Assert.True(arguments.RootElement.GetProperty("truncated").GetBoolean());
+        Assert.True(arguments.RootElement.GetProperty("length").GetInt32() > 40 * 1024);
     }
 
     [Fact]
