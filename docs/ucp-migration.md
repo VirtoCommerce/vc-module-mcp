@@ -6,16 +6,17 @@ This page lists what moves, what stays, and the order of the work. File referenc
 
 ## Status
 
-Done on the branch `feat/VCST-6155-ucp-mcp-module` of `vc-module-ucp`, on top of the SDK 2.3.0 upgrade of VirtoCommerce/vc-module-ucp#13. The branch deletes the UCP copies of the MCP plumbing (about 1,180 lines) and registers the `ucp` scope, a `UcpMcpChallengeWriter` and a `UcpMcpPublicOriginResolver`; the 268 UCP tests pass.
+Done in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`). UCP builds against `VirtoCommerce.MCP.Core` 3.1000.0-alpha.15-vcst-6155-core-mcp-module and depends on the `VirtoCommerce.MCP` module of the same version. The branch deletes the UCP copies of the MCP plumbing (about 1,000 lines of source), registers the `ucp` scope, a `UcpMcpChallengeWriter` and a `UcpMcpPublicOriginResolver`, and runs its call filter inside the MCP module's pipeline with `AddMcpCallToolFilter`; the 255 UCP tests pass.
 
-Verified on a local platform with both modules installed:
+Verified end to end on a local platform with both modules installed, against the previous UCP build (27 scenarios, same results):
 
-- `/ucp/mcp` is served by the MCP module: anonymous `tools/list`, `get_store_capabilities` and `search_products` work.
-- An anonymous `link_buyer_identity` gets the HTTP 401 challenge with UCP's own `identity_required` body.
-- UCP calls are audited in the `ucp` scope.
+- Discovery: `/.well-known/ucp` and `/.well-known/oauth-protected-resource/ucp/mcp`.
+- `initialize` and `tools/list` on `/ucp/mcp`, served by the MCP module.
+- Anonymous catalog, geography, cart, checkout and hosted handoff, continued with the cart's `buyer_id`.
+- UCP error envelopes for an unknown store, a missing argument and an unknown order, with the trace id in `_meta.trace_id` and in the text.
+- An anonymous `link_buyer_identity` gets the HTTP 401 challenge with UCP's `identity_required` body; a signed-in buyer links and signs out, and the token is then refused.
+- UCP calls are audited in the `ucp` scope, with the trace id of the call.
 - The UCP tools are not visible in the `admin` scope, and the `admin` tools are not visible in the `ucp` scope.
-
-The branch builds against `VirtoCommerce.MCP.Core` 3.1000.0 from a local feed: its CI passes once the MCP module package is published, so merge VirtoCommerce/vc-module-mcp#1 first.
 
 ## What moves to the MCP module
 
@@ -37,6 +38,9 @@ Every row is already available in the MCP module, so the UCP code can be deleted
 | Required argument validation in `UcpMcpCallToolFilter` | `McpCallToolFilter` | Returned as a tool error with `isError`, as UCP does. |
 | Catch-all for unexpected exceptions | `McpCallToolFilter` | Logged and audited as `Error`. |
 | Trace id of a failed call | `_meta.trace_id` of failed calls | |
+| `UcpMcpActivityStatusFilter`: the error text of a UCP tool kept out of the SDK span status | `McpActivityStatusFilter`, for every tool | |
+| `UcpApplicationInsightsActivityBridge` and `UCP:Observability:EnableApplicationInsightsCompatibilityBridge` | The OpenTelemetry module, `OpenTelemetry:AzureMonitor:ConnectionString` | Removed from UCP, with the optional dependency on the Application Insights module. |
+| Scope check and order of the SDK request filters | `AddMcpCallToolFilter<TFilter>(scope)` | |
 | Error logging of tool calls | Audit log with user, client, arguments, outcome, duration; `[McpSensitive]` masking | New for UCP: mark buyer personal data (addresses, emails, phone numbers) with `[McpSensitive]`. |
 | `UcpPublicOriginResolver` (`UCP:PublicOrigin`, then the store resolved by the request host) | `IMcpPublicOriginResolver.GetOriginAsync` | UCP replaces the resolver for the `ucp` scope with its store lookup, and keeps using it for `/.well-known/ucp`. |
 | Store host routing | `MCP:Scopes:ucp:Hosts` | Optional: serve the buyer scope at `https://store.example.com/mcp`. |
@@ -48,7 +52,8 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
 - The commerce tools (`UcpMcpCommerceTools`, 16 tools), their models and `UcpMcpSerialization`.
 - Buyer identity: `link_buyer_identity`, `logout_buyer`, `UcpBuyerContextAccessor`, and the rule that a buyer token has exactly one `sub` different from the client id.
 - Error mapping: `UcpMcpErrorResultFactory`, the Experience API envelope passthrough, `UcpException` codes.
-- The `store_id` checks and UCP telemetry (`UcpOperationTelemetry`, `UcpDiagnostics`, the Application Insights bridge) in a slimmer `UcpMcpCallToolFilter`.
+- The `store_id` checks and UCP telemetry (`UcpOperationTelemetry`, `UcpDiagnostics`) in a slimmer `UcpMcpCallToolFilter`, an `IMcpCallToolFilter` of the `ucp` scope. Its `UCP {operation}` spans are children of the MCP module's `MCP tool {tool}` span.
+- The scope name, `ModuleConstants.McpScopeName` (`ucp`).
 - The Experience API integration: `XApiInProcessExecutor`, the `ucp` GraphQL schema, the handoff session stores.
 - The UCP REST protocol: the `Ucp*Controller` classes except the OAuth metadata one, `/.well-known/ucp` discovery, the MVC filters and the Swagger filters.
 
@@ -61,7 +66,7 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
     ```csharp
     serviceCollection.AddMcpScope(new McpScope
     {
-        Name = McpScopes.Ucp,
+        Name = ModuleConstants.McpScopeName,
         Title = "Virto Commerce UCP",
         Version = ModuleConstants.UcpVersion,
         Instructions = ModuleConstants.McpInstructions,
@@ -69,10 +74,11 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
     });
     serviceCollection.AddMcpToolsFromAssembly(typeof(UcpMcpCommerceTools).Assembly, UcpMcpSerialization.Options);
     serviceCollection.AddTransient<McpChallengeWriter, UcpMcpChallengeWriter>();
+    serviceCollection.AddMcpCallToolFilter<UcpMcpCallToolFilter>(ModuleConstants.McpScopeName);
     ```
 
-4. **Mark the tools** with `[McpScope(McpScopes.Ucp)]`, `link_buyer_identity` with `[McpRequiresUser]`, and buyer personal data with `[McpSensitive]`.
-5. **Delete** `UcpMcpStartup`, `UcpOAuthMetadataController`, `UcpProtectedResourceMetadata`, the generic parts of `UcpMcpBuyerAuthenticationMiddleware`, `UcpMcpSessionService.IsActive`, and the generic half of `UcpMcpCallToolFilter`. Move what is left of the call filter (store checks, telemetry, error mapping) into an `McpServerOptions` request filter registered after the MCP module's.
+4. **Mark the tools** with `[McpScope(ModuleConstants.McpScopeName)]`, `link_buyer_identity` with `[McpRequiresUser]`, and buyer personal data with `[McpSensitive]`.
+5. **Delete** `UcpMcpStartup`, `UcpOAuthMetadataController`, `UcpProtectedResourceMetadata`, the generic parts of `UcpMcpBuyerAuthenticationMiddleware`, `UcpMcpSessionService.IsActive`, and the generic half of `UcpMcpCallToolFilter`. Move what is left of the call filter (store checks, telemetry, error mapping) into an `IMcpCallToolFilter`, registered with `AddMcpCallToolFilter` for the `ucp` scope. Delete the Application Insights bridge and the span status filter.
 6. **Replace the origin resolver** with one that keeps the UCP store lookup:
 
     ```csharp
@@ -81,7 +87,7 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
     {
         public override async Task<string> GetOriginAsync(HttpContext context, McpScope scope)
         {
-            return scope?.Name == McpScopes.Ucp ? await ucpResolver.ResolveAsync(context) : await base.GetOriginAsync(context, scope);
+            return scope?.Name == ModuleConstants.McpScopeName ? await ucpResolver.ResolveAsync(context) : await base.GetOriginAsync(context, scope);
         }
     }
     ```
