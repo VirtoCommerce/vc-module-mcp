@@ -6,6 +6,8 @@ The MCP module connects AI agents such as Claude, ChatGPT or your own agent to t
 
 An agent works as the signed-in user: it sees only the tools that user may use, limited to the user's stores, and a change it asks for can wait in the back office until an approver applies it. Built on the official C# SDK, [ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore).
 
+**Who reads what.** Administrators, approvers and business users: [Connect an AI agent](#connect-an-ai-agent) and [Work with agents in the back office](#work-with-agents-in-the-back-office). System integrators and developers: [Configuration](#configuration) and the sections after it.
+
 ## Key Features
 
 * **Scopes**: one MCP endpoint per kind of agent (`admin`, `vendor`, a buyer scope, your own), at `/{scope}/mcp` or at `/mcp` of a host of its own
@@ -15,7 +17,7 @@ An agent works as the signed-in user: it sees only the tools that user may use, 
 * **Audit**: every call with user, client, arguments, outcome, duration and trace id; `[McpSensitive]` masks personal data
 * **Bulk jobs**: a bulk tool hands its work to a platform background job; the agent follows and cancels it
 * **Kill switch**: switch a tool, or a whole scope, off without a release
-* **Back office**: Admin Shell screens for the approval queue, the audit log and the tool switches, for desktop and phone
+* **Back office**: Admin Shell screens for the approval queue, the audit log, the tool switches and the connected agents, for desktop and phone
 * **Observability**: OpenTelemetry traces, metrics and logs of tool calls, reviews and jobs
 * **Guard rails for agents**: a row limit for list tools, errors the model can correct, a common result shape for previews
 * **Multi-database support**: SQL Server, MySQL and PostgreSQL
@@ -28,7 +30,7 @@ An agent connects to an MCP endpoint of the platform and signs in as a platform 
 
 ### 1. Prepare the platform (administrator, once)
 
-1. Install `VirtoCommerce.MCP` (and `VirtoCommerce.BackgroundJobs`, for bulk tools), plus the modules that bring tools.
+1. Install `VirtoCommerce.MCP` (platform 3.1085.0 or later) and the modules that bring tools. Bulk tools also need `VirtoCommerce.BackgroundJobs`; it is optional, and without it a bulk tool answers that background jobs are not available.
 1. Allow the platform to issue tokens for the endpoint, in `appsettings.json`:
 
     ```json
@@ -76,37 +78,9 @@ Add a custom connector (**Settings → Connectors → Add custom connector**) wi
 
 Any client that supports the streamable HTTP transport and OAuth with PKCE and a pre-registered client id works the same way: ChatGPT connectors, VS Code, Cursor, the MCP Inspector or your own agent built with an MCP SDK. Register one OAuth client for each, with that client's redirect URI.
 
-### Package a connector for a solution (system integrators)
+### 3. Check the connection
 
-A system integrator ships "Virto Commerce for Contoso" to a client's Claude organization as a connector, so the client's people click **Connect** and sign in, with no setup of their own:
-
-1. **Toolset.** Put the solution's tools, prompts and resources in a `VirtoCommerce.<Solution>.MCP` project (see [Add tools to a scope](#add-tools-to-a-scope)), protected by the client's roles; extend the standard toolsets as described in [How to extend](#how-to-extend).
-1. **Name and instructions.** Register the `admin` scope again with the solution's title and instructions; Claude shows them as the server's name and reads the instructions before using the tools:
-
-    ```csharp
-    serviceCollection.AddMcpScope(new McpScope
-    {
-        Name = McpScopes.Admin,
-        Title = "Contoso Commerce",
-        Instructions = "Contoso sells office supplies in three stores. Prices are in USD. Always run a dry run first...",
-        RequireAuthenticatedUser = true,
-        Permissions = [ModuleConstants.Security.Permissions.Access],
-        ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
-    });
-    ```
-
-1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
-1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [step 1](#1-prepare-the-platform-administrator-once).
-1. **Roles.** Grant the client's people `mcp:access` and the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
-1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
-1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
-1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
-
-A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Once the platform supports client ID metadata documents ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)), the OAuth client step goes away: the URL alone is enough.
-
-### 3. Check and manage the connection
-
-Ask the agent "What can you do in Virto?" or call a read-only tool. In the back office, **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agents each user signed in to, with when they were last used. **Disconnect** revokes the agent's sign-in: its next request is refused, and the user signs in again to reconnect. Users see and disconnect their own agents; `mcp:agents:manage` shows everyone's.
+Ask the agent "What can you do in Virto?" or call a read-only tool. In the back office, **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agent (see [Work with agents in the back office](#work-with-agents-in-the-back-office)).
 
 | Symptom | Cause |
 | --- | --- |
@@ -117,7 +91,45 @@ Ask the agent "What can you do in Virto?" or call a read-only tool. In the back 
 
 [Demo: an AI agent in the back office](docs/demo.md) walks through all of this on a local platform with Claude Code.
 
+## Work with agents in the back office
+
+Everything people do with agents is in the back office, under **Configuration → AI agents (MCP)**, on desktop and phone:
+
+| Screen | Who | What it does |
+| --- | --- | --- |
+| Agent approvals | approvers of a scope (`mcp:approve`, or the scope's `ApprovalPermission`) | The queue of changes agents asked to make, with a menu counter. A change opens with **what will change**: the object, a *now → after* diff and the warnings of its dry run, then the request and the arguments. **Approve** runs the tool right away as the reviewer, with the same rules as `approve_pending_change`; **Reject** records the reason. Once applied, the screen shows the tool's result as a diff. |
+| Agent audit log | `mcp:audit:read` | Every tool call with the user, the client, the scope, the duration and the outcome, filtered by outcome and scope. The search box takes a tool name, or the trace id an agent reported. A call links to the change it submitted or executed. |
+| Agent tools | `mcp:tools:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
+| Connected agents | `mcp:access` to open the screen for one's own agents (the API needs only a sign-in), `mcp:agents:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
+
+### Approve or reject a change
+
+A tool marked as risky does not change anything when an agent calls it: the agent submits the change with a dry run and gives the user the change id. An approver opens it in **Agent approvals**, reads what will change and the warnings of the dry run, and approves or rejects it with a comment. **Approve** runs the tool right away, as the approver. By default nobody approves their own change, and a change that nobody reviews expires after 72 hours; [Approval](#approval) has all the rules.
+
+### Find a call in the audit log
+
+**Agent audit log** lists every tool call with the user, the agent's OAuth client, the scope, the duration and the outcome. When a user reports a problem, ask for the trace id the agent shows with an error and paste it in the search box: it finds the call, and the same id leads to the traces in your monitoring.
+
+### Switch a tool off
+
+An administrator switches tools off without a release on the **Agent tools** screen, or with the `MCP.Tools.Disabled` setting, one entry per line:
+
+| Entry | Switches off |
+| --- | --- |
+| `activate_promotion` | the tool in every scope |
+| `admin/activate_promotion` | the tool in the `admin` scope only |
+| `vendor/*` | every tool of the `vendor` scope |
+
+A tool that is switched off disappears from `tools/list`, a call to it is refused with a message the agent can pass on to the user and audited as `Disabled`, and its pending changes cannot be approved until it is switched on again. The change applies to the next request, with no restart.
+
+### Disconnect an agent
+
+In **Connected agents**, users see the agents they signed in to, with when they were last used. **Disconnect** ends an agent's sign-in at once: its next request is refused, and the user signs in again to reconnect. With `mcp:agents:manage`, an administrator sees and disconnects everyone's agents.
+
 ## Configuration
+
+> [!NOTE]
+> This section and the ones after it are for system integrators and developers.
 
 ### appsettings.json
 
@@ -126,7 +138,7 @@ Ask the agent "What can you do in Virto?" or call a read-only tool. In the back 
   "PublicOrigin": "https://admin.example.com",
   "Scopes": {
     "vendor": { "Enabled": false },
-    "ucp": { "PublicOrigin": "https://store.example.com", "Hosts": [ "store.example.com" ] }
+    "ucp": { "Hosts": [ "store.example.com" ] }
   }
 }
 ```
@@ -134,8 +146,8 @@ Ask the agent "What can you do in Virto?" or call a read-only tool. In the back 
 | Key | Description |
 | --- | --- |
 | `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. Defaults to the origin of the request. |
-| `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. |
-| `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. |
+| `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
+| `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
 
 Invalid origins stop the platform at startup: an origin is an absolute `http` or `https` address without a path, query or fragment.
@@ -184,20 +196,22 @@ The audit log is the business record of who did what, kept in the database for t
 | Signal | Name | Tags |
 | --- | --- | --- |
 | Span per tool call | `MCP tool {tool}` | `vc.mcp.scope`, `gen_ai.tool.name`, `mcp.method.name`, `vc.mcp.client_id`, `vc.mcp.outcome`, `vc.mcp.pending_change_id`; status `Error` for `Failed` and `Error` |
-| Span per back-office review | `MCP review {decision} {tool}` | `vc.mcp.approval.decision`, `vc.mcp.review.channel`, plus the tool's span inside it |
+| Span per back-office review | `MCP review {decision} {tool}`, decision `approve` or `reject` | `vc.mcp.scope`, `gen_ai.tool.name`, `vc.mcp.pending_change_id`, `vc.mcp.approval.decision`, `vc.mcp.review.channel`; the spans the tool creates are inside it |
 | Counter | `vc.mcp.tool.calls` | scope, tool, outcome |
 | Histogram, seconds | `vc.mcp.tool.duration` | scope, tool, outcome |
 | Counter | `vc.mcp.approval.decisions` | scope, tool, decision (`submitted`, `approved`, `applied`, `failed`, `rejected`, `expired`) |
 | Counter | `vc.mcp.jobs` | final status |
 | Log | `MCP tool {ToolName} called in scope {ScopeName} by {UserName}: {Outcome} in {DurationMs} ms` | with the trace and span ids |
 
-`Experimental.ModelContextProtocol` adds the SDK's own spans and metrics for the JSON-RPC requests (`tools/call {tool}`, `mcp.server.operation.duration`). With the platform's ASP.NET Core and EF Core instrumentation, one tool call is one trace: the HTTP request, the SDK span, the tool span and the database queries inside it. The trace id is returned to the agent in `_meta.trace_id` and stored on the audit entry, so a user's report, the audit log and the traces lead to each other.
+An approved change that runs is recorded in the audit log and in `vc.mcp.approval.decisions`, not as an `MCP tool` span or in the tool call metrics.
+
+Each scope has its own route, so the requests are named after it in traces and Application Insights: `POST /admin/mcp`, `POST /vendor/mcp`. `Experimental.ModelContextProtocol` adds the SDK's own spans and metrics for the JSON-RPC requests (`tools/call {tool}`, `mcp.server.operation.duration`). With the platform's ASP.NET Core and EF Core instrumentation, one tool call is one trace: the HTTP request, the SDK span, the tool span and the database queries inside it. The trace id is returned to the agent in `_meta.trace_id` and stored on the audit entry, so a user's report, the audit log and the traces lead to each other.
 
 The SDK copies the text of a tool's error result into the status description of its `tools/call` span. That text can carry a caller's data, so the module keeps the span's `Error` status but replaces the description with the fixed `The tool returned an error.`; the agent still receives the full error, and the audit entry keeps it behind its permission.
 
 ### Rate limiting and CORS
 
-The module does not limit the request rate and does not add CORS headers: both belong to the infrastructure in front of the platform. Limit the rate of requests to `/*/mcp` in the API gateway or the load balancer, because an agent that goes into a loop can call a tool hundreds of times a minute. CORS is needed only for MCP clients that run in a browser; Claude, ChatGPT and other hosted clients call the server from their own back end.
+The module does not limit the request rate and does not add CORS headers: both belong to the infrastructure in front of the platform. Limit the rate of requests to `/*/mcp`, and to `/mcp` on the hosts of scopes, in the API gateway or the load balancer, because an agent that goes into a loop can call a tool hundreds of times a minute. CORS is needed only for MCP clients that run in a browser; Claude, ChatGPT and other hosted clients call the server from their own back end.
 
 ## Architecture
 
@@ -220,14 +234,14 @@ The module does not limit the request rate and does not add CORS headers: both b
 
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
 1. The module resolves the scope from the path or the host, and checks that the token was issued for this endpoint and is still valid in the platform token store.
-1. The scope's permission and the tool's permissions (`[Authorize]`, `[McpPermission]`) are checked. A tool switched off with `MCP.Tools.Disabled` is refused.
+1. The scope's permission and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
 1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
-1. A tool marked `[McpRequiresApproval]` does not run: if it has a `dryRun` (or `dry_run`) parameter it runs once as a dry run, and the call is stored as a pending change with that preview. With a `Condition`, only the calls the condition selects are held.
+1. A tool marked `[McpRequiresApproval]` does not run: if it has a `dryRun` (or `dry_run`) parameter it runs once as a dry run, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
 1. The call is audited (user, OAuth client, tool, arguments, outcome, duration, trace id), logged and traced.
 1. An approver reviews the pending change in the back office or with the review tools; approving runs the tool with the stored arguments, as the approver.
 
-A tool refuses a request with `McpException` (audited as `Failed`) or `McpForbiddenException` (audited as `Forbidden`): the agent gets the message as it is, as the tool's error. Every failed call returns the trace id in `_meta.trace_id`.
+A tool refuses a request with `McpException` (audited as `Failed`) or `McpForbiddenException` (audited as `Forbidden`): the agent gets the message as it is, as the tool's error. A call that returns a tool error carries the trace id in `_meta.trace_id`; protocol errors, such as an unknown tool, are JSON-RPC errors without it.
 
 ### Scopes
 
@@ -249,6 +263,7 @@ MCP endpoints accept only bearer tokens issued by the platform for the exact MCP
 
 ```
 GET /.well-known/oauth-protected-resource/{scope}/mcp
+GET /.well-known/oauth-protected-resource/mcp        (the /mcp endpoint of a scope host)
 ```
 
 On every request the token is also looked up in the platform token store, so a revoked token or sign-in session stops working on all replicas right away. A tool that signs the user out, such as a buyer's `logout`, calls `IMcpSessionService.SignOutAsync(user)`.
@@ -263,10 +278,10 @@ On every request the token is also looked up in the platform token store, so a r
 - A change expires after `MCP.Approval.PendingChangeLifetimeHours` and can no longer be approved.
 - A change is executed at most once, even if two approvers, or two replicas, approve it at the same time.
 - A call with `dryRun: true` changes nothing, so it runs right away instead of being submitted.
-- Changes are approved in scopes with approval only (`McpScope.ApprovalPermission`; `admin` by default). In any other scope, a call to a tool marked `[McpRequiresApproval]` is refused, and the tool is reported as an error in the log at startup. So is such a tool without `[McpScope]`, because on endpoints without a scope its calls are not held for approval.
+- Changes are approved in scopes with approval only (`McpScope.ApprovalPermission`; `admin` by default). In any other scope, a call to a tool marked `[McpRequiresApproval]` is refused and audited as `Error`, and the tool is reported as an error in the log at startup. So is such a tool without `[McpScope]`, because on endpoints without a scope its calls are not held for approval.
 - An approved change runs to the end and its result is recorded, even if the approver's client disconnects.
 
-Changes are reviewed in the back office or with these tools, present in every scope with approval. An approver of a scope works with every change of that scope; any other user sees and withdraws only the changes they requested.
+Changes are reviewed in the back office or with the first four tools below, present in every scope with approval; the two job tools are in the `admin` and `vendor` scopes. An approver of a scope works with every change of that scope; any other user sees and withdraws only the changes they requested.
 
 | Tool | Purpose | Who |
 | --- | --- | --- |
@@ -274,39 +289,18 @@ Changes are reviewed in the back office or with these tools, present in every sc
 | `get_pending_change` | Arguments, dry-run preview, reviewer and result of one change | approvers: any change; others: their own |
 | `approve_pending_change` | Approves the change and runs the tool with the stored arguments, as the approver | approvers only |
 | `reject_pending_change` | Rejects the change; the requester uses it to withdraw their own change | approvers: any change; others: their own |
-| `get_job_status` | Status and progress of a background job started by a bulk tool; also in the `vendor` scope | the user who started it, the requester of the change that started it, approvers |
-| `cancel_job` | Cancels a queued or running background job; also in the `vendor` scope | as `get_job_status` |
+| `get_job_status` | Status and progress of a background job started by a bulk tool | the user who started it, the requester of the change that started it, approvers |
+| `cancel_job` | Cancels a queued or running background job | as `get_job_status` |
 
 ### Audit and cleanup
 
-Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
+Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, a tool that needs approval in a scope without it, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
 
 The recurring job `MCP.Cleanup` deletes audit entries, finished jobs, and applied, failed, rejected and expired changes older than the retention settings. An approved change that never completed is kept: it needs a person to look at it. The job also marks overdue pending changes as expired, which removes their sensitive arguments.
 
-### Switching tools off
+### Admin Shell plugin
 
-An administrator switches tools off without a release on the **Agent tools** screen, or with the `MCP.Tools.Disabled` setting, one entry per line:
-
-| Entry | Switches off |
-| --- | --- |
-| `activate_promotion` | the tool in every scope |
-| `admin/activate_promotion` | the tool in the `admin` scope only |
-| `vendor/*` | every tool of the `vendor` scope |
-
-A tool that is switched off disappears from `tools/list`, a call to it is refused with a message the agent can pass on to the user and audited as `Disabled`, and its pending changes cannot be approved until it is switched on again. The change applies to the next request, with no restart.
-
-### Back office
-
-The module ships an [Admin Shell](https://github.com/VirtoCommerce/vc-module-admin-shell) plugin: four screens under **Configuration → AI agents (MCP)**, built with VC-Shell and laid out for desktop and phone.
-
-| Screen | Who | What it does |
-| --- | --- | --- |
-| Agent approvals | approvers of a scope (`mcp:approve`, or the scope's `ApprovalPermission`) | The queue of changes agents asked to make, with a menu counter. A change opens with **what will change**: the object, a *now → after* diff and the warnings of its dry run, then the request and the arguments. **Approve** runs the tool right away as the reviewer, with the same rules as `approve_pending_change`; **Reject** records the reason. Once applied, the screen shows the tool's result as a diff. |
-| Agent audit log | `mcp:audit:read` | Every tool call with the user, the client, the scope, the duration and the outcome, filtered by outcome and scope. The search box takes a tool name, or the trace id an agent reported. A call links to the change it submitted or executed. |
-| Agent tools | `mcp:tools:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
-| Connected agents | `mcp:access` for one's own agents, `mcp:agents:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
-
-The plugin is in `src/VirtoCommerce.MCP.Web/vue` (Vue 3, `@vc-shell/framework`, Yarn 4). `dotnet publish`, and so `vc-build Compress`, builds it into the package as `plugins/admin-shell`; `-p:SkipAdminShellPlugin=true` leaves it out. To work on it against a running platform:
+The screens of [Work with agents in the back office](#work-with-agents-in-the-back-office) are an [Admin Shell](https://github.com/VirtoCommerce/vc-module-admin-shell) plugin built with VC-Shell. The plugin is in `src/VirtoCommerce.MCP.Web/vue` (Vue 3, `@vc-shell/framework`, Yarn 4). `dotnet publish`, and so `vc-build Compress`, builds it into the package as `plugins/admin-shell`; `-p:SkipAdminShellPlugin=true` leaves it out. To work on it against a running platform:
 
 ```bash
 cd src/VirtoCommerce.MCP.Web/vue
@@ -316,7 +310,7 @@ yarn build    # then copy ../plugins/admin-shell to modules/VirtoCommerce.MCP/pl
 
 ### Coexistence with modules that host their own MCP endpoint
 
-A module that maps its own MCP endpoint, as earlier UCP versions do at `/ucp/mcp`, shares the same MCP server. On such an endpoint, primitives marked with `[McpScope]` are removed, so scoped tools never appear where scopes are not enforced. [Moving UCP to the MCP module](docs/ucp-migration.md) describes what moves and what stays in UCP. Both modules must use the same version of the MCP SDK: the platform loads one copy of an assembly, the newest, for all modules.
+A module that maps its own MCP endpoint, as earlier UCP versions do at `/ucp/mcp`, shares the same MCP server. On such an endpoint, primitives marked with `[McpScope]` are removed, so scoped tools never appear where scopes are not enforced. [Moving UCP to the MCP module](docs/ucp-migration.md) describes what moves and what stays in UCP. Both modules must use the same version of the MCP SDK (2.3.0 for this module): the platform loads one copy of an assembly, the newest, for all modules.
 
 ## Developer guide
 
@@ -349,7 +343,7 @@ serviceCollection.AddMcpTools<PromotionTools>();
 - A primitive without `[McpScope]` is not exposed on any registered scope. Names must be unique within a scope; a duplicate is reported as an error in the log at startup.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission, before the tool runs.
 - Tool methods can take any registered service as a parameter, as well as `RequestContext<CallToolRequestParams>` and `CancellationToken`. `HttpContext.GetMcpScope()` returns the scope of the current request.
-- In a scope open to anonymous users (`RequireAuthenticatedUser = false`), mark a tool that needs a signed-in user with `[McpRequiresUser]`: an anonymous call to it is answered with an OAuth challenge, so the client signs the user in and repeats the call.
+- In a scope open to anonymous users (`RequireAuthenticatedUser = false`), mark a tool that needs a signed-in user with `[McpRequiresUser]`: it is listed to anonymous users, and an anonymous call to it is answered with an OAuth challenge, so the client signs the user in and repeats the call. A tool with `[Authorize]` or `[McpPermission]` is answered the same way, but is not listed to anonymous users.
 - A tool that returns a list takes an optional `take` and passes it through `IMcpPageSizeResolver.GetPageSizeAsync(take)`, so an agent cannot load thousands of rows into its context with one call.
 
 ### Add a scope
@@ -390,7 +384,7 @@ public sealed class StoreToolCallFilter(IStoreService storeService) : IMcpCallTo
 serviceCollection.AddMcpCallToolFilter<StoreToolCallFilter>("category-manager"); // McpScopes.Any for every scope
 ```
 
-The filter is resolved from the request's services and runs inside the module's pipeline: after the permission checks, the switches and the argument validation, and within the audit and the `MCP tool` span, so the result it returns is the one that is audited and its spans are children of the tool's span. Calls of other scopes skip it. The [UCP module](https://github.com/VirtoCommerce/vc-module-ucp-mcp) uses it for its buyer error envelopes and its `UCP {operation}` spans.
+The filter is resolved from the request's services and runs inside the module's pipeline: after the permission checks, the switch and the argument validation, and within the audit and the `MCP tool` span, so the result it returns is the one that is audited and its spans are children of the tool's span. Calls of other scopes and of endpoints without a scope skip it. For a call held for approval it runs for the dry run only; an approved change runs the tool without it. The [UCP module](https://github.com/VirtoCommerce/vc-module-ucp) uses it for its buyer error envelopes and its `UCP {operation}` spans.
 
 ### Permissions limited to stores or sellers
 
@@ -451,7 +445,7 @@ public Task<object> GenerateCoupons(string promotion_id, int count, bool dryRun 
 
 // One code for a complaint runs at once; a mass mailing waits for a second person.
 public static bool NeedsApproval(IReadOnlyDictionary<string, JsonElement> arguments) =>
-    !arguments.TryGetValue("count", out var count) || count.GetInt32() > 1000;
+    !arguments.TryGetValue("count", out var count) || count.ValueKind != JsonValueKind.Number || count.GetInt32() > 1000;
 ```
 
 A condition that cannot be found counts as "needs approval" and is reported as an error in the log at startup, so a typo never skips the approval.
@@ -470,8 +464,8 @@ return await jobDispatcher.EnqueueAsync<GenerateCouponsJob>(requestContext, payl
 ```
 
 - The handler is an ordinary `IBackgroundJobHandler<TPayload>`, registered with `AddBackgroundJob`. Its progress reports become the progress of the job, shown in the admin UI and returned by `get_job_status`.
-- The result is an `McpJobHandle`: `job_id`, `status`, `title`, `total_count` and the preview. A queued job is canceled at once by `cancel_job`; a running one stops when the job engine supports cancellation.
-- A job is visible to the user who ran the tool and, when an approved change started it, to the user who requested the change; in the `admin` scope approvers see every job.
+- The result is an `McpJobHandle`: `job_id`, `status`, `title`, `total_count`, `message` and the preview. A queued job is canceled at once by `cancel_job`; a running one stops when the job engine supports cancellation.
+- A job is visible to the user who ran the tool and, when an approved change started it, to the user who requested the change; approvers of a scope see every job of that scope.
 
 ### Sensitive arguments
 
@@ -506,6 +500,34 @@ src/
 - Register the project with one line in `Module.Initialize`: `serviceCollection.AddMcpToolsFromAssembly(typeof(PromotionTools).Assembly)`, and the same for prompts and resources.
 - Declare the dependency on `VirtoCommerce.MCP` in `module.manifest`.
 
+## Package a connector for a solution
+
+A system integrator ships "Virto Commerce for Contoso" to a client's Claude organization as a connector, so the client's people click **Connect** and sign in, with no setup of their own:
+
+1. **Toolset.** Put the solution's tools, prompts and resources in a `VirtoCommerce.<Solution>.MCP` project (see [Add tools to a scope](#add-tools-to-a-scope)), protected by the client's roles; extend the standard toolsets as described in [How to extend](#how-to-extend).
+1. **Name and instructions.** Register the `admin` scope again with the solution's title and instructions; Claude shows them as the server's name and reads the instructions before using the tools:
+
+    ```csharp
+    serviceCollection.AddMcpScope(new McpScope
+    {
+        Name = McpScopes.Admin,
+        Title = "Contoso Commerce",
+        Instructions = "Contoso sells office supplies in three stores. Prices are in USD. Always run a dry run first...",
+        RequireAuthenticatedUser = true,
+        Permissions = [ModuleConstants.Security.Permissions.Access],
+        ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
+    });
+    ```
+
+1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
+1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [step 1](#1-prepare-the-platform-administrator-once).
+1. **Roles.** Grant the client's people `mcp:access` and the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
+1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
+1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
+1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
+
+A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Once the platform supports client ID metadata documents ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)), the OAuth client step goes away: the URL alone is enough.
+
 ## How to extend
 
 ### Extend another module's toolset without changing it
@@ -532,7 +554,7 @@ The behaviour of this module can be replaced through DI:
 
 - `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration.
 - `McpChallengeWriter` writes the HTTP 401 and 403 responses of the MCP endpoints; a module with an error format of its own replaces the bodies and keeps the status codes and the `WWW-Authenticate` header.
-- `IMcpSessionService` checks that a token is still valid and signs the user out.
+- `IMcpSessionService` is for tools: it tells whether the user's token is still active and signs the user out. The endpoints check tokens with `McpTokenValidator` (see below).
 - `IMcpJobDispatcher` starts and tracks the jobs of bulk tools.
 - `IMcpPageSizeResolver` decides how many rows a list tool returns.
 - `IMcpApprovalService` implements the pending change lifecycle; `McpApprovalService` has virtual methods for the self-approval and expiration rules, and `CanReviewAsync` for which changes an approver may review.
@@ -545,7 +567,7 @@ The behaviour of this module can be replaced through DI:
 
 | Project | Layer | Purpose |
 | --- | --- | --- |
-| `VirtoCommerce.MCP.Core` | Core | Models, service interfaces, attributes (`[McpScope]`, `[McpPermission]`, `[McpRequiresApproval]`, `[McpSensitive]`), registration extensions, diagnostics. The only package a module with tools references. |
+| `VirtoCommerce.MCP.Core` | Core | Models, service interfaces, attributes (`[McpScope]`, `[McpPermission]`, `[McpRequiresApproval]`, `[McpRequiresUser]`, `[McpSensitive]`, `[McpApprovalTool]`, `[McpApproverOnly]`), registration extensions, diagnostics. The only package a module with tools references. |
 | `VirtoCommerce.MCP.Data` | Data | Approval, audit and job services, EF Core repository, cleanup |
 | `VirtoCommerce.MCP.Data.SqlServer` | Data | SQL Server migrations |
 | `VirtoCommerce.MCP.Data.MySql` | Data | MySQL migrations |
@@ -568,7 +590,7 @@ The behaviour of this module can be replaced through DI:
 | `McpToolAvailabilityService` | | Tool switches (`MCP.Tools.Disabled`) |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
-| `McpSessionService` | `IMcpSessionService` | Token validity and sign-out |
+| `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
 | `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |
 
 ### REST API
@@ -581,15 +603,15 @@ Base route: `api/mcp`
 | `GET` | `/summary` | signed in | Changes waiting for the user, failed calls of the last day, switched-off tools |
 | `POST` | `/pending-changes/search` | approver of the searched scopes | Search submitted changes |
 | `GET` | `/pending-changes/{id}` | approver of the change's scope | A change with its arguments, preview and result |
-| `POST` | `/pending-changes/{id}/approve` | approver of the change's scope, allowed to run the tool | Approve and run a change |
-| `POST` | `/pending-changes/{id}/reject` | approver of the change's scope | Reject a change |
-| `POST` | `/audit/search` | `mcp:audit:read` | Search the audit log, by tool, outcome, scope, user or trace id |
+| `POST` | `/pending-changes/{id}/approve` | approver of the change's scope, allowed to run the tool | Approve and run a change; body `{ "comment": "..." }` |
+| `POST` | `/pending-changes/{id}/reject` | approver of the change's scope | Reject a change; body `{ "comment": "..." }` |
+| `POST` | `/audit/search` | `mcp:audit:read` | Search the audit log, by tool, outcome, scope, user, trace id, pending change or date range |
 | `GET` | `/tools` | `mcp:tools:manage` | The tools of every scope and whether they are switched on |
-| `PUT` | `/tools/availability` | `mcp:tools:manage` | Switch a tool, or a scope with `*`, on or off |
+| `PUT` | `/tools/availability` | `mcp:tools:manage` | Switch a tool, or a scope with `*`, on or off; body `{ "scopeName", "toolName", "enabled" }` |
 | `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:agents:manage` | Agents users signed in to, with their client, endpoint and activity |
 | `DELETE` | `/connected-agents/{id}` | the agent's user, or `mcp:agents:manage` | Disconnect an agent: revoke its authorization and tokens |
 
-MCP endpoints: `POST /{scope}/mcp`, `POST /mcp` on a host of a scope, and the protected resource metadata at `GET /.well-known/oauth-protected-resource/{scope}/mcp`.
+MCP endpoints: `POST /{scope}/mcp`, `POST /mcp` on a host of a scope, and the protected resource metadata at `GET /.well-known/oauth-protected-resource/{scope}/mcp` and, for a scope host, `GET /.well-known/oauth-protected-resource/mcp`. A `tools/list` request that accepts only `application/json`, as registry crawlers and health checks send, gets a plain JSON answer instead of HTTP 406.
 
 ## Samples
 
@@ -606,6 +628,7 @@ Do not install the samples on a shared or production environment.
 * [Demo: an AI agent in the back office](docs/demo.md): Claude Code signs in to a local platform, calls tools, and a second user approves its change
 * [Marketing with an AI agent](docs/marketing-demo.md): a marketer's week with the marketing sample
 * [Moving UCP to the MCP module](docs/ucp-migration.md)
+* [UCP module](https://github.com/VirtoCommerce/vc-module-ucp): shopping assistants for buyers, served as the `ucp` scope
 * [VCST-6155: what is covered](docs/vcst-6155-coverage.md)
 * [View on GitHub](https://github.com/VirtoCommerce/vc-module-mcp/)
 
