@@ -33,6 +33,11 @@ public static class McpServerPrimitiveExtensions
             : [];
     }
 
+    public static McpRequiresConfirmationAttribute GetConfirmation(this IMcpServerPrimitive primitive)
+    {
+        return primitive.Metadata.OfType<McpRequiresConfirmationAttribute>().FirstOrDefault();
+    }
+
     public static bool RequiresApproval(this IMcpServerPrimitive primitive)
     {
         return primitive.Metadata.OfType<McpRequiresApprovalAttribute>().Any();

@@ -105,6 +105,7 @@
       "Error": "Ошибка",
       "Forbidden": "Запрещено",
       "PendingApproval": "Ожидает подтверждения",
+      "Declined": "Отклонено пользователем",
       "Disabled": "Отключено"
     },
     "TOOLBAR": {

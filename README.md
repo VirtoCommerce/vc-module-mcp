@@ -13,6 +13,7 @@ An agent works as the signed-in user: it sees only the tools that user may use, 
 * **Scopes**: one MCP endpoint per kind of agent (`admin`, `vendor`, a buyer scope, your own), at `/{scope}/mcp` or at `/mcp` of a host of its own
 * **Platform sign-in**: OAuth 2.1 with PKCE and a token bound to one endpoint (RFC 8707); anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request
 * **Permissions**: `[Authorize]` for platform permissions, `[McpPermission]` for permissions limited to stores or sellers; tools the user may not use are not listed
+* **Confirmation in the chat**: `[McpRequiresConfirmation]` asks the user to confirm a risky call in the agent's chat before it runs (MCP elicitation), with clients that support it
 * **Approval with a diff**: `[McpRequiresApproval]` holds a call as a pending change with a dry-run preview until a second person approves it, always or only when a condition on the arguments says so
 * **Audit**: every call with user, client, arguments, outcome, duration and trace id; `[McpSensitive]` masks personal data
 * **Bulk jobs**: a bulk tool hands its work to a platform background job; the agent follows and cancels it
@@ -291,6 +292,7 @@ The module does not limit the request rate and does not add CORS headers: both b
 1. The module resolves the scope from the path or the host, and checks that the token was issued for this endpoint and is still valid in the platform token store.
 1. The scope's permission, if it has one, and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
 1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
+1. A tool marked `[McpRequiresConfirmation]` asks the user in the chat first, when the client can ask (see [Confirmation in the chat](#confirmation-in-the-chat)); a call the user declines does not run.
 1. A tool marked `[McpRequiresApproval]` does not run: if it has a `dryRun` (or `dry_run`) parameter it runs once as a dry run, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
 1. The call is audited (user, OAuth client, tool, arguments, outcome, duration, trace id), logged and traced.
@@ -349,7 +351,7 @@ Changes are reviewed in the back office or with the first four tools below, pres
 
 ### Audit and cleanup
 
-Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, a tool that needs approval in a scope without it, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
+Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Declined` (the user did not confirm it in the chat), `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, a tool that needs approval in a scope without it, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
 
 The recurring job `MCP.Cleanup` deletes audit entries, finished jobs, and applied, failed, rejected and expired changes older than the retention settings. An approved change that never completed is kept: it needs a person to look at it. The job also marks overdue pending changes as expired, which removes their sensitive arguments.
 
@@ -506,6 +508,26 @@ public static bool NeedsApproval(IReadOnlyDictionary<string, JsonElement> argume
 
 A condition that cannot be found counts as "needs approval" and is reported as an error in the log at startup, so a typo never skips the approval.
 
+### Confirmation in the chat
+
+A call that changes something at once, without a second person, can still ask its own user first: the agent's client shows the question in the chat with **Confirm** and **Decline**, and the tool runs only after **Confirm**.
+
+```csharp
+[McpServerTool(Name = "pause_promotion", Destructive = true)]
+[McpRequiresConfirmation("Pause promotion {promotion_id} now? Buyers stop getting its discount right away. Reason: {reason}")]
+public object PausePromotion(string promotion_id, string reason, bool dryRun = false) { ... }
+```
+
+- `{argument}` in the message is replaced by the value of that argument of the call; `[McpSensitive]` values are shown as `***`. Without a message, the question names the tool and lists its arguments.
+- A declined or dismissed question ends the call with a tool error ("The user did not confirm the call, so nothing was done"), and the call is audited as `Declined`. A confirmed call runs and is audited as usual; the question itself is not audited.
+- A dry run (`dryRun: true`) does not ask. A tool with both attributes asks before it submits the change for approval.
+- The answer is tied to the tool and its arguments: if the agent repeats the call with other arguments, the user is asked again.
+- The module's own `approve_pending_change` asks the approver before it applies a change; the marketing sample's `pause_promotion` asks before it pauses a promotion.
+
+**Clients.** The question uses MCP elicitation (form mode). The MCP endpoints are stateless, so a server can't send a client a request of its own in the middle of a call; it answers the call with an input-required result instead, and the client asks the user and repeats the call with the answer: multi round-trip requests (MRTR), from the 2026-07-28 protocol revision. Clients that speak that revision and declare elicitation ask the user. With other clients the call runs as without the attribute; most of them ask the user to allow each tool call with their own prompt.
+
+**Not a security control.** The client reports the user's answer, so confirmation guards the user against an agent's mistake, not against a client that answers by itself. For a change that a second person must check, use [approval](#approval).
+
 ### Bulk tools and jobs
 
 A bulk tool hands the work to the platform background job engine through `IMcpJobDispatcher` and returns at once:
@@ -622,7 +644,7 @@ The behaviour of this module can be replaced through DI:
 
 | Project | Layer | Purpose |
 | --- | --- | --- |
-| `VirtoCommerce.MCP.Core` | Core | Models, service interfaces, attributes (`[McpScope]`, `[McpPermission]`, `[McpRequiresApproval]`, `[McpRequiresUser]`, `[McpSensitive]`, `[McpApprovalTool]`, `[McpApproverOnly]`), registration extensions, diagnostics. The only package a module with tools references. |
+| `VirtoCommerce.MCP.Core` | Core | Models, service interfaces, attributes (`[McpScope]`, `[McpPermission]`, `[McpAnyUser]`, `[McpRequiresApproval]`, `[McpRequiresConfirmation]`, `[McpRequiresUser]`, `[McpSensitive]`, `[McpApprovalTool]`, `[McpApproverOnly]`), registration extensions, diagnostics. The only package a module with tools references. |
 | `VirtoCommerce.MCP.Data` | Data | Approval, audit and job services, EF Core repository, cleanup |
 | `VirtoCommerce.MCP.Data.SqlServer` | Data | SQL Server migrations |
 | `VirtoCommerce.MCP.Data.MySql` | Data | MySQL migrations |

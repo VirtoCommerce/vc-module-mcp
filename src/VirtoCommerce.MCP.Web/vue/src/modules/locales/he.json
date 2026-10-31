@@ -105,6 +105,7 @@
       "Error": "שגיאה",
       "Forbidden": "אסור",
       "PendingApproval": "ממתין לאישור",
+      "Declined": "נדחה על ידי המשתמש",
       "Disabled": "כבוי"
     },
     "TOOLBAR": {

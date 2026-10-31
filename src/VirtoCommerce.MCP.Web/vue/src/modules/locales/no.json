@@ -105,6 +105,7 @@
       "Error": "Feil",
       "Forbidden": "Forbudt",
       "PendingApproval": "Venter på godkjenning",
+      "Declined": "Avvist av brukeren",
       "Disabled": "Slått av"
     },
     "TOOLBAR": {

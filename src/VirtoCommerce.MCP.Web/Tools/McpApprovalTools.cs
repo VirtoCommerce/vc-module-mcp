@@ -109,6 +109,7 @@ public class McpApprovalTools(
 
     [McpServerTool(Name = ModuleConstants.ToolNames.ApprovePendingChange, ReadOnly = false, Destructive = true, Idempotent = false)]
     [McpApproverOnly]
+    [McpRequiresConfirmation("Approve change {change_id} and run it now, as you?")]
     [Description("Approve a pending change and execute it right away with the stored arguments, as the approving user. " +
         "Only approve after the user has reviewed the change with get_pending_change and explicitly asked to approve it. " +
         "A change cannot be approved by the user who requested it, and the approver must be allowed to run the tool.")]

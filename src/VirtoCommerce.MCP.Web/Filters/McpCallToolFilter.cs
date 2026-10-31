@@ -2,7 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -29,6 +33,13 @@ public class McpCallToolFilter(
     ILogger<McpCallToolFilter> logger)
 {
     private const string AuditedKey = "VirtoCommerce.MCP.Audit.Written";
+    private const string ConfirmationKey = "confirmation";
+    private const string ConfirmField = "confirm";
+    private const string ConfirmationStatePrefix = "mcp-confirm:";
+    private const int MaxConfirmationArguments = 10;
+    private const int MaxConfirmationValueLength = 120;
+
+    private static readonly Regex _placeholder = new(@"\{(\w+)\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     private static readonly string[] _dryRunParameterNames = ["dryRun", "dry_run"];
 
@@ -48,6 +59,11 @@ public class McpCallToolFilter(
         {
             var result = await ExecuteAuditedAsync(next, context, scope, audit, cancellationToken);
             return AddTraceId(result);
+        }
+        catch (InputRequiredException)
+        {
+            // The call waits for the user's answer: the client asks the user and repeats the call, which is audited.
+            throw;
         }
         catch (McpProtocolException ex)
         {
@@ -136,6 +152,15 @@ public class McpCallToolFilter(
         if (refusal != null)
         {
             return refusal;
+        }
+
+        if (tool?.GetConfirmation() != null && !IsDryRunCall(tool, context.Params?.Arguments))
+        {
+            var declined = ConfirmOrAsk(context, tool, audit);
+            if (declined != null)
+            {
+                return declined;
+            }
         }
 
         if (tool != null && tool.RequiresApproval(context.Params?.Arguments) && !IsDryRunCall(tool, context.Params?.Arguments))
@@ -318,6 +343,124 @@ public class McpCallToolFilter(
 
         var arguments = context.Params?.Arguments;
         return GetRequiredArgumentNames(tool).FirstOrDefault(name => !HasValue(arguments, name));
+    }
+
+    // [McpRequiresConfirmation]: null when the user confirmed the call, or when the client cannot ask the user, so the
+    // call runs; the error result when the user declined. Otherwise the user is asked: the call ends with an
+    // input-required result, and the client repeats it with the user's answer and the state of the question.
+    protected virtual CallToolResult ConfirmOrAsk(RequestContext<CallToolRequestParams> context, McpServerTool tool, McpAuditEntry audit)
+    {
+        if (!CanAskUser(context.Server))
+        {
+            return null;
+        }
+
+        var arguments = context.Params?.Arguments;
+        var state = GetConfirmationState(tool, arguments);
+
+        if (string.Equals(context.Params?.RequestState, state, StringComparison.Ordinal) &&
+            context.Params.InputResponses?.TryGetValue(ConfirmationKey, out var response) == true)
+        {
+            if (IsConfirmed(response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)))
+            {
+                return null;
+            }
+
+            audit.Outcome = McpAuditOutcome.Declined;
+            audit.ErrorMessage = "The user did not confirm the call.";
+
+            return CreateErrorResult("The user did not confirm the call, so nothing was done. Ask the user what to do instead.");
+        }
+
+        throw new InputRequiredException(
+            new Dictionary<string, InputRequest> { [ConfirmationKey] = InputRequest.ForElicitation(CreateConfirmationRequest(tool, arguments)) },
+            state);
+    }
+
+    // The client asks the user in the chat: elicitation with forms, over multi round-trip requests, which a stateless
+    // server needs because it cannot send the client a request of its own.
+    protected static bool CanAskUser(McpServer server)
+    {
+        return server is { IsMrtrSupported: true } && server.ClientCapabilities?.Elicitation?.Form != null;
+    }
+
+    protected virtual ElicitRequestParams CreateConfirmationRequest(McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    {
+        var values = GetMaskedArguments(tool, arguments);
+        var template = tool.GetConfirmation()?.Message;
+        var message = string.IsNullOrEmpty(template)
+            ? DescribeCall(tool, values)
+            : _placeholder.Replace(template, match => values.TryGetValue(match.Groups[1].Value, out var value) ? value : match.Value);
+
+        return new ElicitRequestParams
+        {
+            Message = message,
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    [ConfirmField] = new ElicitRequestParams.BooleanSchema
+                    {
+                        Title = "Confirm",
+                        Description = "Run this action now.",
+                        Default = true,
+                    },
+                },
+            },
+        };
+    }
+
+    // Accepted, and the confirm box was not unticked
+    protected static bool IsConfirmed(ElicitResult answer)
+    {
+        if (answer?.IsAccepted != true)
+        {
+            return false;
+        }
+
+        return answer.Content?.TryGetValue(ConfirmField, out var confirm) != true || confirm.ValueKind != JsonValueKind.False;
+    }
+
+    // Ties an answer to the call it was asked for: the same tool with the same arguments.
+    protected static string GetConfirmationState(McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    {
+        var call = tool.ProtocolTool.Name + "\n" + JsonSerializer.Serialize(arguments ?? new Dictionary<string, JsonElement>());
+
+        return ConfirmationStatePrefix + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(call)));
+    }
+
+    private static string DescribeCall(McpServerTool tool, IDictionary<string, string> values)
+    {
+        var title = tool.ProtocolTool.Title ?? tool.ProtocolTool.Annotations?.Title ?? tool.ProtocolTool.Name;
+        var lines = values
+            .Take(MaxConfirmationArguments)
+            .Select(x => $"{x.Key}: {x.Value}");
+
+        return string.Join(Environment.NewLine, new[] { $"Run \"{title}\"?" }.Concat(lines));
+    }
+
+    // The arguments as short texts, with [McpSensitive] values masked
+    private static Dictionary<string, string> GetMaskedArguments(McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (arguments is not { Count: > 0 })
+        {
+            return result;
+        }
+
+        var masked = McpSensitiveArguments.Mask(JsonSerializer.Serialize(arguments), tool.GetSensitiveArgumentPaths());
+        if (JsonNode.Parse(masked) is not JsonObject values)
+        {
+            return result;
+        }
+
+        foreach (var (name, value) in values)
+        {
+            var text = value is JsonValue scalar && scalar.TryGetValue<string>(out var str) ? str : value?.ToJsonString() ?? "null";
+            result[name] = text.Length > MaxConfirmationValueLength ? text[..MaxConfirmationValueLength] + "…" : text;
+        }
+
+        return result;
     }
 
     protected static CallToolResult CreateErrorResult(string message)

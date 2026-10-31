@@ -105,6 +105,7 @@
       "Error": "خطأ",
       "Forbidden": "ممنوع",
       "PendingApproval": "بانتظار الموافقة",
+      "Declined": "رفضه المستخدم",
       "Disabled": "معطّل"
     },
     "TOOLBAR": {

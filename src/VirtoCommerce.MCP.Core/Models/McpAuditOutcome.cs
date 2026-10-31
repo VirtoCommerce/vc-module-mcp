@@ -13,4 +13,7 @@ public static class McpAuditOutcome
     public const string PendingApproval = "PendingApproval";
 
     public const string Disabled = "Disabled";
+
+    // The user did not confirm a call of a tool with [McpRequiresConfirmation], so it did not run.
+    public const string Declined = "Declined";
 }

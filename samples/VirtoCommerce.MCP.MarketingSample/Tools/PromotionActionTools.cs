@@ -188,6 +188,7 @@ public partial class PromotionActionTools(
 
     [McpServerTool(Name = "pause_promotion", ReadOnly = false, Destructive = true, Idempotent = true)]
     [McpPermission(MarketingSampleConstants.UpdatePermission, MarketingSampleConstants.ReadPermission)]
+    [McpRequiresConfirmation("Pause promotion {promotion_id} now? Buyers stop getting its discount right away. Reason: {reason}")]
     [Description("Pause a live or scheduled promotion right away, for example when the stock runs out or the budget is spent. " +
         "Pausing limits risk, so it needs no approval; activate_promotion resumes it after approval.")]
     public object PausePromotion(

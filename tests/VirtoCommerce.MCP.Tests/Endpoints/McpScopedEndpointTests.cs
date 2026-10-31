@@ -25,6 +25,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
@@ -59,6 +60,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string CategoryApprovePermission = "category:approve";
     private const string ShopHost = "shop.example.test";
     private const string GatedScope = "gated";
+    private const string ConfirmScope = "confirm";
 
     private static readonly string[] _readerTools = ["canceled_tool", "read_tool", "static_tool"];
     private static readonly string[] _writerTools = ["canceled_tool", "conditional_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
@@ -77,6 +79,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         TestTools.Reset();
+        ConfirmTools.Reset();
         PartnerTools.Reset();
 
         UseIdentityClaimTypes();
@@ -241,6 +244,89 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Assert
         Assert.True(IsError(result));
         Assert.Equal(0, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AskTheUserInTheChat_And_RunTheTool_When_TheUserConfirms()
+    {
+        // Arrange
+        var questions = new List<ElicitRequestParams>();
+        await using var client = await ConnectAsync(ConfirmScope, (request, _) =>
+        {
+            questions.Add(request);
+            return ValueTask.FromResult(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement> { ["confirm"] = JsonSerializer.SerializeToElement(true) },
+            });
+        });
+
+        // Act
+        var result = await client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotEqual(true, result.IsError);
+        var question = Assert.Single(questions);
+        Assert.Equal("Delete draft d1 of ***?", question.Message);
+        Assert.Equal(1, ConfirmTools.Executions);
+        Assert.Equal(McpAuditOutcome.Succeeded, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Theory]
+    [InlineData("decline", true)]
+    [InlineData("cancel", true)]
+    [InlineData("accept", false)]
+    public async Task ToolsCall_Should_NotRunTheTool_And_AuditItAsDeclined_When_TheUserDoesNotConfirm(string action, bool confirm)
+    {
+        // Arrange
+        await using var client = await ConnectAsync(ConfirmScope, (_, _) => ValueTask.FromResult(new ElicitResult
+        {
+            Action = action,
+            Content = action == "accept" ? new Dictionary<string, JsonElement> { ["confirm"] = JsonSerializer.SerializeToElement(confirm) } : null,
+        }));
+
+        // Act
+        var result = await client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.True(result.IsError);
+        Assert.Contains("did not confirm", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        Assert.Equal(0, ConfirmTools.Executions);
+        Assert.Equal(McpAuditOutcome.Declined, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_DescribeTheCall_When_TheToolGivesNoMessage()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(ConfirmScope, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "accept" });
+        });
+
+        // Act
+        await client.CallToolAsync("archive_all", new Dictionary<string, object> { ["olderThanDays"] = 30 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal($"Run \"archive_all\"?{Environment.NewLine}olderThanDays: 30", question);
+        Assert.Equal(1, ConfirmTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunTheToolWithoutAsking_When_TheClientCannotAskTheUser()
+    {
+        // Act: a client of an earlier protocol revision, which a stateless server cannot ask
+        var result = await CallAsync(Token(audience: $"{Origin}/{ConfirmScope}/mcp"), ToolsCall("delete_draft", new { draftId = "d1", email = "a@b.c" }), $"/{ConfirmScope}/mcp");
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Equal(1, ConfirmTools.Executions);
+        Assert.Equal(McpAuditOutcome.Succeeded, Assert.Single(_auditEntries).Outcome);
     }
 
     [Fact]
@@ -1130,6 +1216,12 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             RequireAuthenticatedUser = true,
         });
 
+        services.AddMcpScope(new McpScope
+        {
+            Name = ConfirmScope,
+            RequireAuthenticatedUser = true,
+        });
+
         // A scope that only users with a permission may open.
         services.AddMcpScope(new McpScope
         {
@@ -1151,6 +1243,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddMcpTools<TestTools>();
         services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools), typeof(UndeclaredTools)]);
         services.AddMcpTools<CanceledTools>();
+        services.AddMcpTools([typeof(ConfirmTools)]);
         services.AddMcpTools([typeof(ScopedPermissionTools)]);
         services.AddMcpTools<McpApprovalTools>();
         services.AddMcpTools<McpJobTools>();
@@ -1366,6 +1459,29 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         return JsonNode.Parse(data);
     }
 
+    // An MCP client of the 2026-07-28 revision, which asks the user with the given handler
+    private async Task<McpClient> ConnectAsync(string scope, Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>> elicitation)
+    {
+        var transport = new HttpClientTransport(
+            new HttpClientTransportOptions
+            {
+                Endpoint = new Uri($"{Origin}/{scope}/mcp"),
+                TransportMode = HttpTransportMode.StreamableHttp,
+                AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + Token(audience: $"{Origin}/{scope}/mcp") },
+            },
+            _client,
+            ownsHttpClient: false);
+
+        return await McpClient.CreateAsync(
+            transport,
+            new McpClientOptions
+            {
+                ProtocolVersion = "2026-07-28",
+                Handlers = new McpClientHandlers { ElicitationHandler = elicitation },
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+    }
+
     private static object ToolsList() => Request("tools/list", new { });
 
     private static object ToolsCall(string name, object arguments) => Request("tools/call", new { name, arguments });
@@ -1538,6 +1654,37 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         [McpServerTool(Name = "static_tool"), Description("Declared in a static class, as SDK tools usually are.")]
         public static string StaticTool() => "static";
+    }
+
+    [McpServerToolType]
+    [McpScope(ConfirmScope)]
+    [McpAnyUser]
+    public static class ConfirmTools
+    {
+        private static int _executions;
+
+        public static int Executions => _executions;
+
+        public static void Reset()
+        {
+            _executions = 0;
+        }
+
+        [McpServerTool(Name = "delete_draft"), Description("Deletes a draft.")]
+        [McpRequiresConfirmation("Delete draft {draftId} of {email}?")]
+        public static string DeleteDraft(string draftId, [McpSensitive] string email)
+        {
+            Interlocked.Increment(ref _executions);
+            return $"deleted {draftId}";
+        }
+
+        [McpServerTool(Name = "archive_all"), Description("Archives old drafts.")]
+        [McpRequiresConfirmation]
+        public static string ArchiveAll(int olderThanDays)
+        {
+            Interlocked.Increment(ref _executions);
+            return $"archived {olderThanDays}";
+        }
     }
 
     [McpServerToolType]

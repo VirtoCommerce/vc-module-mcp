@@ -105,6 +105,7 @@
       "Error": "错误",
       "Forbidden": "禁止",
       "PendingApproval": "等待批准",
+      "Declined": "用户已拒绝",
       "Disabled": "已停用"
     },
     "TOOLBAR": {

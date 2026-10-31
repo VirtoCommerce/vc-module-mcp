@@ -105,6 +105,7 @@
       "Error": "Errore",
       "Forbidden": "Vietato",
       "PendingApproval": "In attesa di approvazione",
+      "Declined": "Rifiutato dall'utente",
       "Disabled": "Disattivato"
     },
     "TOOLBAR": {
