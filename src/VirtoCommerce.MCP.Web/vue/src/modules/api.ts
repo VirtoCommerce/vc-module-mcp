@@ -118,9 +118,10 @@ export class McpApiError extends Error {
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, {
     method,
+    signal,
     credentials: "same-origin",
     headers: body === undefined ? { Accept: "application/json" } : { "Content-Type": "application/json", Accept: "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -153,7 +154,9 @@ export const mcpApi = {
   getTools: () => request<McpToolInfo[]>("GET", "/api/mcp/tools"),
   setToolEnabled: (scopeName: string, toolName: string, enabled: boolean) =>
     request<McpToolInfo[]>("PUT", "/api/mcp/tools/availability", { scopeName, toolName, enabled }),
-  searchConnectedAgents: (criteria: { userId?: string; clientId?: string; skip?: number; take?: number }) =>
-    request<SearchResult<McpConnectedAgent>>("POST", "/api/mcp/connected-agents/search", criteria),
+  searchConnectedAgents: (
+    criteria: { userId?: string; clientId?: string; keyword?: string; skip?: number; take?: number },
+    signal?: AbortSignal,
+  ) => request<SearchResult<McpConnectedAgent>>("POST", "/api/mcp/connected-agents/search", criteria, signal),
   disconnectAgent: (id: string) => request<void>("DELETE", `/api/mcp/connected-agents/${encodeURIComponent(id)}`),
 };

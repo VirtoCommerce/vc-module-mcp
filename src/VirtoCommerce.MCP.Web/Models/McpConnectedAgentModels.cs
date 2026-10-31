@@ -35,6 +35,9 @@ public class McpConnectedAgentSearchCriteria
 
     public string ClientId { get; set; }
 
+    // Part of the client id, the client name or the user name, case-insensitive
+    public string Keyword { get; set; }
+
     public int Skip { get; set; }
 
     public int Take { get; set; } = 20;

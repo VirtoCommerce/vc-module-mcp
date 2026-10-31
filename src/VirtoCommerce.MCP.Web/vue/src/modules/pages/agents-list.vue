@@ -6,9 +6,12 @@
     width="70%"
   >
     <VcDataTable
+      v-model:search-value="searchValue"
       :items="items"
       :total-count="totalCount"
       :pagination="pagination"
+      :searchable="true"
+      :search-placeholder="$t('MCP.AGENTS.SEARCH')"
       :state-key="STATE_KEY"
       :empty-state="{ icon: 'lucide-plug', title: $t('MCP.AGENTS.EMPTY'), description: $t('MCP.AGENTS.EMPTY_HINT') }"
       @pagination-click="pagination.goToPage"
@@ -82,11 +85,20 @@
 <script setup lang="ts">
 // The AI agents users connected to MCP endpoints: the user's own, or everyone's with mcp:manage. Disconnecting
 // revokes the agent's sign-in, so its next request is refused.
-import { notification, useAsync, useDataTablePagination, usePopup, type IBladeToolbar } from "@vc-shell/framework";
+import {
+  notification,
+  useAsync,
+  useDataTablePagination,
+  useFunctions,
+  usePopup,
+  useTableSearch,
+  type IBladeToolbar,
+} from "@vc-shell/framework";
 import { VcBlade, VcButton, VcColumn, VcDataTable } from "@vc-shell/framework/ui";
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { mcpApi, type McpConnectedAgent } from "../api";
+import { requestedAgentSearch } from "../searchRequests";
 
 defineBlade({
   url: "/mcp-agents",
@@ -104,6 +116,19 @@ const PAGE_SIZE = 20;
 
 const { t } = useI18n({ useScope: "global" });
 const { showConfirmation } = usePopup();
+const { debounce } = useFunctions();
+const { searchValue } = useTableSearch({ stateKey: STATE_KEY });
+
+// agents found in the global search
+watch(
+  requestedAgentSearch,
+  (keyword) => {
+    if (keyword === undefined) return;
+    searchValue.value = keyword;
+    requestedAgentSearch.value = undefined;
+  },
+  { immediate: true },
+);
 
 const items = ref<McpConnectedAgent[]>([]);
 const totalCount = ref(0);
@@ -111,7 +136,7 @@ const pagination = useDataTablePagination({ stateKey: STATE_KEY, pageSize: PAGE_
 
 const { loading, action: load } = useAsync(async () => {
   try {
-    const result = await mcpApi.searchConnectedAgents({ skip: pagination.skip, take: PAGE_SIZE });
+    const result = await mcpApi.searchConnectedAgents({ keyword: searchValue.value?.trim() || undefined, skip: pagination.skip, take: PAGE_SIZE });
     items.value = result.results ?? [];
     totalCount.value = result.totalCount ?? 0;
   } catch (error) {
@@ -138,7 +163,8 @@ async function disconnect(agent: McpConnectedAgent) {
 }
 
 load();
-watch(() => pagination.skip, () => load());
+watch(searchValue, () => pagination.setPage(1));
+watch([searchValue, () => pagination.skip], debounce(load, 300));
 
 const bladeToolbar = ref<IBladeToolbar[]>([
   { id: "refresh", title: t("MCP.TOOLBAR.REFRESH"), icon: "lucide-refresh-cw", clickHandler: () => load() },

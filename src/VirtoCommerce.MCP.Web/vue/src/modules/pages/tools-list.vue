@@ -120,9 +120,10 @@
 // restart (the MCP.Tools.Disabled setting).
 import { notification, useAsync, usePopup, useTableSearch, type IBladeToolbar } from "@vc-shell/framework";
 import { VcBlade, VcColumn, VcDataTable, VcSwitch } from "@vc-shell/framework/ui";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { mcpApi, type McpScopeInfo, type McpToolInfo } from "../api";
+import { requestedToolSearch } from "../searchRequests";
 import { humanize } from "../utils";
 
 defineBlade({
@@ -142,6 +143,17 @@ const STATE_KEY = "MCP_TOOLS";
 const { t } = useI18n({ useScope: "global" });
 const { showConfirmation } = usePopup();
 const { searchValue } = useTableSearch({ stateKey: STATE_KEY });
+
+// a tool picked in the global search
+watch(
+  requestedToolSearch,
+  (keyword) => {
+    if (keyword === undefined) return;
+    searchValue.value = keyword;
+    requestedToolSearch.value = undefined;
+  },
+  { immediate: true },
+);
 
 const tools = ref<McpToolInfo[]>([]);
 const scopes = ref<McpScopeInfo[]>([]);

@@ -41,13 +41,24 @@ public class McpConnectedAgentService(
             }
         }
 
+        var keyword = criteria.Keyword?.Trim();
+        if (!string.IsNullOrEmpty(keyword))
+        {
+            // The user names are needed to match, so they are read for every agent, not only for the page.
+            await SetUserNamesAsync(agents);
+            agents = agents.Where(x => Matches(x, keyword)).ToList();
+        }
+
         var page = agents
             .OrderByDescending(x => x.LastUsedDate ?? x.ConnectedDate)
             .Skip(Math.Max(criteria.Skip, 0))
             .Take(Math.Max(criteria.Take, 0))
             .ToList();
 
-        await SetUserNamesAsync(page);
+        if (string.IsNullOrEmpty(keyword))
+        {
+            await SetUserNamesAsync(page);
+        }
 
         return new McpConnectedAgentSearchResult { TotalCount = agents.Count, Results = page };
     }
@@ -143,6 +154,12 @@ public class McpConnectedAgentService(
                 agent.ActiveSessionCount++;
             }
         }
+    }
+
+    protected virtual bool Matches(McpConnectedAgent agent, string keyword)
+    {
+        return new[] { agent.ClientId, agent.ClientName, agent.UserName }
+            .Any(x => x?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true);
     }
 
     private async Task SetUserNamesAsync(IList<McpConnectedAgent> agents)

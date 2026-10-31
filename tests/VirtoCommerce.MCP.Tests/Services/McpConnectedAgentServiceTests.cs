@@ -91,6 +91,21 @@ public class McpConnectedAgentServiceTests
         Assert.Equal("auth-approver", agent.Id);
     }
 
+    [Theory]
+    [InlineData("APPROVER", new[] { "auth-approver" })]
+    [InlineData("claude", new[] { "auth-marketer", "auth-approver" })]
+    [InlineData("Code", new[] { "auth-marketer", "auth-approver" })]
+    [InlineData("nobody", new string[0])]
+    public async Task SearchAsync_Should_FindByTheUserNameOrTheClient_When_AKeywordIsGiven(string keyword, string[] expected)
+    {
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria { Keyword = keyword, Take = 1 });
+
+        // Assert
+        Assert.Equal(expected.Length, result.TotalCount);
+        Assert.Equal(expected.Take(1), result.Results.Select(x => x.Id));
+    }
+
     [Fact]
     public async Task RevokeAsync_Should_SignTheAgentOut_When_TheUserRevokesTheirOwnAgent()
     {

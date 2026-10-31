@@ -68,7 +68,8 @@
       "CONNECTED": "Connected",
       "LAST_USED": "Last used",
       "SESSIONS": "Active sign-ins",
-      "ENDPOINT": "MCP endpoint"
+      "ENDPOINT": "MCP endpoint",
+      "SEARCH": "Agent, client id or user"
     },
     "FIELDS": {
       "TOOL": "Tool",
@@ -117,6 +118,11 @@
       "APPROVE": "Approve this change? The tool runs right away as you.",
       "REJECT": "Reject this change? It will never run.",
       "LOAD_FAILED": "Could not load: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Agent tools",
+      "AGENTS": "Connected agents",
+      "OFF": "Off"
     }
   }
 }

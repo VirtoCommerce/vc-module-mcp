@@ -152,6 +152,8 @@ Everything people do with agents is in the back office, under **Configuration â†
 | Agent tools | `mcp:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
 | Connected agents | every signed-in user for their own agents, `mcp:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
 
+The global search of the back office (**Ctrl+K**) finds them too: **Agent tools** by name, title or description, with an *Off* or *Approval* mark (`mcp:manage`), and **Connected agents** by client or user name (one's own, or everyone's with `mcp:manage`). A result opens its screen with the search filled in; type `tools:` or `agents:` to search only there.
+
 ### Approve or reject a change
 
 A tool marked as risky does not change anything when an agent calls it: the agent submits the change with a dry run and gives the user the change id. An approver opens it in **Agent approvals**, reads what will change and the warnings of the dry run, and approves or rejects it with a comment. **Approve** runs the tool right away, as the approver. By default nobody approves their own change, and a change that nobody reviews expires after 72 hours; [Approval](#approval) has all the rules.
@@ -658,7 +660,7 @@ Base route: `api/mcp`
 | `POST` | `/audit/search` | `mcp:audit:read` | Search the audit log, by tool, outcome, scope, user, trace id, pending change or date range |
 | `GET` | `/tools` | `mcp:manage` | The tools of every scope and whether they are switched on |
 | `PUT` | `/tools/availability` | `mcp:manage` | Switch a tool, or a scope with `*`, on or off; body `{ "scopeName", "toolName", "enabled" }` |
-| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:manage` | Agents users signed in to, with their client, endpoint and activity |
+| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:manage` | Agents users signed in to, with their client, endpoint and activity; `keyword` matches the client id, the client name or the user name |
 | `DELETE` | `/connected-agents/{id}` | the agent's user, or `mcp:manage` | Disconnect an agent: revoke its authorization and tokens |
 
 MCP endpoints: `POST /{scope}/mcp`, `POST /mcp` on a host of a scope, and the protected resource metadata at `GET /.well-known/oauth-protected-resource/{scope}/mcp` and, for a scope host, `GET /.well-known/oauth-protected-resource/mcp`. A `tools/list` request that accepts only `application/json`, as registry crawlers and health checks send, gets a plain JSON answer instead of HTTP 406.
