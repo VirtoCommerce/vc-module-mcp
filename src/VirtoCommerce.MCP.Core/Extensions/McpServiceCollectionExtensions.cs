@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 
 namespace VirtoCommerce.MCP.Core.Extensions;
 
@@ -14,6 +16,30 @@ public static class McpServiceCollectionExtensions
     {
         services.AddSingleton(scope);
         return services;
+    }
+
+    // Adds a module's step to the tool calls of one scope (McpScopes.Any for every scope). It runs inside the MCP
+    // module's pipeline, after its checks and within its audit, and is resolved from the request's services.
+    public static IServiceCollection AddMcpCallToolFilter<TFilter>(this IServiceCollection services, string scopeName)
+        where TFilter : class, IMcpCallToolFilter
+    {
+        ArgumentException.ThrowIfNullOrEmpty(scopeName);
+
+        services.AddHttpContextAccessor();
+        services.AddScoped<TFilter>();
+        services.AddMcpServer().WithRequestFilters(filters =>
+            filters.AddCallToolFilter(next => (context, cancellationToken) => IsInScope(context.Services, scopeName)
+                ? context.Services.GetRequiredService<TFilter>().InvokeAsync(next, context, cancellationToken)
+                : next(context, cancellationToken)));
+
+        return services;
+    }
+
+    private static bool IsInScope(IServiceProvider services, string scopeName)
+    {
+        var scope = services?.GetService<IHttpContextAccessor>()?.HttpContext?.GetMcpScope();
+
+        return scope != null && (scopeName == McpScopes.Any || string.Equals(scope.Name, scopeName, StringComparison.OrdinalIgnoreCase));
     }
 
     public static IServiceCollection AddMcpTools<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(

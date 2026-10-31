@@ -20,7 +20,8 @@ public static class McpServerRegistrationExtensions
     {
         var builder = services.AddMcpServer()
             .WithHttpTransport(options => options.Stateless = true)
-            .AddAuthorizationFilters();
+            .AddAuthorizationFilters()
+            .WithMessageFilters(filters => filters.AddIncomingFilter(McpActivityStatusFilter.Create()));
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<HttpServerTransportOptions>, McpScopeTransportSetup>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<McpServerOptions>, McpCallToolFilterSetup>());

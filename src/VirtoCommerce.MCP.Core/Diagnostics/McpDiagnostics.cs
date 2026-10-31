@@ -10,6 +10,9 @@ namespace VirtoCommerce.MCP.Core.Diagnostics;
 public static class McpDiagnostics
 {
     public const string ActivitySourceName = "VirtoCommerce.MCP";
+
+    // Spans of the MCP SDK for the JSON-RPC requests.
+    public const string SdkActivitySourceName = "Experimental.ModelContextProtocol";
     public const string MeterName = "VirtoCommerce.MCP";
 
     public const string ScopeTag = "vc.mcp.scope";

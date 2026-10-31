@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -107,6 +108,19 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var challenge = response.Headers.WwwAuthenticate.ToString();
         Assert.Contains($"resource_metadata=\"{Origin}/.well-known/oauth-protected-resource/admin/mcp\"", challenge);
         Assert.DoesNotContain("error=", challenge);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunAModuleFilter_InItsScopeOnly_And_AuditItsResult()
+    {
+        // Act
+        var partner = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId = "c1", email = "a@b.c" }), $"/{PartnerScope}/mcp");
+        var admin = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("static_tool", new { }));
+
+        // Assert
+        Assert.Equal(PartnerScope, partner["result"]?["_meta"]?["filtered_in"]?.GetValue<string>());
+        Assert.Null(admin["result"]?["_meta"]?["filtered_in"]);
+        Assert.Equal(McpAuditOutcome.Failed, Assert.Single(_auditEntries, x => x.ToolName == "sensitive_tool").Outcome);
     }
 
     [Fact]
@@ -565,6 +579,29 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(McpAuditOutcome.Failed, entry.Outcome);
         Assert.Equal(FailingTools.RefusalMessage, entry.ErrorMessage);
         Assert.Equal(FailingTools.RefusalMessage, Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_KeepTheErrorTextOutOfTheSdkSpan_When_TheToolReturnsAnError()
+    {
+        // Arrange
+        var activities = new ConcurrentBag<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == McpDiagnostics.SdkActivitySourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("refusing_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert: the agent still gets the text, the span only a fixed description
+        Assert.Equal(FailingTools.RefusalMessage, Text(result));
+        var span = Assert.Single(activities, x => x.DisplayName.Contains("refusing_tool"));
+        Assert.Equal(System.Diagnostics.ActivityStatusCode.Error, span.Status);
+        Assert.Equal(McpActivityStatusFilter.ErrorStatusDescription, span.StatusDescription);
     }
 
     [Fact]
@@ -1069,6 +1106,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         });
 
         services.AddScopedMcpServer();
+        services.AddMcpCallToolFilter<PartnerMarkerFilter>(PartnerScope);
         services.AddMcpTools<TestTools>();
         services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools)]);
         services.AddMcpTools<CanceledTools>();
@@ -1538,5 +1576,23 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         [McpServerTool(Name = "unscoped_tool"), Description("Not on any scope.")]
         public static string UnscopedTool() => "unscoped";
+    }
+
+    // A module filter of the partner scope: marks the result, and turns it into a tool error to show that the audit
+    // records what the filter returns.
+    public sealed class PartnerMarkerFilter(IHttpContextAccessor httpContextAccessor) : IMcpCallToolFilter
+    {
+        public async ValueTask<CallToolResult> InvokeAsync(
+            McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+            RequestContext<CallToolRequestParams> context,
+            CancellationToken cancellationToken)
+        {
+            var result = await next(context, cancellationToken);
+            result.Meta ??= [];
+            result.Meta["filtered_in"] = httpContextAccessor.HttpContext.GetMcpScope()?.Name;
+            result.IsError = context.Params?.Name == "sensitive_tool" ? true : result.IsError;
+
+            return result;
+        }
     }
 }

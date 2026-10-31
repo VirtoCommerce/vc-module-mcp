@@ -193,6 +193,8 @@ The audit log is the business record of who did what, kept in the database for t
 
 `Experimental.ModelContextProtocol` adds the SDK's own spans and metrics for the JSON-RPC requests (`tools/call {tool}`, `mcp.server.operation.duration`). With the platform's ASP.NET Core and EF Core instrumentation, one tool call is one trace: the HTTP request, the SDK span, the tool span and the database queries inside it. The trace id is returned to the agent in `_meta.trace_id` and stored on the audit entry, so a user's report, the audit log and the traces lead to each other.
 
+The SDK copies the text of a tool's error result into the status description of its `tools/call` span. That text can carry a caller's data, so the module keeps the span's `Error` status but replaces the description with the fixed `The tool returned an error.`; the agent still receives the full error, and the audit entry keeps it behind its permission.
+
 ### Rate limiting and CORS
 
 The module does not limit the request rate and does not add CORS headers: both belong to the infrastructure in front of the platform. Limit the rate of requests to `/*/mcp` in the API gateway or the load balancer, because an agent that goes into a loop can call a tool hundreds of times a minute. CORS is needed only for MCP clients that run in a browser; Claude, ChatGPT and other hosted clients call the server from their own back end.
@@ -367,6 +369,28 @@ serviceCollection.AddMcpScope(new McpScope
 ```
 
 `Version` sets the server version reported to MCP clients; it defaults to the version of this module. With `ApprovalPermission`, the review tools appear in the scope and work with its changes only; to narrow what an approver reviews, for example to the changes of their own seller, override `McpApprovalService.CanReviewAsync`.
+
+### Wrap the tool calls of a scope
+
+A module that needs its own step around every tool call of its scope, for example its own error format or its own telemetry, implements `IMcpCallToolFilter` and registers it for the scope:
+
+```csharp
+public sealed class StoreToolCallFilter(IStoreService storeService) : IMcpCallToolFilter
+{
+    public async ValueTask<CallToolResult> InvokeAsync(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+        RequestContext<CallToolRequestParams> context,
+        CancellationToken cancellationToken)
+    {
+        // check or change the call, then call the tool
+        return await next(context, cancellationToken);
+    }
+}
+
+serviceCollection.AddMcpCallToolFilter<StoreToolCallFilter>("category-manager"); // McpScopes.Any for every scope
+```
+
+The filter is resolved from the request's services and runs inside the module's pipeline: after the permission checks, the switches and the argument validation, and within the audit and the `MCP tool` span, so the result it returns is the one that is audited and its spans are children of the tool's span. Calls of other scopes skip it. The [UCP module](https://github.com/VirtoCommerce/vc-module-ucp-mcp) uses it for its buyer error envelopes and its `UCP {operation}` spans.
 
 ### Permissions limited to stores or sellers
 
