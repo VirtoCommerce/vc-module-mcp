@@ -251,7 +251,7 @@ A scope is an MCP surface for one kind of agent. Only the tools, prompts and res
 | --- | --- | --- | --- |
 | `admin` | `/admin/mcp` | this module | back-office users with the `mcp:access` permission |
 | `vendor` | `/vendor/mcp` | this module | vendor portal users with the `vendor_portal:access` permission (defined by the marketplace vendor module; without it the scope refuses everyone) |
-| `ucp` | `/ucp/mcp` | the UCP module, from its VCST-6155 version ([Moving UCP to the MCP module](docs/ucp-migration.md)); earlier UCP versions map the endpoint themselves (see [Coexistence](#coexistence-with-modules-that-host-their-own-mcp-endpoint)) | buyers and shopping agents |
+| `ucp` | `/ucp/mcp` | the UCP module, from its VCST-6155 version ([Moving UCP to the MCP module](docs/ucp-migration.md)); switching the scope off turns all of UCP off; earlier UCP versions map the endpoint themselves (see [Coexistence](#coexistence-with-modules-that-host-their-own-mcp-endpoint)) | buyers and shopping agents |
 
 Every request is stateless: the scope and the user are resolved per HTTP request, so replicas need no session affinity and one deployment serves all scopes side by side.
 

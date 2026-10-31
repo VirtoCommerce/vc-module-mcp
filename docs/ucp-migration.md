@@ -6,9 +6,18 @@ This page lists what moves, what stays, and the order of the work. File referenc
 
 ## Status
 
-Done in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`). UCP builds against `VirtoCommerce.MCP.Core` 3.1000.0-alpha.15-vcst-6155-core-mcp-module and depends on the `VirtoCommerce.MCP` module of the same version. The branch deletes the UCP copies of the MCP plumbing (about 1,000 lines of source), registers the `ucp` scope, a `UcpMcpChallengeWriter` and a `UcpMcpPublicOriginResolver`, and runs its call filter inside the MCP module's pipeline with `AddMcpCallToolFilter`; the 255 UCP tests pass.
+Done in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`), on platform 3.1091.0. UCP builds against `VirtoCommerce.MCP.Core` 3.1000.0-alpha.15-vcst-6155-core-mcp-module and depends on the `VirtoCommerce.MCP` module of the same version. The branch:
 
-Verified end to end on a local platform with both modules installed, against the previous UCP build (27 scenarios, same results):
+- deletes the UCP copies of the MCP plumbing (about 1,000 lines of source) and registers the `ucp` scope, a `UcpMcpChallengeWriter` and a `UcpMcpPublicOriginResolver`;
+- runs its call filter inside the MCP module's pipeline with `AddMcpCallToolFilter`;
+- merges VirtoCommerce/vc-module-ucp#12: storefront carts, `track_order` with `placed_after`, store-managed addresses, and a sign-in from the first request when the store's catalog is closed to anonymous buyers;
+- switches UCP off with the MCP module's `MCP:Scopes:ucp:Enabled` instead of a `UCP.Enabled` setting. UCP's gate answers 404 on its REST, discovery and GraphQL paths when the scope is off. The gate and the sign-in rule run from an `IStartupFilter`, ahead of the MCP module's `/ucp/mcp` branch, which a module startup cannot precede;
+- resolves the store of each request from its host (the store's URL domain or `VirtoCommerce:Stores:Domains`, then `Origin`/`Referer`, `VirtoCommerce:Stores:DefaultStore` and the only open store) and takes the currency, language, links and public origin from it; `MCP:Scopes:ucp:PublicOrigin` sets a fixed origin;
+- moves the business switches to store settings: `UCP.StoreManagedAddresses`, `UCP.CheckoutLinkLifetimeMinutes`, `UCP.CheckoutUrlTemplate`. The single-store `UCP:*` keys stay as fallbacks and log a startup warning.
+
+The 370 UCP tests pass, and CI passes on SQL Server, MySQL and PostgreSQL.
+
+Verified end to end on a local platform with both modules installed, against the previous UCP build (27 scenarios, same results), with the old and with the new configuration:
 
 - Discovery: `/.well-known/ucp` and `/.well-known/oauth-protected-resource/ucp/mcp`.
 - `initialize` and `tools/list` on `/ucp/mcp`, served by the MCP module.
@@ -17,6 +26,8 @@ Verified end to end on a local platform with both modules installed, against the
 - An anonymous `link_buyer_identity` gets the HTTP 401 challenge with UCP's `identity_required` body; a signed-in buyer links and signs out, and the token is then refused.
 - UCP calls are audited in the `ucp` scope, with the trace id of the call.
 - The UCP tools are not visible in the `admin` scope, and the `admin` tools are not visible in the `ucp` scope.
+- A closed catalog challenges `initialize`, `tools/list` and tool calls, but not `logout_buyer`; with the scope off, every UCP path answers 404 and `/admin/mcp` keeps working.
+- The store is resolved from the host; a REST search with no store or currency uses the store's; a store setting change applies to the next request.
 
 ## What moves to the MCP module
 
@@ -42,7 +53,7 @@ Every row is already available in the MCP module, so the UCP code can be deleted
 | `UcpApplicationInsightsActivityBridge` and `UCP:Observability:EnableApplicationInsightsCompatibilityBridge` | The OpenTelemetry module, `OpenTelemetry:AzureMonitor:ConnectionString` | Removed from UCP, with the optional dependency on the Application Insights module. |
 | Scope check and order of the SDK request filters | `AddMcpCallToolFilter<TFilter>(scope)` | |
 | Error logging of tool calls | Audit log with user, client, arguments, outcome, duration; `[McpSensitive]` masking | New for UCP: mark buyer personal data (addresses, emails, phone numbers) with `[McpSensitive]`. |
-| `UcpPublicOriginResolver` (`UCP:PublicOrigin`, then the store resolved by the request host) | `IMcpPublicOriginResolver.GetOriginAsync` | UCP replaces the resolver for the `ucp` scope with its store lookup, and keeps using it for `/.well-known/ucp`. |
+| `UcpPublicOriginResolver` (now `MCP:Scopes:ucp:PublicOrigin`, then the store of the request) | `IMcpPublicOriginResolver.GetOriginAsync` | UCP replaces the resolver for the `ucp` scope with its store lookup, and keeps using it for `/.well-known/ucp`. |
 | Store host routing | `MCP:Scopes:ucp:Hosts` | Optional: serve the buyer scope at `https://store.example.com/mcp`. |
 
 Not in either module, by design: rate limits and CORS. They belong to the API gateway or the load balancer in front of the platform.
