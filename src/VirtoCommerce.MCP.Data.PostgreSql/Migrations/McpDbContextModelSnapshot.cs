@@ -76,6 +76,10 @@ namespace VirtoCommerce.MCP.Data.PostgreSql.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("UserId")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -89,6 +93,8 @@ namespace VirtoCommerce.MCP.Data.PostgreSql.Migrations
                     b.HasIndex("CreatedDate");
 
                     b.HasIndex("PendingChangeId");
+
+                    b.HasIndex("TraceId");
 
                     b.HasIndex("UserId", "CreatedDate");
 

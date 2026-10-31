@@ -45,6 +45,11 @@ public class McpPendingChangeSearchService(
             query = query.Where(x => x.ScopeName == criteria.ScopeName);
         }
 
+        if (!criteria.ScopeNames.IsNullOrEmpty())
+        {
+            query = query.Where(x => criteria.ScopeNames.Contains(x.ScopeName));
+        }
+
         if (!string.IsNullOrEmpty(criteria.ToolName))
         {
             query = query.Where(x => x.ToolName == criteria.ToolName);

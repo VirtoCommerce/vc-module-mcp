@@ -76,6 +76,10 @@ namespace VirtoCommerce.MCP.Data.MySql.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<string>("UserId")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
@@ -89,6 +93,8 @@ namespace VirtoCommerce.MCP.Data.MySql.Migrations
                     b.HasIndex("CreatedDate");
 
                     b.HasIndex("PendingChangeId");
+
+                    b.HasIndex("TraceId");
 
                     b.HasIndex("UserId", "CreatedDate");
 

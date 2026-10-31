@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol;
 using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Diagnostics;
 using VirtoCommerce.MCP.Core.Events;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -48,6 +49,7 @@ public class McpApprovalService(
         change.Result = null;
 
         await pendingChangeService.SaveChangesAsync([change]);
+        McpDiagnostics.RecordApprovalDecision(change.ScopeName, change.ToolName, "submitted");
 
         return change;
     }
@@ -193,6 +195,7 @@ public class McpApprovalService(
         GenericSearchCachingRegion<McpPendingChange>.ExpireRegion();
 
         await eventPublisher.Publish(new McpPendingChangeChangedEvent(changedEntries));
+        McpDiagnostics.RecordApprovalDecision(updated.ScopeName, updated.ToolName, updated.Status.ToLowerInvariant());
 
         return updated;
     }

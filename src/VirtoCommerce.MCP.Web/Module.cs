@@ -93,6 +93,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpAuditWriter>();
         serviceCollection.AddTransient<McpToolAvailabilityService>();
         serviceCollection.AddTransient<McpPendingChangeExecutor>();
+        serviceCollection.AddTransient<McpPendingChangeReviewService>();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
 

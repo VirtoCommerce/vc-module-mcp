@@ -91,7 +91,7 @@ public static class McpScopeSessionConfigurator
         }
     }
 
-    private static bool IsVisible(IMcpServerPrimitive primitive, McpScope scope)
+    public static bool IsVisible(IMcpServerPrimitive primitive, McpScope scope)
     {
         if (primitive.Metadata.OfType<McpApprovalToolAttribute>().Any() && scope?.SupportsApproval != true)
         {

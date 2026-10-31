@@ -25,6 +25,9 @@ public class McpAuditEntry : AuditableEntity, ICloneable
 
     public string PendingChangeId { get; set; }
 
+    // OpenTelemetry trace of the call, also returned to the agent as trace_id, to find the call in the traces and logs.
+    public string TraceId { get; set; }
+
     public virtual object Clone()
     {
         return MemberwiseClone();

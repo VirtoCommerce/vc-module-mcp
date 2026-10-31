@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,15 +17,46 @@ namespace VirtoCommerce.MCP.Web.Services;
 
 public class McpPendingChangeExecutor(
     McpAuditWriter auditWriter,
+    ILoggerFactory loggerFactory,
     ILogger<McpPendingChangeExecutor> logger)
 {
-    public virtual async Task<CallToolResult> ExecuteAsync(
+    public virtual Task<CallToolResult> ExecuteAsync(
         RequestContext<CallToolRequestParams> requestContext,
         McpServerTool tool,
         McpPendingChange change)
     {
-        var audit = auditWriter.Create(change.ScopeName, change.ToolName, requestContext.User);
+        return ExecuteAsync(requestContext.Server, requestContext.JsonRpcRequest.Id, requestContext.Services, requestContext.User, tool, change, clientId: null);
+    }
+
+    // Runs an approved change outside an MCP session, when it is approved in the back office. The tool gets a server that
+    // is not connected to any client, so progress and log notifications it sends go nowhere. The audit entry names the
+    // client that ran it, for example the back office.
+    public virtual async Task<CallToolResult> ExecuteAsync(
+        IServiceProvider services,
+        ClaimsPrincipal user,
+        McpServerTool tool,
+        McpPendingChange change,
+        string clientId)
+    {
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null, loggerFactory: loggerFactory);
+        await using var server = McpServer.Create(transport, new McpServerOptions(), loggerFactory, services);
+
+        return await ExecuteAsync(server, new RequestId(change.Id), services, user, tool, change, clientId);
+    }
+
+    protected virtual async Task<CallToolResult> ExecuteAsync(
+        McpServer server,
+        RequestId requestId,
+        IServiceProvider services,
+        ClaimsPrincipal user,
+        McpServerTool tool,
+        McpPendingChange change,
+        string clientId)
+    {
+        var audit = auditWriter.Create(change.ScopeName, change.ToolName, user);
+        audit.ClientId ??= clientId;
         audit.PendingChangeId = change.Id;
+        audit.TraceId = Activity.Current?.TraceId.ToString();
         var stopwatch = Stopwatch.StartNew();
 
         Dictionary<string, JsonElement> arguments = null;
@@ -34,15 +67,15 @@ public class McpPendingChangeExecutor(
             var parameters = new CallToolRequestParams { Name = change.ToolName, Arguments = arguments };
             var jsonRpcRequest = new JsonRpcRequest
             {
-                Id = requestContext.JsonRpcRequest.Id,
+                Id = requestId,
                 Method = RequestMethods.ToolsCall,
                 Params = JsonSerializer.SerializeToNode(parameters, McpJsonUtilities.DefaultOptions),
             };
 
-            var toolContext = new RequestContext<CallToolRequestParams>(requestContext.Server, jsonRpcRequest, parameters)
+            var toolContext = new RequestContext<CallToolRequestParams>(server, jsonRpcRequest, parameters)
             {
-                Services = requestContext.Services,
-                User = requestContext.User,
+                Services = services,
+                User = user,
                 MatchedPrimitive = tool,
             };
             toolContext.SetExecutedPendingChange(change.Id, change.RequestedByUserId);

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using VirtoCommerce.MCP.Core.Diagnostics;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.Platform.Core.Common;
@@ -81,6 +82,7 @@ public class McpTrackedJobHandler(
         {
             job.FinishedDate = timeProvider.GetUtcNow().UtcDateTime;
             await jobService.SaveChangesAsync([job]);
+            McpDiagnostics.RecordJob(job.Status);
         }
     }
 

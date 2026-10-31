@@ -2,7 +2,8 @@
   "permissions": {
     "mcp:access": "Ansluta AI-agenter till MCP-servern i Backoffice",
     "mcp:approve": "Granska, godkänna och avvisa ändringar som skickats in av MCP-verktyg",
-    "mcp:audit:read": "Läsa granskningsloggen för MCP-verktygsanrop"
+    "mcp:audit:read": "Läsa granskningsloggen för MCP-verktygsanrop",
+    "mcp:tools:manage": "Slå på och av MCP-verktyg för agenter"
   },
   "settings": {
     "MCP": {

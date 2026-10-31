@@ -2,7 +2,8 @@
   "permissions": {
     "mcp:access": "Koble KI-agenter til MCP-serveren i Backoffice",
     "mcp:approve": "Gjennomgå, godkjenne og avvise endringer sendt inn av MCP-verktøy",
-    "mcp:audit:read": "Lese revisjonsloggen for MCP-verktøykall"
+    "mcp:audit:read": "Lese revisjonsloggen for MCP-verktøykall",
+    "mcp:tools:manage": "Slå MCP-verktøy av og på for agenter"
   },
   "settings": {
     "MCP": {

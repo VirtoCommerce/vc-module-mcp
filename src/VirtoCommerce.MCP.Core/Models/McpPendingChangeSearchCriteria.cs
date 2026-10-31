@@ -7,6 +7,9 @@ public class McpPendingChangeSearchCriteria : SearchCriteriaBase
 {
     public string ScopeName { get; set; }
 
+    // Changes of any of these scopes, for a reviewer who approves in several scopes.
+    public IList<string> ScopeNames { get; set; }
+
     public string ToolName { get; set; }
 
     public IList<string> Statuses { get; set; }

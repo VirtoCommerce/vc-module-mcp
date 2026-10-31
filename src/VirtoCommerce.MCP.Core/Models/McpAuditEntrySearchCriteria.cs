@@ -16,6 +16,8 @@ public class McpAuditEntrySearchCriteria : SearchCriteriaBase
 
     public string PendingChangeId { get; set; }
 
+    public string TraceId { get; set; }
+
     public DateTime? StartDate { get; set; }
 
     public DateTime? EndDate { get; set; }

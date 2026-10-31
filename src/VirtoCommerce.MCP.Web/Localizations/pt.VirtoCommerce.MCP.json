@@ -2,7 +2,8 @@
   "permissions": {
     "mcp:access": "Conectar agentes de IA ao servidor MCP do Backoffice",
     "mcp:approve": "Revisar, aprovar e rejeitar alterações enviadas por ferramentas MCP",
-    "mcp:audit:read": "Ler o log de auditoria das chamadas de ferramentas MCP"
+    "mcp:audit:read": "Ler o log de auditoria das chamadas de ferramentas MCP",
+    "mcp:tools:manage": "Ativar e desativar ferramentas MCP para agentes"
   },
   "settings": {
     "MCP": {

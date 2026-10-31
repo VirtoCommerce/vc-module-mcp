@@ -30,6 +30,7 @@ public class McpDbContext : DbContextBase
         modelBuilder.Entity<McpAuditEntryEntity>().HasIndex(x => x.CreatedDate);
         modelBuilder.Entity<McpAuditEntryEntity>().HasIndex(x => new { x.UserId, x.CreatedDate });
         modelBuilder.Entity<McpAuditEntryEntity>().HasIndex(x => x.PendingChangeId);
+        modelBuilder.Entity<McpAuditEntryEntity>().HasIndex(x => x.TraceId);
 
         modelBuilder.Entity<McpJobEntity>().ToAuditableEntityTable("McpJob");
         modelBuilder.Entity<McpJobEntity>().HasIndex(x => x.CreatedDate);

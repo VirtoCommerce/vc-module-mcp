@@ -11,6 +11,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
+using VirtoCommerce.MCP.Core.Diagnostics;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -39,6 +40,8 @@ public class McpCallToolFilter(
     {
         var audit = auditWriter.Create(scope.Name, context.Params?.Name, context.User);
         context.Items[AuditedKey] = true;
+        using var activity = McpDiagnostics.StartToolCall(scope.Name, audit.ToolName, audit.ClientId);
+        audit.TraceId = Activity.Current?.TraceId.ToString();
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -74,6 +77,11 @@ public class McpCallToolFilter(
             audit.DurationMs = stopwatch.ElapsedMilliseconds;
             audit.PendingChangeId ??= context.GetAuditPendingChangeId();
             await WriteAuditAsync(audit, context);
+
+            if (audit.Outcome != null)
+            {
+                McpDiagnostics.RecordToolCall(activity, scope.Name, audit.ToolName, audit.Outcome, stopwatch.Elapsed.TotalSeconds, audit.PendingChangeId);
+            }
         }
     }
 
@@ -82,8 +90,10 @@ public class McpCallToolFilter(
         var audit = auditWriter.Create(scope.Name, context.Params?.Name, context.User);
         audit.Outcome = await IsForbiddenAsync(context) ? McpAuditOutcome.Forbidden : McpAuditOutcome.Error;
         audit.ErrorMessage = exception.Message;
+        audit.TraceId = Activity.Current?.TraceId.ToString();
 
         await WriteAuditAsync(audit, context);
+        McpDiagnostics.RecordToolCall(null, scope.Name, audit.ToolName, audit.Outcome, 0, null);
     }
 
     internal static bool IsAudited(MessageContext context)

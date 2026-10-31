@@ -206,62 +206,15 @@ public class McpApprovalTools(
             change_id = change.Id,
             tool_name = change.ToolName,
             status = change.IsExpired(timeProvider.GetUtcNow().UtcDateTime) ? McpPendingChangeStatus.Expired : change.Status,
-            arguments = ParseJson(change.GetMaskedArguments()),
-            preview = UnwrapToolResult(change.Preview),
+            arguments = McpToolResultJson.Parse(change.GetMaskedArguments()),
+            preview = McpToolResultJson.Unwrap(change.Preview),
             requested_by = change.RequestedByUserName,
             requested_at = change.CreatedDate,
             expires_at = change.ExpirationDate,
             reviewed_by = change.ReviewedByUserName,
             reviewed_at = change.ReviewedDate,
             review_comment = change.ReviewComment,
-            result = UnwrapToolResult(change.Result),
+            result = McpToolResultJson.Unwrap(change.Result),
         };
-    }
-
-    private static JsonNode ParseJson(string json)
-    {
-        return string.IsNullOrEmpty(json) ? null : JsonNode.Parse(json);
-    }
-
-    // The preview and the result are stored as the tool returned them, a CallToolResult. The approver reads what the tool
-    // said: its structured content, or the JSON or the text of its content, with is_error when the tool failed.
-    private static JsonNode UnwrapToolResult(string json)
-    {
-        var node = ParseJson(json);
-        if (node is not JsonObject result || !result.ContainsKey("content"))
-        {
-            return node;
-        }
-
-        var value = result["structuredContent"]?.DeepClone() ?? GetContentValue(result["content"] as JsonArray);
-        if (result["isError"]?.GetValueKind() != JsonValueKind.True)
-        {
-            return value;
-        }
-
-        return new JsonObject { ["is_error"] = true, ["message"] = value };
-    }
-
-    private static JsonNode GetContentValue(JsonArray content)
-    {
-        var texts = content?
-            .OfType<JsonObject>()
-            .Where(x => x["type"]?.GetValue<string>() == "text")
-            .Select(x => x["text"]?.GetValue<string>())
-            .ToList() ?? [];
-
-        if (texts.Count != 1)
-        {
-            return content?.DeepClone();
-        }
-
-        try
-        {
-            return JsonNode.Parse(texts[0]);
-        }
-        catch (JsonException)
-        {
-            return JsonValue.Create(texts[0]);
-        }
     }
 }

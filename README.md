@@ -26,6 +26,8 @@ To see the module at work:
 | Bulk jobs | `IMcpJobDispatcher` runs the work of a bulk tool as a platform background job; `get_job_status` and `cancel_job` follow and stop it | [Bulk tools and jobs](#bulk-tools-and-jobs) |
 | Kill switch | `MCP.Tools.Disabled` switches a tool, or a scope's tools, off without a release | [Switching tools off](#switching-tools-off) |
 | Guard rails for agents | Page size limit for list tools, tool errors the model can correct, trace ids | [Common execution pipeline](#common-execution-pipeline) |
+| Back office | Admin Shell screens: the approval queue with the diff of each change, the audit log, and tool switches per scope and per tool; desktop and mobile | [Back office](#back-office) |
+| Observability | OpenTelemetry traces, metrics and logs of every tool call, review and job, collected by the Virto Commerce OpenTelemetry module; the trace id is on the audit entry | [Observability](#observability) |
 
 Not in the module, by design: rate limits and CORS, which belong to the infrastructure in front of the platform (see [Rate limiting and CORS](#rate-limiting-and-cors)).
 
@@ -41,7 +43,9 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
     ```
 
 1. **Register the MCP client** once, as an administrator, with `POST /api/platform/oauthapps`: a public client with PKCE, the client's redirect URI and the permission `rsrc:https://admin.example.com/admin/mcp`.
-1. **Grant permissions**: `mcp:access` to everyone who connects an agent to the `admin` scope, `mcp:approve` to approvers, plus the permissions of the tools they use.
+1. **Grant permissions**: `mcp:access` to everyone who connects an agent to the `admin` scope, `mcp:approve` to approvers, `mcp:audit:read` and `mcp:tools:manage` to the administrators of the agents, plus the permissions of the tools they use.
+1. **Open the back office**: with the Admin Shell module installed, *Configuration → AI agents (MCP)* has the approval queue, the audit log and the tool switches (see [Back office](#back-office)).
+1. **Collect telemetry** (optional): add `VirtoCommerce.MCP` to `OpenTelemetry:Sources` and `OpenTelemetry:Meters` of the OpenTelemetry module (see [Observability](#observability)).
 1. **Install the modules with tools**, such as the [marketing sample](samples/VirtoCommerce.MCP.MarketingSample/README.md) for a demo.
 1. **Connect the agent**, for example Claude Code: `claude mcp add --transport http --client-id <client id> --callback-port <port> virto https://admin.example.com/admin/mcp`, then `/mcp` → **Authenticate**.
 
@@ -325,6 +329,49 @@ An administrator can switch tools off without a release with the `MCP.Tools.Disa
 
 A tool that is switched off disappears from `tools/list`, a call to it is refused with a message the agent can pass on to the user and audited as `Disabled`, and its pending changes cannot be approved until it is switched on again. The setting applies to the next request, with no restart.
 
+### Back office
+
+The module ships an [Admin Shell](https://github.com/VirtoCommerce/vc-module-admin-shell) plugin: three screens under *Configuration → AI agents (MCP)*, built with VC-Shell and laid out for desktop and phone (lists become cards, the diff becomes one card per field).
+
+| Screen | Who | What it does |
+| --- | --- | --- |
+| Agent approvals | approvers of a scope (`mcp:approve`, or the scope's `ApprovalPermission`) | The queue of changes agents asked to make, newest first, with a menu counter. A change opens with **what will change**: the object, a *now → after* diff and the warnings of its dry run, then the request and the arguments. **Approve** runs the tool right away as the reviewer, with the same rules as `approve_pending_change` (no self-approval, the reviewer must be allowed to run the tool, a switched-off tool cannot be approved); **Reject** records the reason. Once applied, the screen shows the tool's result as a diff. |
+| Agent audit log | `mcp:audit:read` | Every tool call with the user, the client (`back-office` for reviews made on the screen), the scope, the duration and the outcome, filtered by outcome and scope. The search box takes a tool name, or the trace id an agent reported to the user. A call links to the change it submitted or executed. |
+| Agent tools | `mcp:tools:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. A switch writes `MCP.Tools.Disabled` and applies to the next agent request. |
+
+The plugin is in `src/VirtoCommerce.MCP.Web/vue` (Vue 3, `@vc-shell/framework`, Yarn 4). `dotnet publish`, and so `vc-build Compress`, builds it into the package as `plugins/admin-shell`; `-p:SkipAdminShellPlugin=true` leaves it out. To work on it against a running platform:
+
+```bash
+cd src/VirtoCommerce.MCP.Web/vue
+yarn install
+yarn build    # then copy ../plugins/admin-shell to modules/VirtoCommerce.MCP/plugins/admin-shell; no restart needed
+```
+
+### Observability
+
+The audit log is the business record of who did what, kept in the database for the back office and for compliance. For operations, the module emits OpenTelemetry signals with the .NET APIs (`ActivitySource`, `Meter`, `ILogger`), so it needs no OpenTelemetry package; the [OpenTelemetry module](https://github.com/VirtoCommerce/vc-module-opentelemetry) exports them when the deployment opts in:
+
+```json
+"OpenTelemetry": {
+  "Enabled": true,
+  "Endpoint": "http://collector:4317",
+  "Sources": [ "VirtoCommerce.MCP", "Experimental.ModelContextProtocol" ],
+  "Meters": [ "VirtoCommerce.MCP" ]
+}
+```
+
+| Signal | Name | Tags |
+| --- | --- | --- |
+| Span per tool call | `MCP tool {tool}` | `vc.mcp.scope`, `gen_ai.tool.name`, `mcp.method.name`, `vc.mcp.client_id`, `vc.mcp.outcome`, `vc.mcp.pending_change_id`; status `Error` for `Failed` and `Error` |
+| Span per back-office review | `MCP review {decision} {tool}` | `vc.mcp.approval.decision`, `vc.mcp.review.channel`, plus the tool's span inside it |
+| Counter | `vc.mcp.tool.calls` | scope, tool, outcome |
+| Histogram, seconds | `vc.mcp.tool.duration` | scope, tool, outcome |
+| Counter | `vc.mcp.approval.decisions` | scope, tool, decision (`submitted`, `approved`, `applied`, `failed`, `rejected`, `expired`) |
+| Counter | `vc.mcp.jobs` | final status |
+| Log | `MCP tool {ToolName} called in scope {ScopeName} by {UserName}: {Outcome} in {DurationMs} ms` | with the trace and span ids |
+
+The trace id of a call is returned to the agent in `_meta.trace_id` and stored on its audit entry (`TraceId`), so a user's report, the audit log and the traces lead to each other. `Experimental.ModelContextProtocol` adds the SDK's own spans for the JSON-RPC requests.
+
 ## Configuration
 
 ### appsettings.json
@@ -392,13 +439,21 @@ For a local walkthrough with Claude Code and the sample tools in [`samples/Virto
 | `mcp:access` | Connect AI agents to the `admin` scope. |
 | `mcp:approve` | Review, approve and reject submitted changes in the `admin` scope. Other scopes name their own approver permission. |
 | `mcp:audit:read` | Read the tool call audit log. |
+| `mcp:tools:manage` | See the tools of every scope and switch them on and off. |
 
 ### Web API
 
 | Method | Route | Permission |
 | --- | --- | --- |
-| `POST` | `api/mcp/pending-changes/search` | `mcp:approve` |
+| `GET` | `api/mcp/scopes` | signed in; tells whether the user approves in each scope |
+| `GET` | `api/mcp/summary` | signed in; counts what the user may see |
+| `POST` | `api/mcp/pending-changes/search` | approver of the searched scopes |
+| `GET` | `api/mcp/pending-changes/{id}` | approver of the change's scope |
+| `POST` | `api/mcp/pending-changes/{id}/approve` | approver of the change's scope, allowed to run the tool |
+| `POST` | `api/mcp/pending-changes/{id}/reject` | approver of the change's scope |
 | `POST` | `api/mcp/audit/search` | `mcp:audit:read` |
+| `GET` | `api/mcp/tools` | `mcp:tools:manage` |
+| `PUT` | `api/mcp/tools/availability` | `mcp:tools:manage` |
 | `GET` | `/.well-known/oauth-protected-resource/{scope}/mcp` | anonymous |
 
 ## How to extend
@@ -435,6 +490,7 @@ The behaviour of this module can be replaced through DI:
 - `IMcpPageSizeResolver` decides how many rows a list tool returns.
 - `IMcpApprovalService` implements the pending change lifecycle; `McpApprovalService` has virtual methods for the self-approval and expiration rules, and `CanReviewAsync` for which changes an approver may review.
 - `IMcpCleanupService` decides what the cleanup deletes; `McpCleanupService.GetObsoleteAuditEntries` and `GetObsoletePendingChanges` are virtual.
+- `McpPendingChangeReviewService` reviews changes in the back office; its methods are virtual.
 - `McpCallToolFilter`, `McpPendingChangeExecutor`, `McpAuditWriter`, `McpToolAuthorizationService`, `McpToolAvailabilityService` and `McpTokenValidator` have virtual methods for the execution pipeline, the execution of an approved change, the audit entry, the tool permission check, the tools that are switched off and the token check.
 
 ## References

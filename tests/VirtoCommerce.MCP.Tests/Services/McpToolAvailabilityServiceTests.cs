@@ -38,4 +38,26 @@ public class McpToolAvailabilityServiceTests
         // Assert
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData("", "admin", "activate_promotion", false, "admin/activate_promotion")]
+    [InlineData("search_promotions", "admin", "activate_promotion", false, "search_promotions\nadmin/activate_promotion")]
+    [InlineData("activate_promotion", "admin", "activate_promotion", false, "activate_promotion")]
+    [InlineData("admin/*", "admin", "activate_promotion", false, "admin/*")]
+    [InlineData("admin/activate_promotion\nsearch_promotions", "admin", "activate_promotion", true, "search_promotions")]
+    [InlineData("Admin/Activate_Promotion", "admin", "activate_promotion", true, "")]
+    [InlineData("activate_promotion", "admin", "activate_promotion", true, "vendor/activate_promotion\nucp/activate_promotion")]
+    [InlineData("activate_promotion\nvendor/activate_promotion", "admin", "activate_promotion", true, "vendor/activate_promotion\nucp/activate_promotion")]
+    [InlineData("", "vendor", "*", false, "vendor/*")]
+    [InlineData("vendor/*", "vendor", "*", true, "")]
+    [InlineData("*", "vendor", "*", true, "admin/*\nucp/*")]
+    public void UpdateSetting_Should_SwitchTheToolInOneScope_And_KeepTheOtherScopes(string setting, string scopeName, string toolName, bool enabled, string expected)
+    {
+        // Act
+        var result = McpToolAvailabilityService.UpdateSetting(setting, scopeName, toolName, enabled, ["admin", "vendor", "ucp"]);
+
+        // Assert
+        Assert.Equal(expected, result);
+        Assert.Equal(!enabled, McpToolAvailabilityService.IsDisabled(McpToolAvailabilityService.ParseDisabledToolNames(result, scopeName), toolName));
+    }
 }

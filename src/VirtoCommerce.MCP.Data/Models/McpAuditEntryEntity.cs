@@ -40,6 +40,9 @@ public class McpAuditEntryEntity : AuditableEntity, IDataEntity<McpAuditEntryEnt
     [StringLength(DbContextBase.IdLength)]
     public string PendingChangeId { get; set; }
 
+    [StringLength(DbContextBase.Length64)]
+    public string TraceId { get; set; }
+
     public virtual McpAuditEntry ToModel(McpAuditEntry model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -60,6 +63,7 @@ public class McpAuditEntryEntity : AuditableEntity, IDataEntity<McpAuditEntryEnt
         model.ErrorMessage = ErrorMessage;
         model.DurationMs = DurationMs;
         model.PendingChangeId = PendingChangeId;
+        model.TraceId = TraceId;
 
         return model;
     }
@@ -86,6 +90,7 @@ public class McpAuditEntryEntity : AuditableEntity, IDataEntity<McpAuditEntryEnt
         ErrorMessage = model.ErrorMessage;
         DurationMs = model.DurationMs;
         PendingChangeId = model.PendingChangeId;
+        TraceId = model.TraceId;
 
         return this;
     }

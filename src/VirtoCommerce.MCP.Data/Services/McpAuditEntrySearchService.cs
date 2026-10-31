@@ -49,6 +49,11 @@ public class McpAuditEntrySearchService(
             query = query.Where(x => x.PendingChangeId == criteria.PendingChangeId);
         }
 
+        if (!string.IsNullOrEmpty(criteria.TraceId))
+        {
+            query = query.Where(x => x.TraceId == criteria.TraceId);
+        }
+
         if (criteria.StartDate != null)
         {
             query = query.Where(x => x.CreatedDate >= criteria.StartDate);

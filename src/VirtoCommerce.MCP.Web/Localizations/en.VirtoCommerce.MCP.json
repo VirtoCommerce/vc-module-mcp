@@ -2,7 +2,8 @@
   "permissions": {
     "mcp:access": "Connect AI agents to the Backoffice MCP server",
     "mcp:approve": "Review, approve and reject changes submitted by MCP tools",
-    "mcp:audit:read": "Read the MCP tool call audit log"
+    "mcp:audit:read": "Read the MCP tool call audit log",
+    "mcp:tools:manage": "Switch MCP tools on and off for agents"
   },
   "settings": {
     "MCP": {

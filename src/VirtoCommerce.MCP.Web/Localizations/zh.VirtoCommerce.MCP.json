@@ -2,7 +2,8 @@
   "permissions": {
     "mcp:access": "将 AI 代理连接到 Backoffice 的 MCP 服务器",
     "mcp:approve": "审核、批准和拒绝 MCP 工具提交的变更",
-    "mcp:audit:read": "查看 MCP 工具调用的审计日志"
+    "mcp:audit:read": "查看 MCP 工具调用的审计日志",
+    "mcp:tools:manage": "为代理启用和停用 MCP 工具"
   },
   "settings": {
     "MCP": {

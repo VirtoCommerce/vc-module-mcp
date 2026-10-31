@@ -19,11 +19,14 @@ public static class ModuleConstants
 
             public const string AuditRead = "mcp:audit:read";
 
+            public const string ToolsManage = "mcp:tools:manage";
+
             public static string[] AllPermissions { get; } =
             [
                 Access,
                 Approve,
                 AuditRead,
+                ToolsManage,
             ];
         }
     }

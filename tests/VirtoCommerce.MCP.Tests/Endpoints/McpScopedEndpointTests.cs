@@ -29,6 +29,7 @@ using Moq;
 using OpenIddict.Abstractions;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
+using VirtoCommerce.MCP.Core.Diagnostics;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -224,6 +225,29 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(McpAuditOutcome.Succeeded, entry.Outcome);
         Assert.Contains("\"value\":\"x\"", entry.Arguments);
         Assert.Equal(1, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_TraceTheCall_And_LinkTheAuditEntryToTheTrace()
+    {
+        // Arrange
+        var activities = new ConcurrentBag<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == McpDiagnostics.ActivitySourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        // Act
+        await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("write_tool", new { value = "x" }));
+
+        // Assert
+        var activity = Assert.Single(activities, x => (string)x.GetTagItem(McpDiagnostics.ToolTag) == "write_tool");
+        Assert.Equal(McpScopes.Admin, activity.GetTagItem(McpDiagnostics.ScopeTag));
+        Assert.Equal(McpAuditOutcome.Succeeded, activity.GetTagItem(McpDiagnostics.OutcomeTag));
+        Assert.Equal(activity.TraceId.ToString(), Assert.Single(_auditEntries).TraceId);
     }
 
     [Fact]

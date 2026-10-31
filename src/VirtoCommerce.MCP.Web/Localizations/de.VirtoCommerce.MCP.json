@@ -2,7 +2,8 @@
   "permissions": {
     "mcp:access": "KI-Agenten mit dem MCP-Server des Backoffice verbinden",
     "mcp:approve": "Von MCP-Tools eingereichte Änderungen prüfen, genehmigen und ablehnen",
-    "mcp:audit:read": "Das Audit-Protokoll der MCP-Tool-Aufrufe lesen"
+    "mcp:audit:read": "Das Audit-Protokoll der MCP-Tool-Aufrufe lesen",
+    "mcp:tools:manage": "MCP-Tools für Agenten ein- und ausschalten"
   },
   "settings": {
     "MCP": {
