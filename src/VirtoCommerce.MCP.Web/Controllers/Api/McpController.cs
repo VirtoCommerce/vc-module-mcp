@@ -93,7 +93,7 @@ public class McpController(
             summary.FailedCallCount = failed.TotalCount;
         }
 
-        if (await IsAuthorizedAsync(Permissions.ToolsManage))
+        if (await IsAuthorizedAsync(Permissions.Manage))
         {
             summary.DisabledToolCount = (await GetToolInfosAsync()).Count(x => !x.IsEnabled);
         }
@@ -188,7 +188,7 @@ public class McpController(
     /// The tools of every scope, with whether agents can use them now.
     /// </summary>
     [HttpGet("tools")]
-    [Authorize(Permissions.ToolsManage)]
+    [Authorize(Permissions.Manage)]
     public async Task<ActionResult<McpToolInfo[]>> GetTools()
     {
         return Ok(await GetToolInfosAsync());
@@ -198,7 +198,7 @@ public class McpController(
     /// Switch a tool, or with * every tool of a scope, on or off. Applies to the next request, with no restart.
     /// </summary>
     [HttpPut("tools/availability")]
-    [Authorize(Permissions.ToolsManage)]
+    [Authorize(Permissions.Manage)]
     public async Task<ActionResult<McpToolInfo[]>> SetToolAvailability([FromBody] McpToolAvailabilityRequest request)
     {
         if (string.IsNullOrEmpty(request?.ScopeName) || string.IsNullOrEmpty(request.ToolName) || scopeRegistry.GetScope(request.ScopeName) == null)

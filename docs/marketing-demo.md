@@ -53,8 +53,8 @@ You need a platform with the `VirtoCommerce.MCP` and `VirtoCommerce.Marketing` m
 
     | Role | Permissions | Who |
     | --- | --- | --- |
-    | `mcp-marketer` | `mcp:access`, `marketing:access`, `marketing:read`, `marketing:create`, `marketing:update`, `content:access`, `content:read`, `content:create`, `content:update` | Marketers |
-    | `mcp-approver` | `mcp:access`, `mcp:approve`, `mcp:audit:read`, `marketing:access`, `marketing:read`, `marketing:update`, `content:access`, `content:read`, `content:update` | The marketing lead who approves changes |
+    | `mcp-marketer` | `marketing:access`, `marketing:read`, `marketing:create`, `marketing:update`, `content:access`, `content:read`, `content:create`, `content:update` | Marketers |
+    | `mcp-approver` | `mcp:approve`, `mcp:audit:read`, `marketing:access`, `marketing:read`, `marketing:update`, `content:access`, `content:read`, `content:update` | The marketing lead who approves changes |
     | `mcp-marketer-fashion` | as `mcp-marketer`, with `marketing:read` limited to the **Fashion** store | A marketer of one store |
 
     Save a role with store-limited permissions twice: the platform keeps permission scopes only when a role is updated.

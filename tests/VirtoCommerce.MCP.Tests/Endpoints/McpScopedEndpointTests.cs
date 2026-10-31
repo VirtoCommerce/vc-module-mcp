@@ -58,10 +58,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string CategoryScope = "category";
     private const string CategoryApprovePermission = "category:approve";
     private const string ShopHost = "shop.example.test";
+    private const string GatedScope = "gated";
 
     private static readonly string[] _readerTools = ["canceled_tool", "read_tool", "static_tool"];
     private static readonly string[] _writerTools = ["canceled_tool", "conditional_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
-    private static readonly string[] _policyPermissions = [McpPermissions.Access, McpPermissions.Approve, WritePermission, CategoryApprovePermission];
+    private static readonly string[] _policyPermissions = [McpPermissions.Approve, WritePermission, CategoryApprovePermission];
 
     private readonly ConcurrentBag<McpAuditEntry> _auditEntries = [];
     private readonly ConcurrentBag<McpPendingChange> _submittedChanges = [];
@@ -115,7 +116,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var partner = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId = "c1", email = "a@b.c" }), $"/{PartnerScope}/mcp");
-        var admin = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("static_tool", new { }));
+        var admin = await CallAsync(Token(), ToolsCall("static_tool", new { }));
 
         // Assert
         Assert.Equal(PartnerScope, partner["result"]?["_meta"]?["filtered_in"]?.GetValue<string>());
@@ -143,7 +144,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task Request_Should_RejectAToken_When_ItWasIssuedForAnotherResource()
     {
         // Act
-        var response = await PostAsync(Token(audience: $"{Origin}/ucp/mcp", McpPermissions.Access), ToolsList());
+        var response = await PostAsync(Token(audience: $"{Origin}/ucp/mcp"), ToolsList());
 
         // Assert
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -154,17 +155,50 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task Request_Should_BeForbidden_When_TheUserLacksTheScopePermission()
     {
         // Act
-        var response = await PostAsync(Token(), ToolsList());
+        var response = await PostAsync(Token(audience: $"{Origin}/{GatedScope}/mcp"), ToolsList(), $"/{GatedScope}/mcp");
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
+    public async Task Request_Should_BeServed_When_TheUserHasTheScopePermission()
+    {
+        // Act
+        var response = await PostAsync(Token(audience: $"{Origin}/{GatedScope}/mcp", permissions: [WritePermission]), ToolsList(), $"/{GatedScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeServed_When_TheScopeRequiresOnlyASignedInUser()
+    {
+        // Act
+        var response = await PostAsync(Token(), ToolsList());
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_TreatAToolWithoutDeclaredAccessAsUnknown_When_TheScopeRequiresASignedInUser()
+    {
+        // Act
+        var list = await CallAsync(Token(permissions: [WritePermission, McpPermissions.Approve]), ToolsList());
+        var result = await CallAsync(Token(permissions: [WritePermission, McpPermissions.Approve]), ToolsCall("undeclared_tool", new { }));
+
+        // Assert
+        Assert.DoesNotContain("undeclared_tool", ToolNames(list));
+        Assert.True(IsError(result));
+        Assert.Equal(0, UndeclaredTools.Executions);
+    }
+
+    [Fact]
     public async Task Request_Should_BeForbidden_When_TheScopePermissionIsNotRegistered()
     {
         // Act
-        var response = await PostAsync(Token(audience: $"{Origin}/vendor/mcp", "vendor_portal:access"), ToolsList(), "/vendor/mcp");
+        var response = await PostAsync(Token(audience: $"{Origin}/vendor/mcp", permissions: ["vendor_portal:access"]), ToolsList(), "/vendor/mcp");
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -174,8 +208,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsList_Should_ShowOnlyTheScopeToolsTheUserMayCall()
     {
         // Act
-        var reader = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
-        var writer = await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsList());
+        var reader = await CallAsync(Token(), ToolsList());
+        var writer = await CallAsync(Token(permissions: [WritePermission]), ToolsList());
 
         // Assert
         Assert.Equal(_readerTools.Concat(AuthorTools).Order(), ToolNames(reader));
@@ -186,7 +220,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task Initialize_Should_ReportTheScopeServerInfo()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), Request("initialize", new
+        var result = await CallAsync(Token(), Request("initialize", new
         {
             protocolVersion = "2025-06-18",
             capabilities = new { },
@@ -202,7 +236,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_RefuseTheCall_When_TheUserLacksTheToolPermission()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("write_tool", new { }));
+        var result = await CallAsync(Token(), ToolsCall("write_tool", new { }));
 
         // Assert
         Assert.True(IsError(result));
@@ -213,7 +247,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_TreatAToolOfAnotherScopeAsUnknown()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("unscoped_tool", new { }));
+        var result = await CallAsync(Token(), ToolsCall("unscoped_tool", new { }));
 
         // Assert
         Assert.True(IsError(result));
@@ -223,7 +257,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_RefuseTheCall_When_ARequiredArgumentIsMissing()
     {
         // Act
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("write_tool", new { }));
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { }));
 
         // Assert
         Assert.True(IsError(result));
@@ -235,7 +269,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_CallAToolOfAStaticClass()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("static_tool", new { }));
+        var result = await CallAsync(Token(), ToolsCall("static_tool", new { }));
 
         // Assert
         Assert.False(IsError(result));
@@ -246,7 +280,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_AuditTheCall()
     {
         // Act
-        await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("write_tool", new { value = "x" }));
+        await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { value = "x" }));
 
         // Assert
         var entry = Assert.Single(_auditEntries);
@@ -272,7 +306,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         System.Diagnostics.ActivitySource.AddActivityListener(listener);
 
         // Act
-        await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("write_tool", new { value = "x" }));
+        await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { value = "x" }));
 
         // Assert
         var activity = Assert.Single(activities, x => (string)x.GetTagItem(McpDiagnostics.ToolTag) == "write_tool");
@@ -285,7 +319,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_SubmitTheChangeWithADryRunPreview_When_TheToolRequiresApproval()
     {
         // Act
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("submit_tool", new { promotionId = "p1" }));
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_tool", new { promotionId = "p1" }));
 
         // Assert
         Assert.False(IsError(result));
@@ -311,7 +345,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve, WritePermission]),
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -339,7 +373,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = "missing" }));
 
         // Assert
@@ -355,7 +389,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -369,7 +403,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -384,7 +418,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, WritePermission]),
+            Token(permissions: [WritePermission]),
             ToolsCall("submit_tool", new { promotionId = "p1", dryRun = true }));
 
         // Assert
@@ -400,7 +434,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_AuditARefusedCallAsForbidden()
     {
         // Act
-        await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("submit_tool", new { promotionId = "p1" }));
+        await CallAsync(Token(), ToolsCall("submit_tool", new { promotionId = "p1" }));
 
         // Assert
         var entry = Assert.Single(_auditEntries);
@@ -414,7 +448,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = CanceledChange.Id }));
 
         // Assert
@@ -429,8 +463,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsList_Should_HideTheApproveTool_When_TheUserLacksTheApprovePermission()
     {
         // Act
-        var approver = await CallAsync(Token(permissions: [McpPermissions.Access, McpPermissions.Approve]), ToolsList());
-        var operatorUser = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
+        var approver = await CallAsync(Token(permissions: [McpPermissions.Approve]), ToolsList());
+        var operatorUser = await CallAsync(Token(), ToolsList());
 
         // Assert
         Assert.Contains(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(approver));
@@ -442,7 +476,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task GetPendingChange_Should_ReturnTheRequestersOwnChange_When_TheRequesterIsNotAnApprover()
     {
         // Act
-        var result = await CallAsync(Token(user: StoredChange.RequestedByUserId, permissions: McpPermissions.Access),
+        var result = await CallAsync(Token(user: StoredChange.RequestedByUserId),
             ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -454,7 +488,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task GetPendingChange_Should_ReportAnotherUsersChangeAsNotFound_When_TheUserIsNotAnApprover()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access),
+        var result = await CallAsync(Token(),
             ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -466,7 +500,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task RejectPendingChange_Should_LetTheRequesterWithdrawTheirChange_Without_TheApprovePermission()
     {
         // Act
-        var result = await CallAsync(Token(user: StoredChange.RequestedByUserId, permissions: McpPermissions.Access),
+        var result = await CallAsync(Token(user: StoredChange.RequestedByUserId),
             ToolsCall(ModuleConstants.ToolNames.RejectPendingChange, new { change_id = StoredChange.Id, reason = "Not needed" }));
 
         // Assert
@@ -478,7 +512,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task RejectPendingChange_Should_Refuse_When_TheUserIsNeitherTheRequesterNorAnApprover()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access),
+        var result = await CallAsync(Token(),
             ToolsCall(ModuleConstants.ToolNames.RejectPendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -492,7 +526,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ListPendingChanges_Should_ListOnlyTheUsersOwnChanges_When_TheUserIsNotAnApprover(bool approver, string expectedRequester)
     {
         // Arrange
-        string[] permissions = approver ? [McpPermissions.Access, McpPermissions.Approve] : [McpPermissions.Access];
+        string[] permissions = approver ? [McpPermissions.Approve] : [];
 
         // Act
         var result = await CallAsync(Token(permissions: permissions), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
@@ -506,7 +540,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ListPendingChanges_Should_ReturnNoChanges_When_TheUserHasNoId()
     {
         // Act
-        var result = await CallAsync(Token(user: "", permissions: McpPermissions.Access), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+        var result = await CallAsync(Token(user: ""), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -518,7 +552,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsList_Should_NotExposeInjectedServices_InTheInputSchema()
     {
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
+        var result = await CallAsync(Token(), ToolsList());
 
         // Assert
         var tool = result["result"]!["tools"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == ModuleConstants.ToolNames.ListPendingChanges);
@@ -533,7 +567,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ListPendingChanges_Should_UseTheDefaultPageSize_And_CapIt(int? take, int expectedTake)
     {
         // Act
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access]), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { take }));
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { take }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -609,7 +643,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = PreviewChange.Id }));
 
         // Assert
@@ -626,7 +660,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         DisableTools("read_tool");
 
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
+        var result = await CallAsync(Token(), ToolsList());
 
         // Assert
         Assert.DoesNotContain("read_tool", ToolNames(result));
@@ -640,7 +674,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         DisableTools("admin/read_tool");
 
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("read_tool", new { }));
+        var result = await CallAsync(Token(), ToolsCall("read_tool", new { }));
 
         // Assert
         Assert.True(IsError(result));
@@ -658,7 +692,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve, WritePermission]),
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
@@ -699,7 +733,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_KeepTheSensitiveArgumentsOfASubmittedChange_Only_ForItsExecution()
     {
         // Act
-        await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("submit_contact_tool", new { contactId = "c1", email = "a@b.c" }));
+        await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_contact_tool", new { contactId = "c1", email = "a@b.c" }));
 
         // Assert
         var change = Assert.Single(_submittedChanges);
@@ -713,7 +747,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Act
         var result = await CallAsync(
-            Token(permissions: [McpPermissions.Access, McpPermissions.Approve]),
+            Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = SensitiveChange.Id }));
 
         // Assert
@@ -726,7 +760,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsList_Should_AnswerWithPlainJson_When_TheClientAcceptsJsonOnly()
     {
         // Act
-        var response = await PostAsync(Token(permissions: McpPermissions.Access), ToolsList(), acceptEventStream: false);
+        var response = await PostAsync(Token(), ToolsList(), acceptEventStream: false);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -739,7 +773,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_BeNotAcceptable_When_TheClientAcceptsJsonOnly()
     {
         // Act
-        var response = await PostAsync(Token(permissions: McpPermissions.Access), ToolsCall("read_tool", new { }), acceptEventStream: false);
+        var response = await PostAsync(Token(), ToolsCall("read_tool", new { }), acceptEventStream: false);
 
         // Assert
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
@@ -749,7 +783,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_ReturnAToolError_NotAProtocolError_When_ARequiredArgumentIsMissing()
     {
         // Act
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("write_tool", new { }));
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { }));
 
         // Assert
         Assert.Null(result["error"]);
@@ -885,7 +919,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         // Arrange
         AddJob("job-1", McpScopes.Admin, jobUserId, requestedByUserId);
-        string[] permissions = approver ? [McpPermissions.Access, McpPermissions.Approve] : [McpPermissions.Access];
+        string[] permissions = approver ? [McpPermissions.Approve] : [];
 
         // Act
         var result = await CallAsync(Token(permissions: permissions), ToolsCall(ModuleConstants.ToolNames.GetJobStatus, new { job_id = "job-1" }));
@@ -904,7 +938,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_HoldTheCallForApproval_Only_When_TheConditionSaysSo(int count, bool expectedPending)
     {
         // Act
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access, WritePermission]), ToolsCall("conditional_tool", new { count }));
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("conditional_tool", new { count }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -961,7 +995,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         _jobs["job-3"].Status = McpJobStatus.Queued;
 
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall(ModuleConstants.ToolNames.CancelJob, new { job_id = "job-3" }));
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.CancelJob, new { job_id = "job-3" }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
@@ -975,7 +1009,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         AddJob("job-4", McpScopes.Admin, "user-1");
 
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall(ModuleConstants.ToolNames.CancelJob, new { job_id = "job-4" }));
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.CancelJob, new { job_id = "job-4" }));
 
         // Assert
         Assert.True(IsError(result));
@@ -990,7 +1024,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         AddJob("job-2", McpScopes.Vendor, "user-1");
 
         // Act
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall(ModuleConstants.ToolNames.GetJobStatus, new { job_id = "job-2" }));
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.GetJobStatus, new { job_id = "job-2" }));
 
         // Assert
         Assert.True(IsError(result));
@@ -1003,8 +1037,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_RunAPermissionTool_With_TheGrantedStores(string permissionClaim, string expected)
     {
         // Act
-        var list = await CallAsync(Token(permissions: [McpPermissions.Access, permissionClaim]), ToolsList());
-        var result = await CallAsync(Token(permissions: [McpPermissions.Access, permissionClaim]), ToolsCall("scoped_tool", new { }));
+        var list = await CallAsync(Token(permissions: [permissionClaim]), ToolsList());
+        var result = await CallAsync(Token(permissions: [permissionClaim]), ToolsCall("scoped_tool", new { }));
 
         // Assert
         Assert.Contains("scoped_tool", ToolNames(list));
@@ -1016,8 +1050,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ToolsCall_Should_RefuseAPermissionTool_And_AuditItAsForbidden_When_ThePermissionIsNotGranted()
     {
         // Act
-        var list = await CallAsync(Token(permissions: McpPermissions.Access), ToolsList());
-        var result = await CallAsync(Token(permissions: McpPermissions.Access), ToolsCall("scoped_tool", new { }));
+        var list = await CallAsync(Token(), ToolsList());
+        var result = await CallAsync(Token(), ToolsCall("scoped_tool", new { }));
 
         // Assert
         Assert.DoesNotContain("scoped_tool", ToolNames(list));
@@ -1072,7 +1106,6 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             Title = "Test back office",
             Instructions = "Admin instructions",
             RequireAuthenticatedUser = true,
-            Permissions = [McpPermissions.Access],
             ApprovalPermission = McpPermissions.Approve,
         });
 
@@ -1097,6 +1130,14 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             RequireAuthenticatedUser = true,
         });
 
+        // A scope that only users with a permission may open.
+        services.AddMcpScope(new McpScope
+        {
+            Name = GatedScope,
+            RequireAuthenticatedUser = true,
+            Permissions = [WritePermission],
+        });
+
         services.AddMcpScope(new McpScope
         {
             Name = ShopScope,
@@ -1108,7 +1149,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddScopedMcpServer();
         services.AddMcpCallToolFilter<PartnerMarkerFilter>(PartnerScope);
         services.AddMcpTools<TestTools>();
-        services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools)]);
+        services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools), typeof(UndeclaredTools)]);
         services.AddMcpTools<CanceledTools>();
         services.AddMcpTools([typeof(ScopedPermissionTools)]);
         services.AddMcpTools<McpApprovalTools>();
@@ -1356,7 +1397,6 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     private static class McpPermissions
     {
-        public const string Access = ModuleConstants.Security.Permissions.Access;
         public const string Approve = ModuleConstants.Security.Permissions.Approve;
     }
 
@@ -1422,6 +1462,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         }
 
         [McpServerTool(Name = "read_tool"), Description("Reads.")]
+        [McpAnyUser]
         public static string ReadTool() => "read";
 
         [McpServerTool(Name = "write_tool"), Description("Writes.")]
@@ -1482,6 +1523,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     [McpServerToolType]
     [McpScope(McpScopes.Admin)]
+    [McpAnyUser]
     public sealed class CanceledTools
     {
         [McpServerTool(Name = "canceled_tool"), Description("Gets canceled while it runs.")]
@@ -1491,6 +1533,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     [McpServerToolType]
     [McpScope(McpScopes.Admin)]
+    [McpAnyUser]
     public static class StaticTools
     {
         [McpServerTool(Name = "static_tool"), Description("Declared in a static class, as SDK tools usually are.")]
@@ -1498,7 +1541,24 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [McpServerToolType]
+    [McpScope(McpScopes.Admin)]
+    public static class UndeclaredTools
+    {
+        private static int _executions;
+
+        public static int Executions => _executions;
+
+        [McpServerTool(Name = "undeclared_tool"), Description("Declares no permission, so a scope with signed-in users does not serve it.")]
+        public static string UndeclaredTool()
+        {
+            Interlocked.Increment(ref _executions);
+            return "undeclared";
+        }
+    }
+
+    [McpServerToolType]
     [McpScope(PartnerScope)]
+    [McpAnyUser]
     public static class PartnerTools
     {
         private static int _executions;
@@ -1521,6 +1581,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     [McpServerToolType]
     [McpScope(PartnerScope)]
+    [McpAnyUser]
     public static class SensitiveTools
     {
         [McpServerTool(Name = "sensitive_tool"), Description("Takes a sensitive argument.")]
@@ -1529,6 +1590,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     [McpServerToolType]
     [McpScope(PartnerScope)]
+    [McpAnyUser]
     public static class FailingTools
     {
         public const string UnexpectedMessage = "The database is not available.";
@@ -1548,6 +1610,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     [McpServerToolType]
     [McpScope(CategoryScope)]
+    [McpAnyUser]
     public static class CategoryTools
     {
         [McpServerTool(Name = "publish_category"), Description("Publishes a category after approval.")]

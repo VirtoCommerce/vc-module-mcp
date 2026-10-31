@@ -22,6 +22,7 @@ namespace VirtoCommerce.MCP.Web.Tools;
 
 [McpServerToolType]
 [McpScope(McpScopes.Admin, McpScopes.Vendor)]
+[McpAnyUser]
 public class McpJobTools(
     IMcpJobService jobService,
     McpToolAuthorizationService toolAuthorizationService,

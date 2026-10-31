@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-// The AI agents users connected to MCP endpoints: the user's own, or everyone's with mcp:agents:manage. Disconnecting
+// The AI agents users connected to MCP endpoints: the user's own, or everyone's with mcp:manage. Disconnecting
 // revokes the agent's sign-in, so its next request is refused.
 import { notification, useAsync, useDataTablePagination, usePopup, type IBladeToolbar } from "@vc-shell/framework";
 import { VcBlade, VcButton, VcColumn, VcDataTable } from "@vc-shell/framework/ui";

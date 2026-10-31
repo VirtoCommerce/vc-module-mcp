@@ -41,7 +41,7 @@ public class ModuleTests
         // Assert
         Assert.Equal([McpScopes.Admin, McpScopes.Vendor], scopes.Keys.Order().ToArray());
         Assert.True(scopes[McpScopes.Admin].RequireAuthenticatedUser);
-        Assert.Equal([ModuleConstants.Security.Permissions.Access], scopes[McpScopes.Admin].Permissions);
+        Assert.Empty(scopes[McpScopes.Admin].Permissions);
         Assert.Equal(["vendor_portal:access"], scopes[McpScopes.Vendor].Permissions);
     }
 

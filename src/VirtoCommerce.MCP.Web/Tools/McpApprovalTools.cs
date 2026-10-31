@@ -25,6 +25,7 @@ namespace VirtoCommerce.MCP.Web.Tools;
 [McpServerToolType]
 [McpScope(McpScopes.Any)]
 [McpApprovalTool]
+[McpAnyUser]
 public class McpApprovalTools(
     IMcpPendingChangeService pendingChangeService,
     IMcpPendingChangeSearchService pendingChangeSearchService,

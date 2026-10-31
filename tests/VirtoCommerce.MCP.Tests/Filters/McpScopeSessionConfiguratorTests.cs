@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
@@ -89,6 +90,39 @@ public class McpScopeSessionConfiguratorTests
         Assert.Contains(((string)null, "unscoped_tool"), duplicates);
     }
 
+    [Theory]
+    [InlineData(true, new[] { "anonymous_tool", "any_user_tool", "authorize_tool", "permission_tool" })]
+    [InlineData(false, new[] { "anonymous_tool", "any_user_tool", "authorize_tool", "permission_tool", "undeclared_tool" })]
+    public void ApplyScope_Should_ServeOnlyToolsThatDeclareWhoMayUseThem_When_TheScopeRequiresASignedInUser(bool requireAuthenticatedUser, string[] expected)
+    {
+        // Arrange
+        var (options, tools) = CreateOptions(typeof(AccessTools));
+
+        // Act
+        Apply(options, new McpScope { Name = McpScopes.Admin, RequireAuthenticatedUser = requireAuthenticatedUser }, tools);
+
+        // Assert
+        Assert.Equal(expected, ToolNames(options));
+    }
+
+    [Fact]
+    public void FindToolsWithoutDeclaredAccess_Should_ReportOnlyTheScopesThatRequireASignedInUser()
+    {
+        // Arrange
+        var tools = CreateTools(typeof(AccessTools));
+        McpScope[] scopes =
+        [
+            new() { Name = McpScopes.Admin, RequireAuthenticatedUser = true },
+            new() { Name = "shop", RequireAuthenticatedUser = false },
+        ];
+
+        // Act
+        var undeclared = McpScopeSessionConfigurator.FindToolsWithoutDeclaredAccess(tools, scopes);
+
+        // Assert
+        Assert.Equal([(McpScopes.Admin, "undeclared_tool")], undeclared);
+    }
+
     private static void Apply(McpServerOptions options, McpScope scope, IList<McpServerTool> tools)
     {
         McpScopeSessionConfigurator.ApplyScope(options, scope, tools, [], []);
@@ -166,6 +200,30 @@ public class McpScopeSessionConfiguratorTests
     {
         [McpServerTool(Name = "search"), Description("Another admin search.")]
         public static string Search() => "admin 2";
+    }
+
+    [McpServerToolType]
+    [McpScope(McpScopes.Admin, "shop")]
+    public static class AccessTools
+    {
+        [McpServerTool(Name = "authorize_tool"), Description("Needs a platform permission.")]
+        [Authorize("test:read")]
+        public static string AuthorizeTool() => "authorize";
+
+        [McpServerTool(Name = "permission_tool"), Description("Needs a permission that may be limited to stores.")]
+        [McpPermission("test:read")]
+        public static string PermissionTool() => "permission";
+
+        [McpServerTool(Name = "any_user_tool"), Description("Checks access itself.")]
+        [McpAnyUser]
+        public static string AnyUserTool() => "any user";
+
+        [McpServerTool(Name = "anonymous_tool"), Description("Open to everyone.")]
+        [AllowAnonymous]
+        public static string AnonymousTool() => "anonymous";
+
+        [McpServerTool(Name = "undeclared_tool"), Description("Forgot its permission.")]
+        public static string UndeclaredTool() => "undeclared";
     }
 
     [McpServerToolType]

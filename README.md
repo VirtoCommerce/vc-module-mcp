@@ -112,7 +112,7 @@ An administrator does this once per platform, and registers one OAuth client per
 
     The redirect URI is where the agent receives the result of the sign-in, not an address of the platform. The values are the ones the agents use at the time of writing; check the agent's documentation if a sign-in ends with an error page.
 
-1. **Grant permissions** with roles: `mcp:access` to everyone who connects an agent, plus the permissions of the tools each person uses (for example `marketing:read`, limited to their stores); `mcp:approve` to approvers; `mcp:audit:read`, `mcp:tools:manage` and `mcp:agents:manage` to the people who run the agents.
+1. **Grant permissions** with roles. Agents need no permission of their own: an agent sees the tools whose permissions the user has, the same ones that protect the back office and the REST API (for example `marketing:read`, limited to the user's stores). Give `mcp:approve` to the people who approve agents' changes, and `mcp:audit:read` and `mcp:manage` to the people who run the agents.
 1. **Hand out** the endpoint URL and the client id of each agent.
 
 > [!NOTE]
@@ -135,7 +135,7 @@ An administrator does this once per platform, and registers one OAuth client per
 | --- | --- |
 | The sign-in page does not open, or the sign-in ends with an error page | The redirect URI or the callback port of the client does not match its registration |
 | `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and in the client's `rsrc:` permission exactly, scheme and port included |
-| HTTP 403 | The user lacks the scope's permission, `mcp:access` for `/admin/mcp` |
+| HTTP 403 | The scope requires a permission the user lacks, for example `vendor_portal:access` for `/vendor/mcp` |
 | The agent sees fewer tools than expected | Tools the user has no permission for are not listed; a tool switched off in **Agent tools** is not listed either |
 | claude.ai or ChatGPT cannot reach the endpoint | They connect from their own cloud: the endpoint must be reachable from the internet over HTTPS |
 
@@ -149,8 +149,8 @@ Everything people do with agents is in the back office, under **Configuration â†
 | --- | --- | --- |
 | Agent approvals | approvers of a scope (`mcp:approve`, or the scope's `ApprovalPermission`) | The queue of changes agents asked to make, with a menu counter. A change opens with **what will change**: the object, a *now â†’ after* diff and the warnings of its dry run, then the request and the arguments. **Approve** runs the tool right away as the reviewer, with the same rules as `approve_pending_change`; **Reject** records the reason. Once applied, the screen shows the tool's result as a diff. |
 | Agent audit log | `mcp:audit:read` | Every tool call with the user, the client, the scope, the duration and the outcome, filtered by outcome and scope. The search box takes a tool name, or the trace id an agent reported. A call links to the change it submitted or executed. |
-| Agent tools | `mcp:tools:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
-| Connected agents | `mcp:access` to open the screen for one's own agents (the API needs only a sign-in), `mcp:agents:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
+| Agent tools | `mcp:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
+| Connected agents | every signed-in user for their own agents, `mcp:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
 
 ### Approve or reject a change
 
@@ -174,7 +174,7 @@ A tool that is switched off disappears from `tools/list`, a call to it is refuse
 
 ### Disconnect an agent
 
-In **Connected agents**, users see the agents they signed in to, with when they were last used. **Disconnect** ends an agent's sign-in at once: its next request is refused, and the user signs in again to reconnect. With `mcp:agents:manage`, an administrator sees and disconnects everyone's agents.
+In **Connected agents**, users see the agents they signed in to, with when they were last used. **Disconnect** ends an agent's sign-in at once: its next request is refused, and the user signs in again to reconnect. With `mcp:manage`, an administrator sees and disconnects everyone's agents.
 
 ## Configuration
 
@@ -224,11 +224,11 @@ Invalid origins stop the platform at startup: an origin is an absolute `http` or
 
 | Permission | Description |
 | --- | --- |
-| `mcp:access` | Connect AI agents to the `admin` scope |
 | `mcp:approve` | Review, approve and reject changes submitted in the `admin` scope. Other scopes name their own approver permission. |
 | `mcp:audit:read` | Read the tool call audit log |
-| `mcp:tools:manage` | See the tools of every scope and switch them on and off |
-| `mcp:agents:manage` | See and disconnect the AI agents of every user; without it, users see and disconnect their own |
+| `mcp:manage` | See the tools of every scope and switch them on and off; see and disconnect the AI agents of every user (without it, users see and disconnect their own) |
+
+There is no permission to connect an agent. A tool is protected by the permission of what it does, the same one the back office and the REST API check, so an agent can do what its user can do and no more. Who may connect at all is decided by the OAuth clients an administrator registers, the user's consent, **Disconnect** in **Connected agents** and the scope switch in **Agent tools**. A scope can still require a permission for every request (`McpScope.Permissions`), as `vendor` requires `vendor_portal:access`.
 
 ### Observability
 
@@ -284,7 +284,7 @@ The module does not limit the request rate and does not add CORS headers: both b
 
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
 1. The module resolves the scope from the path or the host, and checks that the token was issued for this endpoint and is still valid in the platform token store.
-1. The scope's permission and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
+1. The scope's permission, if it has one, and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
 1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
 1. A tool marked `[McpRequiresApproval]` does not run: if it has a `dryRun` (or `dry_run`) parameter it runs once as a dry run, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
@@ -299,7 +299,7 @@ A scope is an MCP surface for one kind of agent. Only the tools, prompts and res
 
 | Scope | Endpoint | Registered by | Who connects |
 | --- | --- | --- | --- |
-| `admin` | `/admin/mcp` | this module | back-office users with the `mcp:access` permission |
+| `admin` | `/admin/mcp` | this module | signed-in platform users; each sees the tools their permissions allow |
 | `vendor` | `/vendor/mcp` | this module | vendor portal users with the `vendor_portal:access` permission (defined by the marketplace vendor module; without it the scope refuses everyone) |
 | `ucp` | `/ucp/mcp` | the UCP module, from its VCST-6155 version ([Moving UCP to the MCP module](docs/ucp-migration.md)); switching the scope off turns all of UCP off; earlier UCP versions map the endpoint themselves (see [Coexistence](#coexistence-with-modules-that-host-their-own-mcp-endpoint)) | buyers and shopping agents |
 
@@ -392,6 +392,7 @@ serviceCollection.AddMcpTools<PromotionTools>();
 - `AddMcpPrompts<T>()` and `AddMcpResources<T>()` register prompts and resources the same way. A static class is registered with `AddMcpTools([typeof(MyTools)])`; every class of an assembly with `AddMcpToolsFromAssembly(assembly)`.
 - A primitive without `[McpScope]` is not exposed on any registered scope. Names must be unique within a scope; a duplicate is reported as an error in the log at startup.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission, before the tool runs.
+- In a scope that requires a signed-in user, every tool must say who may use it: `[Authorize]`, `[McpPermission]`, `[AllowAnonymous]`, or `[McpAnyUser]` for a tool every signed-in user may call because it checks access to its data itself. A tool that says none of them is not served in that scope, and a warning at startup names it, so a forgotten permission hides the tool instead of opening it to every user. Prompts and resources are not covered by this rule; protect them with `[Authorize]` when they return data.
 - Tool methods can take any registered service as a parameter, as well as `RequestContext<CallToolRequestParams>` and `CancellationToken`. `HttpContext.GetMcpScope()` returns the scope of the current request.
 - In a scope open to anonymous users (`RequireAuthenticatedUser = false`), mark a tool that needs a signed-in user with `[McpRequiresUser]`: it is listed to anonymous users, and an anonymous call to it is answered with an OAuth challenge, so the client signs the user in and repeats the call. A tool with `[Authorize]` or `[McpPermission]` is answered the same way, but is not listed to anonymous users.
 - A tool that returns a list takes an optional `take` and passes it through `IMcpPageSizeResolver.GetPageSizeAsync(take)`, so an agent cannot load thousands of rows into its context with one call.
@@ -564,14 +565,13 @@ A system integrator ships "Virto Commerce for Contoso" to a client's Claude orga
         Title = "Contoso Commerce",
         Instructions = "Contoso sells office supplies in three stores. Prices are in USD. Always run a dry run first...",
         RequireAuthenticatedUser = true,
-        Permissions = [ModuleConstants.Security.Permissions.Access],
         ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
     });
     ```
 
 1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
 1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [Set up the platform for agents](#set-up-the-platform-for-agents).
-1. **Roles.** Grant the client's people `mcp:access` and the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
+1. **Roles.** Grant the client's people the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
 1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
 1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
 1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
@@ -656,10 +656,10 @@ Base route: `api/mcp`
 | `POST` | `/pending-changes/{id}/approve` | approver of the change's scope, allowed to run the tool | Approve and run a change; body `{ "comment": "..." }` |
 | `POST` | `/pending-changes/{id}/reject` | approver of the change's scope | Reject a change; body `{ "comment": "..." }` |
 | `POST` | `/audit/search` | `mcp:audit:read` | Search the audit log, by tool, outcome, scope, user, trace id, pending change or date range |
-| `GET` | `/tools` | `mcp:tools:manage` | The tools of every scope and whether they are switched on |
-| `PUT` | `/tools/availability` | `mcp:tools:manage` | Switch a tool, or a scope with `*`, on or off; body `{ "scopeName", "toolName", "enabled" }` |
-| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:agents:manage` | Agents users signed in to, with their client, endpoint and activity |
-| `DELETE` | `/connected-agents/{id}` | the agent's user, or `mcp:agents:manage` | Disconnect an agent: revoke its authorization and tokens |
+| `GET` | `/tools` | `mcp:manage` | The tools of every scope and whether they are switched on |
+| `PUT` | `/tools/availability` | `mcp:manage` | Switch a tool, or a scope with `*`, on or off; body `{ "scopeName", "toolName", "enabled" }` |
+| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:manage` | Agents users signed in to, with their client, endpoint and activity |
+| `DELETE` | `/connected-agents/{id}` | the agent's user, or `mcp:manage` | Disconnect an agent: revoke its authorization and tokens |
 
 MCP endpoints: `POST /{scope}/mcp`, `POST /mcp` on a host of a scope, and the protected resource metadata at `GET /.well-known/oauth-protected-resource/{scope}/mcp` and, for a scope host, `GET /.well-known/oauth-protected-resource/mcp`. A `tools/list` request that accepts only `application/json`, as registry crawlers and health checks send, gets a plain JSON answer instead of HTTP 406.
 

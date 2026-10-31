@@ -1,10 +1,8 @@
 {
   "permissions": {
-    "mcp:access": "Łączenie agentów AI z serwerem MCP Backoffice",
     "mcp:approve": "Przeglądanie, zatwierdzanie i odrzucanie zmian zgłoszonych przez narzędzia MCP",
     "mcp:audit:read": "Odczyt dziennika audytu wywołań narzędzi MCP",
-    "mcp:tools:manage": "Włączanie i wyłączanie narzędzi MCP dla agentów",
-    "mcp:agents:manage": "Wyświetlanie i odłączanie agentów AI wszystkich użytkowników"
+    "mcp:manage": "Włączanie i wyłączanie narzędzi MCP dla agentów; wyświetlanie i odłączanie agentów AI wszystkich użytkowników"
   },
   "settings": {
     "MCP": {

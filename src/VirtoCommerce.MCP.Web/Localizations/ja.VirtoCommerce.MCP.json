@@ -1,10 +1,8 @@
 {
   "permissions": {
-    "mcp:access": "AI エージェントを Backoffice の MCP サーバーに接続する",
     "mcp:approve": "MCP ツールが送信した変更を確認、承認、却下する",
     "mcp:audit:read": "MCP ツール呼び出しの監査ログを閲覧する",
-    "mcp:tools:manage": "エージェント向けの MCP ツールをオン/オフにする",
-    "mcp:agents:manage": "すべてのユーザーの AI エージェントを表示して切断する"
+    "mcp:manage": "エージェント向けの MCP ツールをオン/オフにする；すべてのユーザーの AI エージェントを表示して切断する"
   },
   "settings": {
     "MCP": {

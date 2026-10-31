@@ -9,7 +9,7 @@ using Permissions = VirtoCommerce.MCP.Core.ModuleConstants.Security.Permissions;
 namespace VirtoCommerce.MCP.Web.Controllers.Api;
 
 // The AI agents users connected to MCP endpoints. A user sees and disconnects their own agents; a user with
-// mcp:agents:manage sees and disconnects everyone's.
+// mcp:manage sees and disconnects everyone's.
 [Authorize]
 [Route("api/mcp/connected-agents")]
 public class McpConnectedAgentsController(
@@ -18,7 +18,7 @@ public class McpConnectedAgentsController(
     : Controller
 {
     /// <summary>
-    /// Search connected agents: the current user's, or everyone's with mcp:agents:manage.
+    /// Search connected agents: the current user's, or everyone's with mcp:manage.
     /// </summary>
     [HttpPost("search")]
     public async Task<ActionResult<McpConnectedAgentSearchResult>> Search([FromBody] McpConnectedAgentSearchCriteria criteria)
@@ -51,6 +51,6 @@ public class McpConnectedAgentsController(
 
     private async Task<bool> CanManageAsync()
     {
-        return (await authorizationService.AuthorizeAsync(User, Permissions.AgentsManage)).Succeeded;
+        return (await authorizationService.AuthorizeAsync(User, Permissions.Manage)).Succeeded;
     }
 }

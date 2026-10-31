@@ -106,7 +106,6 @@ public class Module : IModule, IHasConfiguration
                 "is limited by that user's permissions. Some tools do not change data right away: they submit a change for approval " +
                 "and return its id. Such a change is applied only after another user with the mcp:approve permission approves it.",
             RequireAuthenticatedUser = true,
-            Permissions = [ModuleConstants.Security.Permissions.Access],
             ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
         });
 
@@ -164,6 +163,13 @@ public class Module : IModule, IHasConfiguration
         }
 
         var scopeRegistry = serviceProvider.GetRequiredService<IMcpScopeRegistry>();
+        foreach (var (scopeName, name) in McpScopeSessionConfigurator.FindToolsWithoutDeclaredAccess(serviceProvider.GetServices<McpServerTool>(), scopeRegistry.Scopes))
+        {
+            logger.LogWarning("MCP tool '{Name}' declares no permission, so scope '{ScopeName}', which requires a signed-in user, does not serve it. " +
+                "Mark it with [Authorize], [McpPermission], or [McpAnyUser] when every signed-in user may call it.",
+                name, scopeName);
+        }
+
         foreach (var (scopeName, name) in McpCallToolFilter.FindToolsThatCannotBeApproved(serviceProvider.GetServices<McpServerTool>(), scopeRegistry))
         {
             if (scopeName != null)

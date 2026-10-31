@@ -76,7 +76,7 @@ In the admin UI, open **Security → Roles** and add two roles:
 
 | Role | Permissions |
 | --- | --- |
-| `mcp-demo-operator` | `mcp:access`, `mcp:audit:read`, `platform:security:read`, `platform:security:update` |
+| `mcp-demo-operator` | `mcp:audit:read`, `platform:security:read`, `platform:security:update` |
 | `mcp-demo-approver` | the same, plus `mcp:approve` |
 
 Then open **Security → Users** and add four users with confirmed emails:

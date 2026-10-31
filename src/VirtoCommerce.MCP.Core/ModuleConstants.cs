@@ -13,23 +13,17 @@ public static class ModuleConstants
 
         public static class Permissions
         {
-            public const string Access = "mcp:access";
-
             public const string Approve = "mcp:approve";
 
             public const string AuditRead = "mcp:audit:read";
 
-            public const string ToolsManage = "mcp:tools:manage";
-
-            public const string AgentsManage = "mcp:agents:manage";
+            public const string Manage = "mcp:manage";
 
             public static string[] AllPermissions { get; } =
             [
-                Access,
                 Approve,
                 AuditRead,
-                ToolsManage,
-                AgentsManage,
+                Manage,
             ];
         }
     }

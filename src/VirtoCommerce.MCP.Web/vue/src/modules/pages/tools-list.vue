@@ -129,7 +129,7 @@ defineBlade({
   url: "/mcp-tools",
   name: "McpToolsList",
   isWorkspace: true,
-  permissions: ["mcp:tools:manage"],
+  permissions: ["mcp:manage"],
   menuItem: {
     title: "MCP.MENU.TOOLS",
     icon: "lucide-toggle-right",

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
@@ -98,8 +99,33 @@ public static class McpScopeSessionConfigurator
             return false;
         }
 
-        return scope != null
-            ? primitive.IsInMcpScope(scope.Name)
-            : primitive.GetMcpScopes().Count == 0;
+        if (scope == null)
+        {
+            return primitive.GetMcpScopes().Count == 0;
+        }
+
+        return primitive.IsInMcpScope(scope.Name) &&
+            (!scope.RequireAuthenticatedUser || primitive is not McpServerTool || DeclaresAccess(primitive));
+    }
+
+    // Who may use the tool: users with a permission ([Authorize], [McpPermission]), every signed-in user ([McpAnyUser])
+    // or anonymous users too ([AllowAnonymous]). A scope that requires a signed-in user serves only tools that say so.
+    public static bool DeclaresAccess(IMcpServerPrimitive primitive)
+    {
+        return primitive.Metadata.Any(x => x is IAuthorizeData or IAllowAnonymous or McpPermissionAttribute or McpAnyUserAttribute);
+    }
+
+    // The tools of scopes that require a signed-in user that declare no access, and are therefore not served there.
+    public static IList<(string ScopeName, string Name)> FindToolsWithoutDeclaredAccess(IEnumerable<McpServerTool> tools, IEnumerable<McpScope> scopes)
+    {
+        var toolList = tools.ToList();
+
+        return scopes
+            .Where(scope => scope.RequireAuthenticatedUser)
+            .SelectMany(scope => toolList
+                .Where(tool => !DeclaresAccess(tool) && tool.IsInMcpScope(scope.Name) &&
+                    (scope.SupportsApproval || !tool.Metadata.OfType<McpApprovalToolAttribute>().Any()))
+                .Select(tool => (ScopeName: scope.Name, Name: tool.ProtocolTool.Name)))
+            .ToList();
     }
 }
