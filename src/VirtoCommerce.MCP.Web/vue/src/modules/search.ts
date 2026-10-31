@@ -49,6 +49,13 @@ export function registerMcpSearch(app: App) {
     return tools.items;
   };
 
+  // a switched-off tool says so; otherwise a tool that needs approval
+  const toolBadge = (tool: McpToolInfo) => {
+    if (!tool.isEnabled) return search.translate("MCP.SEARCH.OFF");
+    if (tool.requiresApproval) return search.translate("MCP.TOOLS.KIND_APPROVAL");
+    return undefined;
+  };
+
   search.registerProvider({
     id: "mcp.tools",
     title: "MCP.SEARCH.TOOLS",
@@ -67,11 +74,7 @@ export function registerMcpSearch(app: App) {
           title: tool.title || humanize(tool.name),
           description: [tool.name, tool.scopeName].join(" · "),
           icon: "lucide-wrench",
-          badge: !tool.isEnabled
-            ? search.translate("MCP.SEARCH.OFF")
-            : tool.requiresApproval
-              ? search.translate("MCP.TOOLS.KIND_APPROVAL")
-              : undefined,
+          badge: toolBadge(tool),
           execute: () => openTools(tool.name),
         })),
       };

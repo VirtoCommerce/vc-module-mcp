@@ -1,0 +1,128 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "KI-Agenten (MCP)",
+      "APPROVALS": "Agent-Genehmigungen",
+      "AUDIT": "Agent-Audit-Protokoll",
+      "TOOLS": "Agent-Tools",
+      "AGENTS": "Verbundene Agenten",
+      "COUNTER": "{count} Änderungen warten auf Ihre Prüfung"
+    },
+    "APPROVALS": {
+      "TITLE": "Agent-Genehmigungen",
+      "EMPTY": "Nichts wartet auf Ihre Prüfung",
+      "EMPTY_HINT": "Wenn ein Agent eine Änderung anfordert, die genehmigt werden muss, erscheint sie hier.",
+      "NOT_APPROVER": "Sie prüfen Agent-Änderungen in keinem MCP-Scope."
+    },
+    "APPROVAL": {
+      "TITLE": "Änderung durch einen Agenten",
+      "WHAT_CHANGES": "Was sich ändert",
+      "WHAT_CHANGED": "Was sich geändert hat",
+      "NO_DIFF": "Das Tool hat seine Änderung nicht als Diff beschrieben. Prüfen Sie die Argumente und die Vorschau unten.",
+      "WARNINGS": "Vor der Genehmigung prüfen",
+      "NOTES": "Hinweise aus der Vorschau",
+      "REQUEST": "Anfrage",
+      "ARGUMENTS": "Argumente",
+      "PREVIEW": "Dry-Run-Vorschau",
+      "RESULT": "Ergebnis",
+      "COMMENT": "Kommentar",
+      "COMMENT_PLACEHOLDER": "Optionale Notiz für den Anfordernden und das Audit-Protokoll",
+      "REVIEW": "Prüfen",
+      "FIELD": "Feld",
+      "FROM": "Jetzt",
+      "TO": "Danach",
+      "OBJECT": "Objekt",
+      "APPROVED": "Genehmigt und angewendet",
+      "APPROVED_FAILED": "Genehmigt, aber das Tool ist fehlgeschlagen: siehe Ergebnis",
+      "REJECTED": "Abgelehnt"
+    },
+    "AUDIT": {
+      "TITLE": "Agent-Audit-Protokoll",
+      "DETAILS": "Tool-Aufruf",
+      "EMPTY": "Keine Tool-Aufrufe gefunden",
+      "SEARCH": "Tool-Name oder Trace-ID",
+      "TRACE_HINT": "Durchsuchen Sie die Traces und Logs Ihres Monitoring-Tools nach dieser ID.",
+      "OPEN_CHANGE": "Änderung öffnen"
+    },
+    "TOOLS": {
+      "TITLE": "Agent-Tools",
+      "EMPTY": "Keine Tools",
+      "SCOPES": "Scopes",
+      "SCOPE_ON": "Agenten können diesen Scope verwenden",
+      "SCOPE_OFF_HINT": "Alle Tools des Scopes sind ausgeschaltet",
+      "SWITCHED_ON": "{name} ist eingeschaltet",
+      "SWITCHED_OFF": "{name} ist ausgeschaltet",
+      "OFF_BY_SCOPE": "Aus: Der Scope ist ausgeschaltet",
+      "KIND_READ": "Lesen",
+      "KIND_WRITE": "Schreiben",
+      "KIND_APPROVAL": "Genehmigung",
+      "CONFIRM_OFF_SCOPE": "Alle Tools des Scopes {scope} ausschalten? Agenten erhalten einen Fehler, bis Sie ihn wieder einschalten."
+    },
+    "AGENTS": {
+      "TITLE": "Verbundene Agenten",
+      "EMPTY": "Kein Agent verbunden",
+      "EMPTY_HINT": "Ein Agent erscheint hier, sobald sich ein Benutzer bei ihm anmeldet, zum Beispiel über Claude.",
+      "DISCONNECT": "Trennen",
+      "CONFIRM_DISCONNECT": "{agent} für {user} trennen? Die nächste Anfrage wird abgelehnt, und der Benutzer meldet sich erneut an, um die Verbindung wiederherzustellen.",
+      "DISCONNECTED": "{agent} wurde getrennt",
+      "CONNECTED": "Verbunden",
+      "LAST_USED": "Zuletzt verwendet",
+      "SESSIONS": "Aktive Anmeldungen",
+      "ENDPOINT": "MCP-Endpunkt",
+      "SEARCH": "Agent, Client-ID oder Benutzer"
+    },
+    "FIELDS": {
+      "TOOL": "Tool",
+      "SCOPE": "Scope",
+      "STATUS": "Status",
+      "OUTCOME": "Ergebnis",
+      "REQUESTED_BY": "Angefordert von",
+      "REQUESTED_AT": "Angefordert",
+      "EXPIRES": "Läuft ab",
+      "REVIEWED_BY": "Geprüft von",
+      "REVIEWED_AT": "Geprüft",
+      "USER": "Benutzer",
+      "CLIENT": "Client",
+      "DATE": "Datum",
+      "DURATION": "Dauer, ms",
+      "ERROR": "Fehler",
+      "TRACE_ID": "Trace-ID",
+      "KIND": "Art",
+      "ENABLED": "Aktiviert",
+      "DESCRIPTION": "Beschreibung"
+    },
+    "STATUS": {
+      "Pending": "Ausstehend",
+      "Approved": "Genehmigt",
+      "Applied": "Angewendet",
+      "Failed": "Fehlgeschlagen",
+      "Rejected": "Abgelehnt",
+      "Expired": "Abgelaufen"
+    },
+    "OUTCOME": {
+      "Succeeded": "Erfolgreich",
+      "Failed": "Fehlgeschlagen",
+      "Error": "Fehler",
+      "Forbidden": "Verboten",
+      "PendingApproval": "Wartet auf Genehmigung",
+      "Disabled": "Ausgeschaltet"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Aktualisieren",
+      "APPROVE": "Genehmigen",
+      "REJECT": "Ablehnen",
+      "ENABLE_SCOPE": "Scope einschalten",
+      "DISABLE_SCOPE": "Scope ausschalten"
+    },
+    "ALERTS": {
+      "APPROVE": "Diese Änderung genehmigen? Das Tool wird sofort unter Ihrem Namen ausgeführt.",
+      "REJECT": "Diese Änderung ablehnen? Sie wird nie ausgeführt.",
+      "LOAD_FAILED": "Laden fehlgeschlagen: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Agent-Tools",
+      "AGENTS": "Verbundene Agenten",
+      "OFF": "Aus"
+    }
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "Agenci AI (MCP)",
+      "APPROVALS": "Zatwierdzenia agentów",
+      "AUDIT": "Dziennik audytu agentów",
+      "TOOLS": "Narzędzia agentów",
+      "AGENTS": "Połączeni agenci",
+      "COUNTER": "Zmian oczekujących na przegląd: {count}"
+    },
+    "APPROVALS": {
+      "TITLE": "Zatwierdzenia agentów",
+      "EMPTY": "Nic nie czeka na przegląd",
+      "EMPTY_HINT": "Gdy agent poprosi o zmianę wymagającą zatwierdzenia, pojawi się ona tutaj.",
+      "NOT_APPROVER": "Nie przeglądasz zmian agentów w żadnym zakresie MCP."
+    },
+    "APPROVAL": {
+      "TITLE": "Zmiana wprowadzona przez agenta",
+      "WHAT_CHANGES": "Co się zmieni",
+      "WHAT_CHANGED": "Co się zmieniło",
+      "NO_DIFF": "Narzędzie nie opisało swojej zmiany jako różnicy. Sprawdź jego argumenty i podgląd poniżej.",
+      "WARNINGS": "Sprawdź przed zatwierdzeniem",
+      "NOTES": "Uwagi z podglądu",
+      "REQUEST": "Żądanie",
+      "ARGUMENTS": "Argumenty",
+      "PREVIEW": "Podgląd próbnego uruchomienia",
+      "RESULT": "Wynik",
+      "COMMENT": "Komentarz",
+      "COMMENT_PLACEHOLDER": "Opcjonalna uwaga dla zgłaszającego i do dziennika audytu",
+      "REVIEW": "Przegląd",
+      "FIELD": "Pole",
+      "FROM": "Teraz",
+      "TO": "Po zmianie",
+      "OBJECT": "Obiekt",
+      "APPROVED": "Zatwierdzono i zastosowano",
+      "APPROVED_FAILED": "Zatwierdzono, ale narzędzie zakończyło się niepowodzeniem: zobacz wynik",
+      "REJECTED": "Odrzucono"
+    },
+    "AUDIT": {
+      "TITLE": "Dziennik audytu agentów",
+      "DETAILS": "Wywołanie narzędzia",
+      "EMPTY": "Nie znaleziono wywołań narzędzi",
+      "SEARCH": "Nazwa narzędzia lub identyfikator śledzenia",
+      "TRACE_HINT": "Wyszukaj ślady i logi w swoim narzędziu monitorującym według tego identyfikatora.",
+      "OPEN_CHANGE": "Otwórz zmianę"
+    },
+    "TOOLS": {
+      "TITLE": "Narzędzia agentów",
+      "EMPTY": "Brak narzędzi",
+      "SCOPES": "Zakresy",
+      "SCOPE_ON": "Agenci mogą korzystać z tego zakresu",
+      "SCOPE_OFF_HINT": "Wszystkie narzędzia zakresu są wyłączone",
+      "SWITCHED_ON": "{name} jest włączone",
+      "SWITCHED_OFF": "{name} jest wyłączone",
+      "OFF_BY_SCOPE": "Wyłączone: zakres jest wyłączony",
+      "KIND_READ": "Odczyt",
+      "KIND_WRITE": "Zapis",
+      "KIND_APPROVAL": "Zatwierdzenie",
+      "CONFIRM_OFF_SCOPE": "Wyłączyć wszystkie narzędzia zakresu {scope}? Agenci będą otrzymywać błąd, dopóki ich ponownie nie włączysz."
+    },
+    "AGENTS": {
+      "TITLE": "Połączeni agenci",
+      "EMPTY": "Żaden agent nie jest połączony",
+      "EMPTY_HINT": "Agent pojawi się tutaj, gdy użytkownik zaloguje się do niego, na przykład z Claude.",
+      "DISCONNECT": "Odłącz",
+      "CONFIRM_DISCONNECT": "Odłączyć agenta {agent} dla użytkownika {user}? Jego następne żądanie zostanie odrzucone, a użytkownik zaloguje się ponownie, aby go połączyć.",
+      "DISCONNECTED": "Agent {agent} został odłączony",
+      "CONNECTED": "Połączono",
+      "LAST_USED": "Ostatnio użyty",
+      "SESSIONS": "Aktywne logowania",
+      "ENDPOINT": "Punkt końcowy MCP",
+      "SEARCH": "Agent, identyfikator klienta lub użytkownik"
+    },
+    "FIELDS": {
+      "TOOL": "Narzędzie",
+      "SCOPE": "Zakres",
+      "STATUS": "Status",
+      "OUTCOME": "Wynik końcowy",
+      "REQUESTED_BY": "Zgłosił",
+      "REQUESTED_AT": "Zgłoszono",
+      "EXPIRES": "Wygasa",
+      "REVIEWED_BY": "Przejrzał",
+      "REVIEWED_AT": "Przejrzano",
+      "USER": "Użytkownik",
+      "CLIENT": "Klient",
+      "DATE": "Data",
+      "DURATION": "Czas trwania, ms",
+      "ERROR": "Błąd",
+      "TRACE_ID": "Identyfikator śledzenia",
+      "KIND": "Rodzaj",
+      "ENABLED": "Włączone",
+      "DESCRIPTION": "Opis"
+    },
+    "STATUS": {
+      "Pending": "Oczekuje",
+      "Approved": "Zatwierdzono",
+      "Applied": "Zastosowano",
+      "Failed": "Nieudane",
+      "Rejected": "Odrzucono",
+      "Expired": "Wygasło"
+    },
+    "OUTCOME": {
+      "Succeeded": "Udane",
+      "Failed": "Nieudane",
+      "Error": "Błąd",
+      "Forbidden": "Zabronione",
+      "PendingApproval": "Oczekuje na zatwierdzenie",
+      "Disabled": "Wyłączone"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Odśwież",
+      "APPROVE": "Zatwierdź",
+      "REJECT": "Odrzuć",
+      "ENABLE_SCOPE": "Włącz zakres",
+      "DISABLE_SCOPE": "Wyłącz zakres"
+    },
+    "ALERTS": {
+      "APPROVE": "Zatwierdzić tę zmianę? Narzędzie zostanie uruchomione od razu jako Ty.",
+      "REJECT": "Odrzucić tę zmianę? Nigdy nie zostanie wykonana.",
+      "LOAD_FAILED": "Nie udało się załadować: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Narzędzia agentów",
+      "AGENTS": "Połączeni agenci",
+      "OFF": "Wyłączone"
+    }
+  }
+}

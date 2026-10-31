@@ -1,0 +1,128 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "AI-agenter (MCP)",
+      "APPROVALS": "Godkjenninger fra agenter",
+      "AUDIT": "Revisjonslogg for agenter",
+      "TOOLS": "Agentverktøy",
+      "AGENTS": "Tilkoblede agenter",
+      "COUNTER": "{count} endringer venter på gjennomgang"
+    },
+    "APPROVALS": {
+      "TITLE": "Godkjenninger fra agenter",
+      "EMPTY": "Ingenting venter på gjennomgang",
+      "EMPTY_HINT": "Når en agent ber om en endring som krever godkjenning, vises den her.",
+      "NOT_APPROVER": "Du gjennomgår ikke agentendringer i noe MCP-omfang."
+    },
+    "APPROVAL": {
+      "TITLE": "Endring fra en agent",
+      "WHAT_CHANGES": "Hva som endres",
+      "WHAT_CHANGED": "Hva som ble endret",
+      "NO_DIFF": "Verktøyet beskrev ikke endringen sin som en differanse. Sjekk argumentene og forhåndsvisningen nedenfor.",
+      "WARNINGS": "Sjekk før godkjenning",
+      "NOTES": "Merknader fra forhåndsvisningen",
+      "REQUEST": "Forespørsel",
+      "ARGUMENTS": "Argumenter",
+      "PREVIEW": "Forhåndsvisning av prøvekjøring",
+      "RESULT": "Resultat",
+      "COMMENT": "Kommentar",
+      "COMMENT_PLACEHOLDER": "Valgfri merknad til den som ba om endringen, og til revisjonsloggen",
+      "REVIEW": "Gjennomgang",
+      "FIELD": "Felt",
+      "FROM": "Nå",
+      "TO": "Etter",
+      "OBJECT": "Objekt",
+      "APPROVED": "Godkjent og utført",
+      "APPROVED_FAILED": "Godkjent, men verktøyet feilet: se resultatet",
+      "REJECTED": "Avvist"
+    },
+    "AUDIT": {
+      "TITLE": "Revisjonslogg for agenter",
+      "DETAILS": "Verktøykall",
+      "EMPTY": "Fant ingen verktøykall",
+      "SEARCH": "Verktøynavn eller sporings-ID",
+      "TRACE_HINT": "Søk i sporene og loggene i overvåkingsverktøyet ditt med denne ID-en.",
+      "OPEN_CHANGE": "Åpne endringen"
+    },
+    "TOOLS": {
+      "TITLE": "Agentverktøy",
+      "EMPTY": "Ingen verktøy",
+      "SCOPES": "Omfang",
+      "SCOPE_ON": "Agenter kan bruke dette omfanget",
+      "SCOPE_OFF_HINT": "Alle verktøy i omfanget er slått av",
+      "SWITCHED_ON": "{name} er slått på",
+      "SWITCHED_OFF": "{name} er slått av",
+      "OFF_BY_SCOPE": "Av: omfanget er slått av",
+      "KIND_READ": "Lesing",
+      "KIND_WRITE": "Skriving",
+      "KIND_APPROVAL": "Godkjenning",
+      "CONFIRM_OFF_SCOPE": "Slå av alle verktøy i omfanget {scope}? Agenter får en feil til du slår det på igjen."
+    },
+    "AGENTS": {
+      "TITLE": "Tilkoblede agenter",
+      "EMPTY": "Ingen agent er tilkoblet",
+      "EMPTY_HINT": "En agent vises her når en bruker logger på den, for eksempel fra Claude.",
+      "DISCONNECT": "Koble fra",
+      "CONFIRM_DISCONNECT": "Koble fra {agent} for {user}? Neste forespørsel avvises, og brukeren logger på igjen for å koble til.",
+      "DISCONNECTED": "{agent} er koblet fra",
+      "CONNECTED": "Tilkoblet",
+      "LAST_USED": "Sist brukt",
+      "SESSIONS": "Aktive pålogginger",
+      "ENDPOINT": "MCP-endepunkt",
+      "SEARCH": "Agent, klient-ID eller bruker"
+    },
+    "FIELDS": {
+      "TOOL": "Verktøy",
+      "SCOPE": "Omfang",
+      "STATUS": "Status",
+      "OUTCOME": "Utfall",
+      "REQUESTED_BY": "Forespurt av",
+      "REQUESTED_AT": "Forespurt",
+      "EXPIRES": "Utløper",
+      "REVIEWED_BY": "Gjennomgått av",
+      "REVIEWED_AT": "Gjennomgått",
+      "USER": "Bruker",
+      "CLIENT": "Klient",
+      "DATE": "Dato",
+      "DURATION": "Varighet, ms",
+      "ERROR": "Feil",
+      "TRACE_ID": "Sporings-ID",
+      "KIND": "Type",
+      "ENABLED": "Aktivert",
+      "DESCRIPTION": "Beskrivelse"
+    },
+    "STATUS": {
+      "Pending": "Venter",
+      "Approved": "Godkjent",
+      "Applied": "Utført",
+      "Failed": "Mislyktes",
+      "Rejected": "Avvist",
+      "Expired": "Utløpt"
+    },
+    "OUTCOME": {
+      "Succeeded": "Vellykket",
+      "Failed": "Mislyktes",
+      "Error": "Feil",
+      "Forbidden": "Forbudt",
+      "PendingApproval": "Venter på godkjenning",
+      "Disabled": "Slått av"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Oppdater",
+      "APPROVE": "Godkjenn",
+      "REJECT": "Avvis",
+      "ENABLE_SCOPE": "Slå på omfang",
+      "DISABLE_SCOPE": "Slå av omfang"
+    },
+    "ALERTS": {
+      "APPROVE": "Godkjenne denne endringen? Verktøyet kjøres umiddelbart som deg.",
+      "REJECT": "Avvise denne endringen? Den kjøres aldri.",
+      "LOAD_FAILED": "Kunne ikke laste: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Agentverktøy",
+      "AGENTS": "Tilkoblede agenter",
+      "OFF": "Av"
+    }
+  }
+}

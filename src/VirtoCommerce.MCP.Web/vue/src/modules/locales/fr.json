@@ -1,0 +1,128 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "Agents IA (MCP)",
+      "APPROVALS": "Approbations des agents",
+      "AUDIT": "Journal d'audit des agents",
+      "TOOLS": "Outils des agents",
+      "AGENTS": "Agents connectés",
+      "COUNTER": "{count} modifications attendent votre examen"
+    },
+    "APPROVALS": {
+      "TITLE": "Approbations des agents",
+      "EMPTY": "Rien n'attend votre examen",
+      "EMPTY_HINT": "Lorsqu'un agent demande une modification qui doit être approuvée, elle apparaît ici.",
+      "NOT_APPROVER": "Vous n'examinez les modifications des agents dans aucune portée MCP."
+    },
+    "APPROVAL": {
+      "TITLE": "Modification par un agent",
+      "WHAT_CHANGES": "Ce qui va changer",
+      "WHAT_CHANGED": "Ce qui a changé",
+      "NO_DIFF": "L'outil n'a pas décrit sa modification sous forme de différences. Vérifiez ses arguments et l'aperçu ci-dessous.",
+      "WARNINGS": "À vérifier avant d'approuver",
+      "NOTES": "Remarques de l'aperçu",
+      "REQUEST": "Demande",
+      "ARGUMENTS": "Arguments",
+      "PREVIEW": "Aperçu en simulation",
+      "RESULT": "Résultat",
+      "COMMENT": "Commentaire",
+      "COMMENT_PLACEHOLDER": "Note facultative pour le demandeur et le journal d'audit",
+      "REVIEW": "Examiner",
+      "FIELD": "Champ",
+      "FROM": "Actuel",
+      "TO": "Après",
+      "OBJECT": "Objet",
+      "APPROVED": "Approuvée et appliquée",
+      "APPROVED_FAILED": "Approuvée, mais l'outil a échoué : voir le résultat",
+      "REJECTED": "Rejetée"
+    },
+    "AUDIT": {
+      "TITLE": "Journal d'audit des agents",
+      "DETAILS": "Appel d'outil",
+      "EMPTY": "Aucun appel d'outil trouvé",
+      "SEARCH": "Nom de l'outil ou ID de trace",
+      "TRACE_HINT": "Recherchez cet ID dans les traces et les journaux de votre outil de supervision.",
+      "OPEN_CHANGE": "Ouvrir la modification"
+    },
+    "TOOLS": {
+      "TITLE": "Outils des agents",
+      "EMPTY": "Aucun outil",
+      "SCOPES": "Portées",
+      "SCOPE_ON": "Les agents peuvent utiliser cette portée",
+      "SCOPE_OFF_HINT": "Tous les outils de la portée sont désactivés",
+      "SWITCHED_ON": "{name} est activé",
+      "SWITCHED_OFF": "{name} est désactivé",
+      "OFF_BY_SCOPE": "Désactivé : la portée est désactivée",
+      "KIND_READ": "Lecture",
+      "KIND_WRITE": "Écriture",
+      "KIND_APPROVAL": "Approbation",
+      "CONFIRM_OFF_SCOPE": "Désactiver tous les outils de la portée {scope} ? Les agents reçoivent une erreur tant que vous ne la réactivez pas."
+    },
+    "AGENTS": {
+      "TITLE": "Agents connectés",
+      "EMPTY": "Aucun agent connecté",
+      "EMPTY_HINT": "Un agent apparaît ici dès qu'un utilisateur s'y connecte, par exemple depuis Claude.",
+      "DISCONNECT": "Déconnecter",
+      "CONFIRM_DISCONNECT": "Déconnecter {agent} pour {user} ? Sa prochaine requête est refusée, et l'utilisateur se reconnecte pour rétablir la connexion.",
+      "DISCONNECTED": "{agent} est déconnecté",
+      "CONNECTED": "Connecté",
+      "LAST_USED": "Dernière utilisation",
+      "SESSIONS": "Connexions actives",
+      "ENDPOINT": "Point de terminaison MCP",
+      "SEARCH": "Agent, ID client ou utilisateur"
+    },
+    "FIELDS": {
+      "TOOL": "Outil",
+      "SCOPE": "Portée",
+      "STATUS": "Statut",
+      "OUTCOME": "Résultat",
+      "REQUESTED_BY": "Demandé par",
+      "REQUESTED_AT": "Demandé",
+      "EXPIRES": "Expire",
+      "REVIEWED_BY": "Examiné par",
+      "REVIEWED_AT": "Examiné",
+      "USER": "Utilisateur",
+      "CLIENT": "Client",
+      "DATE": "Date",
+      "DURATION": "Durée, ms",
+      "ERROR": "Erreur",
+      "TRACE_ID": "ID de trace",
+      "KIND": "Type",
+      "ENABLED": "Activé",
+      "DESCRIPTION": "Description"
+    },
+    "STATUS": {
+      "Pending": "En attente",
+      "Approved": "Approuvée",
+      "Applied": "Appliquée",
+      "Failed": "Échouée",
+      "Rejected": "Rejetée",
+      "Expired": "Expirée"
+    },
+    "OUTCOME": {
+      "Succeeded": "Réussi",
+      "Failed": "Échoué",
+      "Error": "Erreur",
+      "Forbidden": "Interdit",
+      "PendingApproval": "En attente d'approbation",
+      "Disabled": "Désactivé"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Actualiser",
+      "APPROVE": "Approuver",
+      "REJECT": "Rejeter",
+      "ENABLE_SCOPE": "Activer la portée",
+      "DISABLE_SCOPE": "Désactiver la portée"
+    },
+    "ALERTS": {
+      "APPROVE": "Approuver cette modification ? L'outil s'exécute immédiatement en votre nom.",
+      "REJECT": "Rejeter cette modification ? Elle ne s'exécutera jamais.",
+      "LOAD_FAILED": "Échec du chargement : {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Outils des agents",
+      "AGENTS": "Agents connectés",
+      "OFF": "Désactivé"
+    }
+  }
+}

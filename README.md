@@ -26,6 +26,9 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
 
 ## Connect an AI agent
 
+> [!NOTE]
+> The steps below are an example, with the back-office endpoint `/admin/mcp`. The MCP module is the infrastructure: on its own it serves only its approval and job tools. The tools an agent works with, and every scope besides `admin` and `vendor`, are registered by other modules. See [UCP](https://github.com/VirtoCommerce/vc-module-ucp) for a buyer scope, `/ucp/mcp`, with its shopping tools, and the [Samples](#samples) for back-office tools (marketing, content); to write your own, see the [Developer guide](#developer-guide).
+
 You need two things from your administrator: the **endpoint URL** and the agent's **client id**.
 
 ```text
@@ -80,7 +83,7 @@ Menu names in the agents change from release to release; if a step does not matc
 
 An administrator does this once per platform, and registers one OAuth client per kind of agent.
 
-1. **Install** `VirtoCommerce.MCP` (platform 3.1091.0 or later) and the modules that bring tools. Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
+1. **Install** `VirtoCommerce.MCP` (platform 3.1091.0 or later) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
 1. **Allow tokens for the endpoint** in `appsettings.json`:
 
     ```json

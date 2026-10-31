@@ -1,0 +1,128 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "AI-agenter (MCP)",
+      "APPROVALS": "Godkännanden från agenter",
+      "AUDIT": "Granskningslogg för agenter",
+      "TOOLS": "Agentverktyg",
+      "AGENTS": "Anslutna agenter",
+      "COUNTER": "{count} ändringar väntar på din granskning"
+    },
+    "APPROVALS": {
+      "TITLE": "Godkännanden från agenter",
+      "EMPTY": "Inget väntar på din granskning",
+      "EMPTY_HINT": "När en agent ber om en ändring som kräver godkännande visas den här.",
+      "NOT_APPROVER": "Du granskar inte agentändringar i något MCP-omfång."
+    },
+    "APPROVAL": {
+      "TITLE": "Ändring från en agent",
+      "WHAT_CHANGES": "Vad som ändras",
+      "WHAT_CHANGED": "Vad som ändrades",
+      "NO_DIFF": "Verktyget beskrev inte sin ändring som en differens. Kontrollera dess argument och förhandsgranskningen nedan.",
+      "WARNINGS": "Kontrollera före godkännande",
+      "NOTES": "Anteckningar från förhandsgranskningen",
+      "REQUEST": "Begäran",
+      "ARGUMENTS": "Argument",
+      "PREVIEW": "Förhandsgranskning av provkörning",
+      "RESULT": "Resultat",
+      "COMMENT": "Kommentar",
+      "COMMENT_PLACEHOLDER": "Valfri anteckning till den som begärde ändringen och till granskningsloggen",
+      "REVIEW": "Granskning",
+      "FIELD": "Fält",
+      "FROM": "Nu",
+      "TO": "Efter",
+      "OBJECT": "Objekt",
+      "APPROVED": "Godkänd och genomförd",
+      "APPROVED_FAILED": "Godkänd, men verktyget misslyckades: se resultatet",
+      "REJECTED": "Avvisad"
+    },
+    "AUDIT": {
+      "TITLE": "Granskningslogg för agenter",
+      "DETAILS": "Verktygsanrop",
+      "EMPTY": "Inga verktygsanrop hittades",
+      "SEARCH": "Verktygsnamn eller spårnings-id",
+      "TRACE_HINT": "Sök i spåren och loggarna i ditt övervakningsverktyg med detta id.",
+      "OPEN_CHANGE": "Öppna ändringen"
+    },
+    "TOOLS": {
+      "TITLE": "Agentverktyg",
+      "EMPTY": "Inga verktyg",
+      "SCOPES": "Omfång",
+      "SCOPE_ON": "Agenter kan använda detta omfång",
+      "SCOPE_OFF_HINT": "Alla verktyg i omfånget är avstängda",
+      "SWITCHED_ON": "{name} är påslaget",
+      "SWITCHED_OFF": "{name} är avstängt",
+      "OFF_BY_SCOPE": "Av: omfånget är avstängt",
+      "KIND_READ": "Läsning",
+      "KIND_WRITE": "Skrivning",
+      "KIND_APPROVAL": "Godkännande",
+      "CONFIRM_OFF_SCOPE": "Stänga av alla verktyg i omfånget {scope}? Agenter får ett fel tills du slår på det igen."
+    },
+    "AGENTS": {
+      "TITLE": "Anslutna agenter",
+      "EMPTY": "Ingen agent är ansluten",
+      "EMPTY_HINT": "En agent visas här när en användare loggar in i den, till exempel från Claude.",
+      "DISCONNECT": "Koppla från",
+      "CONFIRM_DISCONNECT": "Koppla från {agent} för {user}? Nästa begäran avvisas, och användaren loggar in igen för att ansluta.",
+      "DISCONNECTED": "{agent} är frånkopplad",
+      "CONNECTED": "Ansluten",
+      "LAST_USED": "Senast använd",
+      "SESSIONS": "Aktiva inloggningar",
+      "ENDPOINT": "MCP-slutpunkt",
+      "SEARCH": "Agent, klient-id eller användare"
+    },
+    "FIELDS": {
+      "TOOL": "Verktyg",
+      "SCOPE": "Omfång",
+      "STATUS": "Status",
+      "OUTCOME": "Utfall",
+      "REQUESTED_BY": "Begärd av",
+      "REQUESTED_AT": "Begärd",
+      "EXPIRES": "Upphör",
+      "REVIEWED_BY": "Granskad av",
+      "REVIEWED_AT": "Granskad",
+      "USER": "Användare",
+      "CLIENT": "Klient",
+      "DATE": "Datum",
+      "DURATION": "Varaktighet, ms",
+      "ERROR": "Fel",
+      "TRACE_ID": "Spårnings-id",
+      "KIND": "Typ",
+      "ENABLED": "Aktiverad",
+      "DESCRIPTION": "Beskrivning"
+    },
+    "STATUS": {
+      "Pending": "Väntar",
+      "Approved": "Godkänd",
+      "Applied": "Genomförd",
+      "Failed": "Misslyckades",
+      "Rejected": "Avvisad",
+      "Expired": "Utgången"
+    },
+    "OUTCOME": {
+      "Succeeded": "Lyckades",
+      "Failed": "Misslyckades",
+      "Error": "Fel",
+      "Forbidden": "Förbjuden",
+      "PendingApproval": "Väntar på godkännande",
+      "Disabled": "Avstängd"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Uppdatera",
+      "APPROVE": "Godkänn",
+      "REJECT": "Avvisa",
+      "ENABLE_SCOPE": "Slå på omfång",
+      "DISABLE_SCOPE": "Stäng av omfång"
+    },
+    "ALERTS": {
+      "APPROVE": "Godkänna den här ändringen? Verktyget körs direkt som du.",
+      "REJECT": "Avvisa den här ändringen? Den körs aldrig.",
+      "LOAD_FAILED": "Det gick inte att läsa in: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Agentverktyg",
+      "AGENTS": "Anslutna agenter",
+      "OFF": "Av"
+    }
+  }
+}

@@ -1,2 +1,16 @@
+import * as ar from "./ar.json";
+import * as de from "./de.json";
 import * as en from "./en.json";
-export { en };
+import * as es from "./es.json";
+import * as fi from "./fi.json";
+import * as fr from "./fr.json";
+import * as he from "./he.json";
+import * as it from "./it.json";
+import * as ja from "./ja.json";
+import * as no from "./no.json";
+import * as pl from "./pl.json";
+import * as pt from "./pt.json";
+import * as ru from "./ru.json";
+import * as sv from "./sv.json";
+import * as zh from "./zh.json";
+export { ar, de, en, es, fi, fr, he, it, ja, no, pl, pt, ru, sv, zh };

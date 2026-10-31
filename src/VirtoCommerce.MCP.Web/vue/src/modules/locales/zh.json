@@ -1,0 +1,128 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "AI 代理（MCP）",
+      "APPROVALS": "代理审批",
+      "AUDIT": "代理审计日志",
+      "TOOLS": "代理工具",
+      "AGENTS": "已连接的代理",
+      "COUNTER": "有 {count} 项变更等待您审核"
+    },
+    "APPROVALS": {
+      "TITLE": "代理审批",
+      "EMPTY": "没有待审核的内容",
+      "EMPTY_HINT": "当代理请求进行需要批准的变更时，会显示在这里。",
+      "NOT_APPROVER": "您在任何 MCP 范围内都无权审核代理的变更。"
+    },
+    "APPROVAL": {
+      "TITLE": "代理的变更",
+      "WHAT_CHANGES": "将要变更的内容",
+      "WHAT_CHANGED": "已变更的内容",
+      "NO_DIFF": "该工具未以差异形式描述其变更。请查看下方的参数和预览。",
+      "WARNINGS": "批准前请检查",
+      "NOTES": "预览说明",
+      "REQUEST": "请求",
+      "ARGUMENTS": "参数",
+      "PREVIEW": "试运行预览",
+      "RESULT": "结果",
+      "COMMENT": "备注",
+      "COMMENT_PLACEHOLDER": "给请求者和审计日志的可选备注",
+      "REVIEW": "审核",
+      "FIELD": "字段",
+      "FROM": "当前",
+      "TO": "变更后",
+      "OBJECT": "对象",
+      "APPROVED": "已批准并应用",
+      "APPROVED_FAILED": "已批准，但工具执行失败：请查看结果",
+      "REJECTED": "已拒绝"
+    },
+    "AUDIT": {
+      "TITLE": "代理审计日志",
+      "DETAILS": "工具调用",
+      "EMPTY": "未找到工具调用",
+      "SEARCH": "工具名称或跟踪 ID",
+      "TRACE_HINT": "请使用此 ID 在监控工具中搜索跟踪和日志。",
+      "OPEN_CHANGE": "打开变更"
+    },
+    "TOOLS": {
+      "TITLE": "代理工具",
+      "EMPTY": "没有工具",
+      "SCOPES": "范围",
+      "SCOPE_ON": "代理可以使用此范围",
+      "SCOPE_OFF_HINT": "此范围的所有工具均已停用",
+      "SWITCHED_ON": "{name} 已启用",
+      "SWITCHED_OFF": "{name} 已停用",
+      "OFF_BY_SCOPE": "已停用：范围已停用",
+      "KIND_READ": "读取",
+      "KIND_WRITE": "写入",
+      "KIND_APPROVAL": "审批",
+      "CONFIRM_OFF_SCOPE": "停用 {scope} 范围的所有工具？在您重新启用之前，代理会收到错误。"
+    },
+    "AGENTS": {
+      "TITLE": "已连接的代理",
+      "EMPTY": "没有已连接的代理",
+      "EMPTY_HINT": "用户登录某个代理后（例如通过 Claude），该代理会显示在这里。",
+      "DISCONNECT": "断开连接",
+      "CONFIRM_DISCONNECT": "为 {user} 断开 {agent}？其下一次请求将被拒绝，用户需重新登录才能重新连接。",
+      "DISCONNECTED": "{agent} 已断开连接",
+      "CONNECTED": "连接时间",
+      "LAST_USED": "上次使用",
+      "SESSIONS": "活动登录",
+      "ENDPOINT": "MCP 端点",
+      "SEARCH": "代理、客户端 ID 或用户"
+    },
+    "FIELDS": {
+      "TOOL": "工具",
+      "SCOPE": "范围",
+      "STATUS": "状态",
+      "OUTCOME": "执行结果",
+      "REQUESTED_BY": "请求者",
+      "REQUESTED_AT": "请求时间",
+      "EXPIRES": "过期时间",
+      "REVIEWED_BY": "审核者",
+      "REVIEWED_AT": "审核时间",
+      "USER": "用户",
+      "CLIENT": "客户端",
+      "DATE": "日期",
+      "DURATION": "耗时（毫秒）",
+      "ERROR": "错误",
+      "TRACE_ID": "跟踪 ID",
+      "KIND": "类型",
+      "ENABLED": "启用",
+      "DESCRIPTION": "描述"
+    },
+    "STATUS": {
+      "Pending": "待处理",
+      "Approved": "已批准",
+      "Applied": "已应用",
+      "Failed": "失败",
+      "Rejected": "已拒绝",
+      "Expired": "已过期"
+    },
+    "OUTCOME": {
+      "Succeeded": "成功",
+      "Failed": "失败",
+      "Error": "错误",
+      "Forbidden": "禁止",
+      "PendingApproval": "等待批准",
+      "Disabled": "已停用"
+    },
+    "TOOLBAR": {
+      "REFRESH": "刷新",
+      "APPROVE": "批准",
+      "REJECT": "拒绝",
+      "ENABLE_SCOPE": "启用范围",
+      "DISABLE_SCOPE": "停用范围"
+    },
+    "ALERTS": {
+      "APPROVE": "批准此变更？该工具将以您的身份立即运行。",
+      "REJECT": "拒绝此变更？它将永远不会运行。",
+      "LOAD_FAILED": "无法加载：{message}"
+    },
+    "SEARCH": {
+      "TOOLS": "代理工具",
+      "AGENTS": "已连接的代理",
+      "OFF": "已停用"
+    }
+  }
+}
