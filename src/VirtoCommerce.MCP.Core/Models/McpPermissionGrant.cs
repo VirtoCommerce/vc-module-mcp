@@ -14,17 +14,15 @@ public class McpPermissionGrant
 
     public IList<McpPermissionScope> Scopes { get; set; } = [];
 
-    // Values of the scopes of one type, for example the store ids of MarketingStoreSelectedScope. Null when the
-    // permission is global, which means every value is allowed.
+    // Values of the scopes of one type, for example the store ids of MarketingStoreSelectedScope. Check IsGlobal
+    // first: a global permission has no scopes and allows every value, so this list is empty for it.
     public IList<string> GetScopeValues(string scopeType)
     {
-        return IsGlobal
-            ? null
-            : Scopes
-                .Where(x => string.Equals(x.Type, scopeType, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(x.Scope))
-                .Select(x => x.Scope)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+        return Scopes
+            .Where(x => string.Equals(x.Type, scopeType, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(x.Scope))
+            .Select(x => x.Scope)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     // Whether a value of a scope type is allowed: always for a global permission.

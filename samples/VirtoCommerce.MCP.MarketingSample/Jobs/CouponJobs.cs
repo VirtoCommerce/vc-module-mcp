@@ -35,9 +35,12 @@ public class GenerateCouponsJob(MarketingDemoStore store) : IBackgroundJobHandle
 {
     private const int BatchSize = 500;
 
+    // Twice as many candidates as codes, so the codes that already exist can be skipped.
+    private const int CandidatesPerCode = 2;
+
     public static IEnumerable<string> GetCodes(MarketingDemoStore store, GenerateCouponsPayload payload)
     {
-        return MarketingDemoSeed.GenerateCodes(payload.Prefix, payload.Count * 2, payload.Seed)
+        return MarketingDemoSeed.GenerateCodes(payload.Prefix, payload.Count * CandidatesPerCode, payload.Seed)
             .Where(code => !store.CouponExists(code))
             .Take(payload.Count);
     }

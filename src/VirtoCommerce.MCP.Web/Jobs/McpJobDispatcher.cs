@@ -27,21 +27,21 @@ public class McpJobDispatcher(
     private const int MaxTitleLength = 512;
     private const int MaxMessageLength = 2048;
 
-    public virtual async Task<McpJobHandle> EnqueueAsync<THandler>(RequestContext<CallToolRequestParams> context, object payload, McpJobRequest request)
+    public virtual Task<McpJobHandle> EnqueueAsync<THandler>(RequestContext<CallToolRequestParams> context, object payload, McpJobRequest request)
         where THandler : class
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(payload);
-        request ??= new McpJobRequest();
 
-        var backgroundJob = serviceProvider.GetService<IBackgroundJob>()
-            ?? throw new McpException("Background jobs are not available on this platform, so the bulk operation cannot start. Tell the user to contact the administrator.");
+        return EnqueueJobAsync<THandler>(context, payload, request ?? new McpJobRequest());
+    }
 
-        var handlerPayloadType = GetHandlerPayloadType(typeof(THandler), payload.GetType());
-
+    // The MCP job that tracks the work of a tool call: who started it, from which tool and scope, and for which change.
+    protected virtual McpJob CreateJob(RequestContext<CallToolRequestParams> context, Type handlerType, McpJobRequest request)
+    {
         var job = AbstractTypeFactory<McpJob>.TryCreateInstance();
         job.ScopeName = httpContextAccessor.HttpContext?.GetMcpScope()?.Name ?? McpScopes.Admin;
-        job.ToolName = context.Params?.Name ?? typeof(THandler).Name;
+        job.ToolName = context.Params?.Name ?? handlerType.Name;
         job.Title = Truncate(request.Title ?? job.ToolName, MaxTitleLength);
         job.TotalCount = request.TotalCount;
         job.Preview = request.Preview != null ? System.Text.Json.JsonSerializer.Serialize(request.Preview, McpJsonUtilities.DefaultOptions) : null;
@@ -49,6 +49,19 @@ public class McpJobDispatcher(
         job.UserName = context.User?.GetUserName();
         job.PendingChangeId = context.GetExecutedPendingChangeId();
         job.RequestedByUserId = context.GetPendingChangeRequesterId();
+
+        return job;
+    }
+
+    private async Task<McpJobHandle> EnqueueJobAsync<THandler>(RequestContext<CallToolRequestParams> context, object payload, McpJobRequest request)
+        where THandler : class
+    {
+        var backgroundJob = serviceProvider.GetService<IBackgroundJob>()
+            ?? throw new McpException("Background jobs are not available on this platform, so the bulk operation cannot start. Tell the user to contact the administrator.");
+
+        var handlerPayloadType = GetHandlerPayloadType(typeof(THandler), payload.GetType());
+
+        var job = CreateJob(context, typeof(THandler), request);
         await jobService.SaveChangesAsync([job]);
 
         var trackedPayload = new McpTrackedJobPayload

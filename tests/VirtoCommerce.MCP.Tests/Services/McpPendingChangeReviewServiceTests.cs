@@ -84,7 +84,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
                 return rejected;
             });
 
-        SetSetting(ModuleConstants.Settings.Approval.AllowSelfApproval, false);
+        _approvalService.Setup(x => x.IsSelfApprovalAllowedAsync()).ReturnsAsync(false);
         _pendingChangeService
             .Setup(x => x.GetAsync(It.IsAny<IList<string>>(), It.IsAny<string>(), It.IsAny<bool>()))
             .ReturnsAsync((IList<string> ids, string _, bool _) => ids.Contains(ChangeId) ? [Change()] : []);
@@ -238,9 +238,6 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
             _toolAuthorizationService.Object,
             _toolAvailabilityService.Object,
             executor,
-            _auditWriter.Object,
-            SettingsManager.Object,
-            _httpContextAccessor,
             TimeProvider);
     }
 
@@ -267,9 +264,12 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
             new McpServerToolCreateOptions { Name = ToolName, Metadata = [new McpScopeAttribute(McpScopes.Admin)] });
     }
 
-    private static ServiceProvider Services(McpServerTool tool)
+    private ServiceProvider Services(McpServerTool tool)
     {
-        return new ServiceCollection().AddSingleton(tool).BuildServiceProvider();
+        return new ServiceCollection()
+            .AddSingleton(tool)
+            .AddSingleton<IHttpContextAccessor>(_httpContextAccessor)
+            .BuildServiceProvider();
     }
 
     private static ClaimsPrincipal User(string userId)

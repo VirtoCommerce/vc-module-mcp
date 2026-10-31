@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
@@ -31,6 +32,10 @@ public partial class PromotionActionTools(
 
     private const string ObjectType = "promotion";
 
+    private const int MaxSlugLength = 40;
+
+    private const string FlatArgumentsJustification = "Each parameter is an argument of the MCP tool's input schema; an agent fills flat arguments more reliably than a nested object.";
+
     private static readonly string[] _rewardTypes = [RewardType.PercentOff, RewardType.AmountOff, RewardType.FreeShipping, RewardType.BuyXGetY];
     private static readonly string[] _targetTypes = [TargetType.Category, TargetType.Cart, TargetType.Shipping];
 
@@ -38,6 +43,7 @@ public partial class PromotionActionTools(
     [McpPermission(MarketingSampleConstants.CreatePermission, MarketingSampleConstants.ReadPermission)]
     [Description("Create a promotion as a draft. A draft is not visible to customers, so it needs no approval; " +
         "schedule_promotion puts it live after approval. Returns the draft with policy warnings and conflicts to fix first.")]
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = FlatArgumentsJustification)]
     public object CreatePromotionDraft(
         RequestContext<CallToolRequestParams> context,
         [Description("Store id.")] string store_id,
@@ -60,7 +66,7 @@ public partial class PromotionActionTools(
         MarketingAccess.EnsureAllowed(context.User, MarketingSampleConstants.CreatePermission, demoStore.Id);
 
         ValidateOffer(reward_type, reward_value, target_type, categories);
-        if (customer_segment_id != null && store.GetSegment(customer_segment_id)?.StoreIds.Contains(demoStore.Id) != true)
+        if (customer_segment_id != null && !IsSegmentAvailable(customer_segment_id, demoStore.Id))
         {
             throw new McpException($"Segment '{customer_segment_id}' is not available in store '{demoStore.Id}'. Use list_customer_segments.");
         }
@@ -301,6 +307,7 @@ public partial class PromotionActionTools(
     [McpPermission(MarketingSampleConstants.UpdatePermission, MarketingSampleConstants.ReadPermission)]
     [Description("Change a draft or a paused promotion: name, discount, categories, conditions, dates or budget. Only the " +
         "arguments you pass change. A live or scheduled promotion is not edited in place: pause it first, so its history stays honest.")]
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = FlatArgumentsJustification)]
     public object UpdatePromotionDraft(
         RequestContext<CallToolRequestParams> context,
         [Description("Promotion id.")] string promotion_id,
@@ -322,12 +329,9 @@ public partial class PromotionActionTools(
             throw new McpException($"Promotion '{promotion.Id}' is {status}. Only a draft or a paused promotion can be edited; pause it first with pause_promotion.");
         }
 
-        if (reward_value != null || categories != null)
-        {
-            ValidateOffer(promotion.RewardType, reward_value ?? promotion.RewardValue, promotion.TargetType, categories ?? promotion.TargetCategories);
-        }
+        ValidateOfferUpdate(promotion, reward_value, categories);
 
-        if (!string.IsNullOrEmpty(customer_segment_id) && store.GetSegment(customer_segment_id)?.StoreIds.Contains(promotion.StoreId) != true)
+        if (!string.IsNullOrEmpty(customer_segment_id) && !IsSegmentAvailable(customer_segment_id, promotion.StoreId))
         {
             throw new McpException($"Segment '{customer_segment_id}' is not available in store '{promotion.StoreId}'. Use list_customer_segments.");
         }
@@ -336,17 +340,13 @@ public partial class PromotionActionTools(
         var end = end_date != null ? MarketingFormat.EndOfDay(end_date) : promotion.EndDate;
         ValidateDates(start, end);
 
+        var update = new DraftUpdate(name, reward_value, categories, min_order_amount, customer_segment_id, coupon_required, discount_budget);
+
         return Apply(context.User, promotion, "update_draft", dryRun, (preview, target) =>
         {
-            target.Name = name ?? target.Name;
-            target.RewardValue = reward_value ?? target.RewardValue;
-            target.TargetCategories = categories ?? target.TargetCategories;
-            target.MinOrderAmount = min_order_amount == null ? target.MinOrderAmount : min_order_amount > 0 ? min_order_amount : null;
-            target.CustomerSegmentId = customer_segment_id == null ? target.CustomerSegmentId : customer_segment_id.Length > 0 ? customer_segment_id : null;
-            target.CouponRequired = coupon_required ?? target.CouponRequired;
+            update.ApplyTo(target);
             target.StartDate = start;
             target.EndDate = end;
-            target.DiscountBudget = discount_budget ?? target.DiscountBudget;
 
             preview.AddChange("name", promotion.Name, target.Name)
                 .AddChange("offer", MarketingFormat.Offer(promotion), MarketingFormat.Offer(target))
@@ -372,24 +372,7 @@ public partial class PromotionActionTools(
         var targetStore = access.GetReadableStore(context.User, store_id ?? source.StoreId);
         MarketingAccess.EnsureAllowed(context.User, MarketingSampleConstants.CreatePermission, targetStore.Id);
 
-        var copy = source.Clone();
-        copy.Id = CreateId(name ?? source.Name);
-        copy.Name = name ?? source.Name;
-        copy.StoreId = targetStore.Id;
-        copy.State = PromotionState.Draft;
-        copy.StartDate = source.StartDate?.AddDays(shift_days);
-        copy.EndDate = source.EndDate?.AddDays(shift_days);
-        copy.PauseReason = null;
-        copy.PausedDate = null;
-        copy.Owner = context.User.GetUserName();
-        copy.CreatedDate = store.Now;
-        copy.LocalizedNames = source.LocalizedNames
-            .Where(x => targetStore.Languages.Contains(x.Key, StringComparer.OrdinalIgnoreCase))
-            .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-        if (copy.CustomerSegmentId != null && store.GetSegment(copy.CustomerSegmentId)?.StoreIds.Contains(targetStore.Id) != true)
-        {
-            copy.CustomerSegmentId = null;
-        }
+        var copy = CreateCopy(source, targetStore, shift_days, name ?? source.Name, context.User.GetUserName());
 
         var preview = new McpChangePreview
         {
@@ -403,18 +386,7 @@ public partial class PromotionActionTools(
             .AddChange("store", null, copy.StoreId)
             .AddChange("dates", null, $"{MarketingFormat.Date(copy.StartDate) ?? "not set"} to {MarketingFormat.Date(copy.EndDate) ?? "not set"}")
             .AddChange("status", null, PromotionStatus.Draft);
-        if (source.CustomerSegmentId != null && copy.CustomerSegmentId == null)
-        {
-            preview.AddWarning($"Segment {source.CustomerSegmentId} does not exist in store {copy.StoreId}; the copy is for every customer.");
-        }
-
-        AddUnknownCategoriesWarning(preview, copy);
-
-        if (targetStore.Currency != store.GetStore(source.StoreId)?.Currency && source.RewardType == RewardType.AmountOff)
-        {
-            preview.AddWarning($"The amount {source.RewardValue} was in {store.GetStore(source.StoreId)?.Currency}; the copy uses {targetStore.Currency}. Check it with update_promotion_draft.");
-        }
-
+        AddCloneWarnings(preview, source, copy, targetStore);
         AddWarnings(preview, copy);
 
         if (!dryRun)
@@ -438,7 +410,7 @@ public partial class PromotionActionTools(
         if (orders.Count > 0)
         {
             var assumption = promotion.CouponRequired ? ", if every order used a code (an upper bound)" : string.Empty;
-            preview.AddWarning($"Simulation on the last {SimulationDays} days of orders{assumption}: {100m * discounts.Count / orders.Count:0.#}% of orders qualify, " +
+            preview.AddWarning($"Simulation on the last {SimulationDays} days of orders{assumption}: {MarketingFormat.PercentScale * discounts.Count / orders.Count:0.#}% of orders qualify, " +
                 $"about {discounts.Sum():N0} {store.GetStore(promotion.StoreId)?.Currency} of discount per {SimulationDays} days.");
         }
     }
@@ -451,6 +423,49 @@ public partial class PromotionActionTools(
         {
             preview.AddWarning($"Store {promotion.StoreId} sells no {string.Join(", ", unknown)}; its categories are {string.Join(", ", known)}. Change them with update_promotion_draft.");
         }
+    }
+
+    // The segment and the currency may not carry over to another store.
+    private void AddCloneWarnings(McpChangePreview preview, DemoPromotion source, DemoPromotion copy, DemoStore targetStore)
+    {
+        if (source.CustomerSegmentId != null && copy.CustomerSegmentId == null)
+        {
+            preview.AddWarning($"Segment {source.CustomerSegmentId} does not exist in store {copy.StoreId}; the copy is for every customer.");
+        }
+
+        AddUnknownCategoriesWarning(preview, copy);
+
+        var sourceCurrency = store.GetStore(source.StoreId)?.Currency;
+        if (targetStore.Currency != sourceCurrency && source.RewardType == RewardType.AmountOff)
+        {
+            preview.AddWarning($"The amount {source.RewardValue} was in {sourceCurrency}; the copy uses {targetStore.Currency}. Check it with update_promotion_draft.");
+        }
+    }
+
+    private DemoPromotion CreateCopy(DemoPromotion source, DemoStore targetStore, int shiftDays, string name, string owner)
+    {
+        var copy = source.Clone();
+        copy.Id = CreateId(name);
+        copy.Name = name;
+        copy.StoreId = targetStore.Id;
+        copy.State = PromotionState.Draft;
+        copy.StartDate = source.StartDate?.AddDays(shiftDays);
+        copy.EndDate = source.EndDate?.AddDays(shiftDays);
+        copy.PauseReason = null;
+        copy.PausedDate = null;
+        copy.Owner = owner;
+        copy.CreatedDate = store.Now;
+        copy.LocalizedNames = source.LocalizedNames
+            .Where(x => targetStore.Languages.Contains(x.Key, StringComparer.OrdinalIgnoreCase))
+            .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+
+        // A segment of another store does not exist in the target store: the copy is for every customer.
+        if (copy.CustomerSegmentId != null && !IsSegmentAvailable(copy.CustomerSegmentId, targetStore.Id))
+        {
+            copy.CustomerSegmentId = null;
+        }
+
+        return copy;
     }
 
     // Builds the diff on a copy, checks the result against the policy and the other promotions, and saves it unless dryRun.
@@ -496,7 +511,16 @@ public partial class PromotionActionTools(
         }
     }
 
-    private static void ValidateOffer(string rewardType, decimal rewardValue, string targetType, IReadOnlyCollection<string> categories)
+    // Only the parts of the offer that the update changes are validated, combined with the current ones.
+    private static void ValidateOfferUpdate(DemoPromotion promotion, decimal? rewardValue, string[] categories)
+    {
+        if (rewardValue != null || categories != null)
+        {
+            ValidateOffer(promotion.RewardType, rewardValue ?? promotion.RewardValue, promotion.TargetType, categories ?? promotion.TargetCategories);
+        }
+    }
+
+    private static void ValidateOffer(string rewardType, decimal rewardValue, string targetType, string[] categories)
     {
         if (!_rewardTypes.Contains(rewardType))
         {
@@ -508,7 +532,7 @@ public partial class PromotionActionTools(
             throw new McpException($"target_type must be one of: {string.Join(", ", _targetTypes)}.");
         }
 
-        if (targetType == TargetType.Category && (categories == null || categories.Count == 0))
+        if (targetType == TargetType.Category && (categories == null || categories.Length == 0))
         {
             throw new McpException("A category promotion needs at least one category.");
         }
@@ -532,10 +556,15 @@ public partial class PromotionActionTools(
         }
     }
 
+    private bool IsSegmentAvailable(string segmentId, string storeId)
+    {
+        return store.GetSegment(segmentId)?.StoreIds.Contains(storeId) == true;
+    }
+
     private string CreateId(string name)
     {
         var slug = SlugRegex().Replace(name?.ToLowerInvariant() ?? "promotion", "-").Trim('-');
-        slug = slug.Length > 40 ? slug[..40].TrimEnd('-') : slug;
+        slug = slug.Length > MaxSlugLength ? slug[..MaxSlugLength].TrimEnd('-') : slug;
 
         var id = slug;
         for (var i = 2; store.GetPromotion(id) != null; i++)
@@ -548,4 +577,48 @@ public partial class PromotionActionTools(
 
     [GeneratedRegex("[^a-z0-9]+")]
     private static partial Regex SlugRegex();
+
+    // The arguments of update_promotion_draft: null keeps the current value.
+    private sealed record DraftUpdate(
+        string Name,
+        decimal? RewardValue,
+        string[] Categories,
+        decimal? MinOrderAmount,
+        string CustomerSegmentId,
+        bool? CouponRequired,
+        decimal? DiscountBudget)
+    {
+        public void ApplyTo(DemoPromotion target)
+        {
+            target.Name = Name ?? target.Name;
+            target.RewardValue = RewardValue ?? target.RewardValue;
+            target.TargetCategories = Categories ?? target.TargetCategories;
+            target.MinOrderAmount = UpdateMinOrderAmount(target.MinOrderAmount);
+            target.CustomerSegmentId = UpdateCustomerSegmentId(target.CustomerSegmentId);
+            target.CouponRequired = CouponRequired ?? target.CouponRequired;
+            target.DiscountBudget = DiscountBudget ?? target.DiscountBudget;
+        }
+
+        // 0 removes the minimum order amount.
+        private decimal? UpdateMinOrderAmount(decimal? current)
+        {
+            if (MinOrderAmount == null)
+            {
+                return current;
+            }
+
+            return MinOrderAmount > 0 ? MinOrderAmount : null;
+        }
+
+        // An empty string removes the customer segment.
+        private string UpdateCustomerSegmentId(string current)
+        {
+            if (CustomerSegmentId == null)
+            {
+                return current;
+            }
+
+            return CustomerSegmentId.Length > 0 ? CustomerSegmentId : null;
+        }
+    }
 }

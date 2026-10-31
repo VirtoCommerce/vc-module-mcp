@@ -130,6 +130,29 @@ public class McpCallToolFilter(
         McpAuditEntry audit,
         CancellationToken cancellationToken)
     {
+        var tool = context.MatchedPrimitive as McpServerTool;
+
+        var refusal = await RefuseAsync(context, scope, tool, audit);
+        if (refusal != null)
+        {
+            return refusal;
+        }
+
+        if (tool != null && tool.RequiresApproval(context.Params?.Arguments) && !IsDryRunCall(tool, context.Params?.Arguments))
+        {
+            return await HoldForApprovalAsync(next, context, scope, tool, audit, cancellationToken);
+        }
+
+        var result = await next(context, cancellationToken);
+        audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;
+        audit.ErrorMessage = result.IsError == true ? GetText(result) : null;
+
+        return result;
+    }
+
+    // The error result of a call that must not run, with its audit outcome, or null when the call may run.
+    private async Task<CallToolResult> RefuseAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpServerTool tool, McpAuditEntry audit)
+    {
         if (await toolAvailabilityService.IsDisabledAsync(scope.Name, audit.ToolName))
         {
             audit.Outcome = McpAuditOutcome.Disabled;
@@ -138,10 +161,7 @@ public class McpCallToolFilter(
             return CreateErrorResult(audit.ErrorMessage + " Tell the user that this action is not available now.");
         }
 
-        var tool = context.MatchedPrimitive as McpServerTool;
-
-        if (tool != null && (!toolAuthorizationService.HasMcpPermissions(context.User, tool) ||
-            (tool.Metadata.OfType<McpApproverOnlyAttribute>().Any() && !await toolAuthorizationService.IsApproverAsync(context.User, scope))))
+        if (tool != null && !await MayRunAsync(context, scope, tool))
         {
             audit.Outcome = McpAuditOutcome.Forbidden;
             audit.ErrorMessage = $"You are not allowed to run tool '{audit.ToolName}'.";
@@ -159,16 +179,18 @@ public class McpCallToolFilter(
             return CreateErrorResult(audit.ErrorMessage);
         }
 
-        if (tool != null && tool.RequiresApproval(context.Params?.Arguments) && !IsDryRunCall(tool, context.Params?.Arguments))
+        return null;
+    }
+
+    // [McpPermission] of the tool, and the scope's approver permission for [McpApproverOnly] tools
+    private async Task<bool> MayRunAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpServerTool tool)
+    {
+        if (!toolAuthorizationService.HasMcpPermissions(context.User, tool))
         {
-            return await HoldForApprovalAsync(next, context, scope, tool, audit, cancellationToken);
+            return false;
         }
 
-        var result = await next(context, cancellationToken);
-        audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;
-        audit.ErrorMessage = result.IsError == true ? GetText(result) : null;
-
-        return result;
+        return !tool.Metadata.OfType<McpApproverOnlyAttribute>().Any() || await toolAuthorizationService.IsApproverAsync(context.User, scope);
     }
 
     private async Task<CallToolResult> HoldForApprovalAsync(

@@ -26,12 +26,7 @@ public static class McpJsonRpcRequestReader
                 return (null, null);
             }
 
-            var toolName = root.TryGetProperty("params", out var parameters) && parameters.ValueKind == JsonValueKind.Object &&
-                parameters.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
-                ? name.GetString()
-                : null;
-
-            return (method.GetString(), toolName);
+            return (method.GetString(), GetToolName(root));
         }
         catch (JsonException)
         {
@@ -41,5 +36,16 @@ public static class McpJsonRpcRequestReader
         {
             request.Body.Position = 0;
         }
+    }
+
+    // params.name of a tools/call request
+    private static string GetToolName(JsonElement root)
+    {
+        if (!root.TryGetProperty("params", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return parameters.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : null;
     }
 }

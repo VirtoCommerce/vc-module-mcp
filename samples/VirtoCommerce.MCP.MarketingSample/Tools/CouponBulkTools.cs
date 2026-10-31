@@ -30,6 +30,14 @@ public partial class CouponBulkTools(
 {
     private const int PreviewSize = 10;
 
+    // A default prefix takes up to six letters or digits of the promotion id, and needs at least two.
+    private const int MinPrefixLength = 2;
+    private const int DefaultPrefixLength = 6;
+
+    // The usual multiplicative string hash: a stable seed for the codes, unlike string.GetHashCode.
+    private const int HashSeed = 17;
+    private const int HashMultiplier = 31;
+
     [McpServerTool(Name = "generate_coupons", ReadOnly = false, Destructive = false, Idempotent = false)]
     [McpRequiresApproval(Condition = nameof(NeedsApproval))]
     [Description("Generate unique single-use (or multi-use) coupon codes for a promotion that needs a code, for example for a newsletter, " +
@@ -152,14 +160,14 @@ public partial class CouponBulkTools(
     private static string GetDefaultPrefix(string promotionId)
     {
         var letters = NotAlphanumericRegex().Replace(promotionId.ToUpperInvariant(), string.Empty);
-        return letters.Length >= 2 ? letters[..Math.Min(6, letters.Length)] : "PROMO";
+        return letters.Length >= MinPrefixLength ? letters[..Math.Min(DefaultPrefixLength, letters.Length)] : "PROMO";
     }
 
     private static int StableHash(string value)
     {
         unchecked
         {
-            return value.Aggregate(17, (hash, c) => hash * 31 + c);
+            return value.Aggregate(HashSeed, (hash, c) => hash * HashMultiplier + c);
         }
     }
 

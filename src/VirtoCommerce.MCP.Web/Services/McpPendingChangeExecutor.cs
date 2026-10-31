@@ -6,6 +6,8 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -29,19 +31,38 @@ public class McpPendingChangeExecutor(
     }
 
     // Runs an approved change outside an MCP session, when it is approved in the back office. The tool gets a server that
-    // is not connected to any client, so progress and log notifications it sends go nowhere. The audit entry names the
-    // client that ran it, for example the back office.
+    // is not connected to any client, so progress and log notifications it sends go nowhere, and finds the change's
+    // scope on the request. The audit entry names the client that ran it, for example the back office.
     public virtual async Task<CallToolResult> ExecuteAsync(
         IServiceProvider services,
         ClaimsPrincipal user,
+        McpScope scope,
         McpServerTool tool,
         McpPendingChange change,
         string clientId)
     {
+        var httpContext = services.GetService<IHttpContextAccessor>()?.HttpContext;
+        if (httpContext != null && httpContext.GetMcpScope() == null)
+        {
+            httpContext.SetMcpScope(scope);
+        }
+
         await using var transport = new StreamServerTransport(Stream.Null, Stream.Null, loggerFactory: loggerFactory);
         await using var server = McpServer.Create(transport, new McpServerOptions(), loggerFactory, services);
 
         return await ExecuteAsync(server, new RequestId(change.Id), services, user, tool, change, clientId);
+    }
+
+    // The audit entry of a review decision made outside an agent's tool call, for example in the back office.
+    public virtual Task WriteReviewAuditAsync(ClaimsPrincipal user, McpPendingChange change, string toolName, string clientId)
+    {
+        var audit = auditWriter.Create(change.ScopeName, toolName, user);
+        audit.ClientId = clientId;
+        audit.PendingChangeId = change.Id;
+        audit.Outcome = McpAuditOutcome.Succeeded;
+        audit.TraceId = Activity.Current?.TraceId.ToString();
+
+        return auditWriter.WriteAsync(audit, arguments: null, sensitiveArgumentPaths: []);
     }
 
     protected virtual async Task<CallToolResult> ExecuteAsync(

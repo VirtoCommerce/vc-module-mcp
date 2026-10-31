@@ -20,6 +20,8 @@ public class PromotionAnalysisTools(
     MarketingAccess access,
     MarketingAnalytics analytics)
 {
+    private const int DailyResultsDays = 14;
+
     [McpServerTool(Name = "analyze_promotion_performance", ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("Results of promotions: redemptions, revenue, discount cost, revenue per unit of discount, order value against the " +
         "store average, budget used, the trend of the last 7 days against the 7 before, and a verdict (strong, ok, weak). " +
@@ -42,7 +44,7 @@ public class PromotionAnalysisTools(
                 promotion = MarketingFormat.Row(promotion, now),
                 results = ToResult(performance),
                 last_14_days = store.GetDailyStats(promotion)
-                    .TakeLast(14)
+                    .TakeLast(DailyResultsDays)
                     .Select(x => new { date = MarketingFormat.Date(x.Date), x.Redemptions, x.Revenue, discount_cost = x.DiscountCost }),
                 how_to_read = "revenue_per_discount: revenue for each unit of discount given; above 8 is strong, below 4 is weak. " +
                     "order_value_uplift_percent compares orders with the promotion to the store average.",

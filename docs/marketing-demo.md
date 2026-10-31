@@ -182,7 +182,7 @@ Sign in as `mcp-marketer-fashion`. The same tools are there, but every answer co
 
 ## The toolset
 
-The tools follow the five layers of [Designing a toolset](../README.md#designing-a-toolset).
+The tools follow the five layers of [Design a toolset](../README.md#design-a-toolset).
 
 | Layer | Tool | Approval |
 | --- | --- | --- |

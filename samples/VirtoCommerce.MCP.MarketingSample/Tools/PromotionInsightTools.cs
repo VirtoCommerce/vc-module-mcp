@@ -23,6 +23,9 @@ public class PromotionInsightTools(
 {
     private const int SampleSize = 3;
 
+    // Simulations and usage look at the orders of the last 30 days at most.
+    private const int MaxHistoryDays = 30;
+
     [McpServerTool(Name = "describe_promotion_rules", ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("What a promotion can say: the reward types, the targets, the conditions and how promotions combine. " +
         "Read it before creating or changing a promotion, so you only use rules that exist.")]
@@ -69,7 +72,7 @@ public class PromotionInsightTools(
         [Description("Number of past days of orders, 1 to 30. Defaults to 30.")] int last_days = 30)
     {
         var promotion = access.GetReadablePromotion(context.User, promotion_id);
-        last_days = Math.Clamp(last_days, 1, 30);
+        last_days = Math.Clamp(last_days, 1, MaxHistoryDays);
 
         var orders = store.GetOrders(promotion.StoreId, store.Now.Date.AddDays(-last_days));
         var results = orders.Select(order => (Order: order, Evaluation: evaluator.Evaluate(promotion, order, ignoreSchedule: true, assumeCoupon: true))).ToList();
@@ -85,10 +88,10 @@ public class PromotionInsightTools(
                 : "The promotion is evaluated as if it had been live on every day.",
             orders_evaluated = orders.Count,
             qualifying_orders = hits.Count,
-            hit_rate_percent = orders.Count > 0 ? Math.Round(100m * hits.Count / orders.Count, 1) : 0,
-            average_discount = hits.Count > 0 ? Math.Round(exposure / hits.Count, 2) : 0,
-            total_discount = Math.Round(exposure, 2),
-            discount_per_30_days = Math.Round(exposure / last_days * 30, 0),
+            hit_rate_percent = orders.Count > 0 ? Math.Round(MarketingFormat.PercentScale * hits.Count / orders.Count, 1) : 0,
+            average_discount = hits.Count > 0 ? Math.Round(exposure / hits.Count, MarketingFormat.MoneyDecimals) : 0,
+            total_discount = Math.Round(exposure, MarketingFormat.MoneyDecimals),
+            discount_per_30_days = Math.Round(exposure / last_days * MaxHistoryDays, 0),
             currency,
             biggest_discounts = hits
                 .OrderByDescending(x => x.Evaluation.Discount)
@@ -147,7 +150,7 @@ public class PromotionInsightTools(
         var promotion = access.GetReadablePromotion(context.User, promotion_id);
         var coupons = store.GetCoupons(promotion.Id);
         var codes = coupons.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var redemptions = store.GetOrders(promotion.StoreId, store.Now.Date.AddDays(-30))
+        var redemptions = store.GetOrders(promotion.StoreId, store.Now.Date.AddDays(-MaxHistoryDays))
             .Where(x => x.CouponCode != null && codes.Contains(x.CouponCode))
             .Where(x => evaluator.Evaluate(promotion, x).Qualifies)
             .ToList();
@@ -168,7 +171,7 @@ public class PromotionInsightTools(
                 .GroupBy(x => x.Date.Date)
                 .OrderBy(x => x.Key)
                 .Select(x => new { date = MarketingFormat.Date(x.Key), redemptions = x.Count() }),
-            rejected_code_attempts_last_30_days = store.GetOrders(promotion.StoreId, store.Now.Date.AddDays(-30))
+            rejected_code_attempts_last_30_days = store.GetOrders(promotion.StoreId, store.Now.Date.AddDays(-MaxHistoryDays))
                 .Count(x => x.CouponCode != null && codes.Contains(x.CouponCode) && !evaluator.Evaluate(promotion, x).Qualifies),
         };
     }

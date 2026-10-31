@@ -22,6 +22,9 @@ public class PromotionFinderTools(
     MarketingAccess access,
     MarketingAnalytics analytics)
 {
+    // Sort order of the statuses in search results; any other status (expired) comes last.
+    private static readonly string[] _statusOrder = [PromotionStatus.Active, PromotionStatus.Scheduled, PromotionStatus.Draft, PromotionStatus.Paused];
+
     [McpServerTool(Name = "search_promotions", ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("Find promotions by words in the name, store, status (draft, scheduled, active, paused, expired) or campaign. " +
         "Returns compact rows: id, name, store, status, offer, dates, campaign. Call get_promotion for the details of one.")]
@@ -74,6 +77,7 @@ public class PromotionFinderTools(
             .Select(other => analytics.GetConflict(promotion, other))
             .Where(x => x != null)
             .ToList();
+        var budgetUsedPercent = performance.BudgetUsedShare != null ? MarketingFormat.Percent(performance.BudgetUsedShare) : (decimal?)null;
 
         return new
         {
@@ -112,7 +116,7 @@ public class PromotionFinderTools(
                 redemptions = performance.Redemptions,
                 revenue = performance.Revenue,
                 discount_cost = performance.DiscountCost,
-                budget_used_percent = performance.BudgetUsedShare != null ? MarketingFormat.Percent(performance.BudgetUsedShare) : (decimal?)null,
+                budget_used_percent = budgetUsedPercent,
                 verdict = performance.Verdict,
             },
             policy_warnings = analytics.CheckPolicy(promotion),
@@ -179,13 +183,7 @@ public class PromotionFinderTools(
 
     private static int StatusOrder(string status)
     {
-        return status switch
-        {
-            PromotionStatus.Active => 0,
-            PromotionStatus.Scheduled => 1,
-            PromotionStatus.Draft => 2,
-            PromotionStatus.Paused => 3,
-            _ => 4,
-        };
+        var index = Array.IndexOf(_statusOrder, status);
+        return index < 0 ? _statusOrder.Length : index;
     }
 }

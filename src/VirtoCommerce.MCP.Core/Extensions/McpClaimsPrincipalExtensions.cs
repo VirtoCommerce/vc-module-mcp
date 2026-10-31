@@ -29,10 +29,10 @@ public static class McpClaimsPrincipalExtensions
 
         McpPermissionGrant grant = null;
 
-        foreach (var claim in user.FindAll(PlatformConstants.Security.Claims.PermissionClaimType))
+        foreach (var value in user.FindAll(PlatformConstants.Security.Claims.PermissionClaimType).Select(x => x.Value))
         {
-            var separatorIndex = claim.Value.IndexOf(ScopeSeparator);
-            var name = separatorIndex < 0 ? claim.Value : claim.Value[..separatorIndex];
+            var separatorIndex = value.IndexOf(ScopeSeparator);
+            var name = separatorIndex < 0 ? value : value[..separatorIndex];
             if (!string.Equals(name, permission, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -46,7 +46,7 @@ public static class McpClaimsPrincipalExtensions
                 continue;
             }
 
-            foreach (var scope in ParseScopes(claim.Value[(separatorIndex + 1)..]))
+            foreach (var scope in ParseScopes(value[(separatorIndex + 1)..]))
             {
                 grant.Scopes.Add(scope);
             }

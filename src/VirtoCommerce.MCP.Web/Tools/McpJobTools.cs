@@ -46,7 +46,7 @@ public class McpJobTools(
             status = job.Status,
             processed_count = job.ProcessedCount,
             total_count = job.TotalCount,
-            percent = job.TotalCount > 0 && job.ProcessedCount != null ? (int)Math.Min(100, job.ProcessedCount.Value * 100 / job.TotalCount.Value) : (int?)null,
+            percent = GetPercent(job),
             message = job.Message,
             started_by = job.UserName,
             created_at = job.CreatedDate,
@@ -118,5 +118,18 @@ public class McpJobTools(
         }
 
         return await toolAuthorizationService.IsApproverAsync(user, httpContextAccessor.HttpContext?.GetMcpScope());
+    }
+
+    // Share of the items processed, or null when the job does not know its total
+    private static int? GetPercent(McpJob job)
+    {
+        const int Whole = 100;
+
+        if (job.TotalCount is not > 0 || job.ProcessedCount == null)
+        {
+            return null;
+        }
+
+        return (int)Math.Min(Whole, job.ProcessedCount.Value * Whole / job.TotalCount.Value);
     }
 }

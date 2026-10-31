@@ -1,5 +1,5 @@
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using VirtoCommerce.MCP.MarketingSample.Data;
 
 namespace VirtoCommerce.MCP.MarketingSample.Services;
@@ -7,6 +7,11 @@ namespace VirtoCommerce.MCP.MarketingSample.Services;
 // Compact projections: the 5-8 fields a marketer decides on, never the full object.
 public static class MarketingFormat
 {
+    public const decimal PercentScale = 100m;
+    public const int MoneyDecimals = 2;
+
+    private const int PercentDecimals = 1;
+
     public static object Row(DemoPromotion promotion, DateTime now)
     {
         return new
@@ -24,28 +29,8 @@ public static class MarketingFormat
 
     public static string Offer(DemoPromotion promotion)
     {
-        var target = promotion.TargetType switch
-        {
-            TargetType.Category => string.Join(", ", promotion.TargetCategories),
-            TargetType.Shipping => "shipping",
-            _ => "the whole order",
-        };
-
-        var reward = promotion.RewardType switch
-        {
-            RewardType.PercentOff => $"{promotion.RewardValue:0.##}% off {target}",
-            RewardType.AmountOff => $"{promotion.RewardValue:0.##} off {target}",
-            RewardType.FreeShipping => "free shipping",
-            RewardType.BuyXGetY => $"buy-X-get-{promotion.RewardValue:0} free on {target}",
-            _ => promotion.RewardType,
-        };
-
-        var conditions = new[]
-        {
-            promotion.MinOrderAmount != null ? $"orders over {promotion.MinOrderAmount:0.##}" : null,
-            promotion.CustomerSegmentId != null ? $"segment {promotion.CustomerSegmentId}" : null,
-            promotion.CouponRequired ? "with a coupon code" : null,
-        }.Where(x => x != null).ToList();
+        var reward = Reward(promotion, Target(promotion));
+        var conditions = Conditions(promotion);
 
         return conditions.Count == 0 ? reward : $"{reward} ({string.Join(", ", conditions)})";
     }
@@ -75,17 +60,67 @@ public static class MarketingFormat
 
     public static decimal Percent(decimal? share)
     {
-        return Math.Round((share ?? 0m) * 100m, 1);
+        return Math.Round((share ?? 0m) * PercentScale, PercentDecimals);
     }
 
     // A date without a time means the whole day: an end date runs until the end of that day.
     public static DateTime? EndOfDay(DateTime? value)
     {
-        return value == null ? null : value.Value.TimeOfDay == TimeSpan.Zero ? DateTime.SpecifyKind(value.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+        if (value == null)
+        {
+            return null;
+        }
+
+        var end = value.Value.TimeOfDay == TimeSpan.Zero ? value.Value.Date.AddDays(1).AddTicks(-1) : value.Value;
+
+        return DateTime.SpecifyKind(end, DateTimeKind.Utc);
     }
 
     public static DateTime? StartOfDay(DateTime? value)
     {
         return value == null ? null : DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+    }
+
+    private static string Target(DemoPromotion promotion)
+    {
+        return promotion.TargetType switch
+        {
+            TargetType.Category => string.Join(", ", promotion.TargetCategories),
+            TargetType.Shipping => "shipping",
+            _ => "the whole order",
+        };
+    }
+
+    private static string Reward(DemoPromotion promotion, string target)
+    {
+        return promotion.RewardType switch
+        {
+            RewardType.PercentOff => $"{promotion.RewardValue:0.##}% off {target}",
+            RewardType.AmountOff => $"{promotion.RewardValue:0.##} off {target}",
+            RewardType.FreeShipping => "free shipping",
+            RewardType.BuyXGetY => $"buy-X-get-{promotion.RewardValue:0} free on {target}",
+            _ => promotion.RewardType,
+        };
+    }
+
+    private static List<string> Conditions(DemoPromotion promotion)
+    {
+        var conditions = new List<string>();
+        if (promotion.MinOrderAmount != null)
+        {
+            conditions.Add($"orders over {promotion.MinOrderAmount:0.##}");
+        }
+
+        if (promotion.CustomerSegmentId != null)
+        {
+            conditions.Add($"segment {promotion.CustomerSegmentId}");
+        }
+
+        if (promotion.CouponRequired)
+        {
+            conditions.Add("with a coupon code");
+        }
+
+        return conditions;
     }
 }

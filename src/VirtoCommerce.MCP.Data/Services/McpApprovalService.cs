@@ -58,8 +58,7 @@ public class McpApprovalService(
     {
         var change = await GetPendingAsync(changeId);
 
-        var allowSelfApproval = await settingsManager.GetValueAsync<bool>(ModuleConstants.Settings.Approval.AllowSelfApproval);
-        if (!allowSelfApproval && !string.IsNullOrEmpty(change.RequestedByUserId) &&
+        if (!await IsSelfApprovalAllowedAsync() && !string.IsNullOrEmpty(change.RequestedByUserId) &&
             string.Equals(change.RequestedByUserId, reviewerUserId, StringComparison.OrdinalIgnoreCase))
         {
             throw new McpException($"Pending change '{changeId}' was requested by you and must be approved by another user.");
@@ -103,6 +102,11 @@ public class McpApprovalService(
             x.ReviewedDate = timeProvider.GetUtcNow().UtcDateTime;
             x.ReviewComment = reason;
         });
+    }
+
+    public virtual Task<bool> IsSelfApprovalAllowedAsync()
+    {
+        return settingsManager.GetValueAsync<bool>(ModuleConstants.Settings.Approval.AllowSelfApproval);
     }
 
     public virtual Task<bool> CanReviewAsync(System.Security.Claims.ClaimsPrincipal reviewer, McpPendingChange change)

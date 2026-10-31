@@ -60,10 +60,7 @@ public class ContosoMarketingAnalytics(
             }
         }
 
-        return issues
-            .OrderBy(x => x.Severity switch { SeverityHigh => 0, SeverityMedium => 1, _ => 2 })
-            .ThenBy(x => x.StoreId)
-            .ToList();
+        return SortIssues(issues);
     }
 
     public bool NeedsCostCenter(DemoPromotion promotion)

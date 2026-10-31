@@ -20,6 +20,12 @@ public class MarketingOverviewTools(
     MarketingAccess access,
     MarketingAnalytics analytics)
 {
+    // The windows and list sizes of the overview, also named in its field names (best_last_7_days, ...).
+    private const int RecentDays = 7;
+    private const int StartingSoonDays = 30;
+    private const int TopCount = 3;
+    private const int LookAheadDays = 45;
+
     [McpServerTool(Name = "get_marketing_overview", ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("Start here. The state of marketing in the stores the user manages: live, scheduled, draft and paused promotions, " +
         "discount spend this month against the budget, the best promotions of the last 7 days, promotions ending or starting soon, " +
@@ -59,9 +65,9 @@ public class MarketingOverviewTools(
                     budget_used_percent = MarketingFormat.Percent(spend / demoStore.MonthlyDiscountBudget),
                     best_last_7_days = storePromotions
                         .Where(x => x.GetStatus(now) == PromotionStatus.Active)
-                        .Select(x => (Promotion: x, Performance: analytics.GetPerformance(x, 7)))
+                        .Select(x => (Promotion: x, Performance: analytics.GetPerformance(x, RecentDays)))
                         .OrderByDescending(x => x.Performance.Revenue)
-                        .Take(3)
+                        .Take(TopCount)
                         .Select(x => new
                         {
                             promotion_id = x.Promotion.Id,
@@ -71,11 +77,11 @@ public class MarketingOverviewTools(
                             verdict = x.Performance.Verdict,
                         }),
                     ending_within_7_days = storePromotions
-                        .Where(x => x.GetStatus(now) == PromotionStatus.Active && x.EndDate <= now.AddDays(7))
+                        .Where(x => x.GetStatus(now) == PromotionStatus.Active && x.EndDate <= now.AddDays(RecentDays))
                         .OrderBy(x => x.EndDate)
                         .Select(x => new { promotion_id = x.Id, name = x.Name, end = MarketingFormat.Date(x.EndDate) }),
                     starting_within_30_days = storePromotions
-                        .Where(x => x.GetStatus(now) is PromotionStatus.Scheduled or PromotionStatus.Draft && x.StartDate <= now.AddDays(30))
+                        .Where(x => x.GetStatus(now) is PromotionStatus.Scheduled or PromotionStatus.Draft && x.StartDate <= now.AddDays(StartingSoonDays))
                         .OrderBy(x => x.StartDate)
                         .Select(x => new { promotion_id = x.Id, name = x.Name, status = x.GetStatus(now), start = MarketingFormat.Date(x.StartDate) }),
                     issues = new
@@ -83,11 +89,11 @@ public class MarketingOverviewTools(
                         high = storeIssues.Count(x => x.Severity == MarketingAnalytics.SeverityHigh),
                         medium = storeIssues.Count(x => x.Severity == MarketingAnalytics.SeverityMedium),
                         low = storeIssues.Count(x => x.Severity == MarketingAnalytics.SeverityLow),
-                        top = storeIssues.Take(3).Select(x => new { x.Severity, x.Code, promotion_id = x.PromotionId, x.Message }),
+                        top = storeIssues.Take(TopCount).Select(x => new { x.Severity, x.Code, promotion_id = x.PromotionId, x.Message }),
                     },
                 };
             }),
-            upcoming_retail_events = RetailCalendar.GetEvents(now.Date, now.Date.AddDays(45))
+            upcoming_retail_events = RetailCalendar.GetEvents(now.Date, now.Date.AddDays(LookAheadDays))
                 .Where(x => stores.Any(s => x.Concerns(s.Kind)))
                 .Select(x => new { x.Name, start = MarketingFormat.Date(x.StartDate), end = MarketingFormat.Date(x.EndDate) }),
             next_steps = new[]
@@ -110,7 +116,7 @@ public class MarketingOverviewTools(
     {
         var now = store.Now;
         var start = from?.Date ?? now.Date;
-        var end = MarketingFormat.EndOfDay(to ?? start.AddDays(45)).Value;
+        var end = MarketingFormat.EndOfDay(to ?? start.AddDays(LookAheadDays)).Value;
         if (end < start)
         {
             throw new ModelContextProtocol.McpException("The last day must not be before the first day.");

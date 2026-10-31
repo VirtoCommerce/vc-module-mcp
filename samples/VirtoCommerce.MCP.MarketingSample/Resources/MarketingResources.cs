@@ -15,6 +15,29 @@ namespace VirtoCommerce.MCP.MarketingSample.Resources;
 [McpScope(McpScopes.Admin)]
 public class MarketingResources(MarketingDemoStore store)
 {
+    private const int CalendarMonths = 12;
+
+    private const string SaleEventPlaybookText = """
+        # Sale event playbook
+
+        ## Timeline
+        - 4 weeks before: offers agreed, drafts created, budgets set.
+        - 3 weeks before: translations done, conflicts checked, coupons generated for code-only offers.
+        - 2 weeks before: promotions scheduled and approved.
+        - Event week: check the overview every morning; pause anything over budget.
+        - 1 week after: deactivate stale coupons, write the post-mortem.
+
+        ## Offers that worked
+        - Category doorbusters (20% on laptops, monitors, audio) bring the most revenue per unit of discount.
+        - Cyber Monday works best as a code: a fixed amount off above a minimum order.
+        - Free shipping thresholds lift the order value; do not run two free shipping offers for the same customers.
+
+        ## Before scheduling
+        - find_promotion_conflicts shows no stacking above the policy limit.
+        - Every store language has a customer-facing name.
+        - The discount budget covers the expected volume: about 3x a normal week.
+        """;
+
     [McpServerResource(UriTemplate = "marketing://policies/discounts", Name = "discount_policy", MimeType = "text/markdown")]
     [Description("The company's discount policy: limits, approvals, exclusivity, coupons and translations.")]
     public static string DiscountPolicy()
@@ -55,26 +78,7 @@ public class MarketingResources(MarketingDemoStore store)
     [Description("Checklist for big sale events such as Black Friday and Cyber Monday: timeline, offers that work, and what to check.")]
     public static string SaleEventPlaybook()
     {
-        return """
-            # Sale event playbook
-
-            ## Timeline
-            - 4 weeks before: offers agreed, drafts created, budgets set.
-            - 3 weeks before: translations done, conflicts checked, coupons generated for code-only offers.
-            - 2 weeks before: promotions scheduled and approved.
-            - Event week: check the overview every morning; pause anything over budget.
-            - 1 week after: deactivate stale coupons, write the post-mortem.
-
-            ## Offers that worked
-            - Category doorbusters (20% on laptops, monitors, audio) bring the most revenue per unit of discount.
-            - Cyber Monday works best as a code: a fixed amount off above a minimum order.
-            - Free shipping thresholds lift the order value; do not run two free shipping offers for the same customers.
-
-            ## Before scheduling
-            - find_promotion_conflicts shows no stacking above the policy limit.
-            - Every store language has a customer-facing name.
-            - The discount budget covers the expected volume: about 3x a normal week.
-            """;
+        return SaleEventPlaybookText;
     }
 
     [McpServerResource(UriTemplate = "marketing://calendar/retail-events", Name = "retail_calendar", MimeType = "text/markdown")]
@@ -84,7 +88,7 @@ public class MarketingResources(MarketingDemoStore store)
         var now = store.Now;
         var builder = new StringBuilder("# Retail calendar\n\n| Event | Start | End | Note |\n| --- | --- | --- | --- |\n");
 
-        foreach (var retailEvent in RetailCalendar.GetEvents(now.Date, now.Date.AddMonths(12)).Where(x => x.EndDate >= now.Date))
+        foreach (var retailEvent in RetailCalendar.GetEvents(now.Date, now.Date.AddMonths(CalendarMonths)).Where(x => x.EndDate >= now.Date))
         {
             builder.Append($"| {retailEvent.Name} | {retailEvent.StartDate:yyyy-MM-dd} | {retailEvent.EndDate:yyyy-MM-dd} | {retailEvent.Note} |\n");
         }

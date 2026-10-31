@@ -8,4 +8,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Mock data of the demo (a fake store, its orders and the retail calendar): literal values and a seeded
+         pseudo-random generator by design, so it is left out of code analysis. The models stay analyzed. -->
+    <Compile Update="Data\ContentDemoStore.cs;Data\MarketingDemoOrders.cs;Data\MarketingDemoSeed.cs;Data\MarketingDemoStore.cs;Data\RetailCalendar.cs">
+      <SonarQubeExclude>true</SonarQubeExclude>
+    </Compile>
+  </ItemGroup>
 </Project>

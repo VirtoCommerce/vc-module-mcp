@@ -1,6 +1,6 @@
 # MCP Marketing Sample
 
-A marketer's toolset for an AI agent, built on `VirtoCommerce.MCP` and shaped as described in [Designing a toolset](../../README.md#designing-a-toolset). It works on realistic mock data in memory, so it can be shown on any platform without touching real promotions. [Marketing with an AI agent](../../docs/marketing-demo.md) shows a week of work with it.
+A marketer's toolset for an AI agent, built on `VirtoCommerce.MCP` and shaped as described in [Design a toolset](../../README.md#design-a-toolset). It works on realistic mock data in memory, so it can be shown on any platform without touching real promotions. [Marketing with an AI agent](../../docs/marketing-demo.md) shows a week of work with it.
 
 ## Features
 
@@ -44,7 +44,22 @@ The demo data: three stores (Electronics, B2B Office Supply, Fashion Outlet), si
 
 1. Install `VirtoCommerce.MCP`, `VirtoCommerce.Marketing`, `VirtoCommerce.Content` and, for the bulk tools, `VirtoCommerce.BackgroundJobs`.
 2. Build this project and copy `module.manifest` and the `VirtoCommerce.MCP.MarketingSample.*` files from `bin/Debug/net10.0` into `modules/VirtoCommerce.MCP.MarketingSample/bin` of the platform (the manifest one level up, next to `bin`).
-3. Allow tokens for the endpoint, register the MCP client, create the marketer and approver roles, and connect the agent: [Marketing with an AI agent](../../docs/marketing-demo.md#set-it-up) has every step.
+3. Allow tokens for the endpoint, register the MCP client, and create the marketer and approver roles: [Marketing with an AI agent](../../docs/marketing-demo.md#set-it-up) has every step.
+4. Connect an agent as the marketer, as described in [Connect an AI agent](../../README.md#connect-an-ai-agent).
+
+## Try it with an agent
+
+Signed in as a marketer, ask the agent:
+
+| Ask | What happens |
+| --- | --- |
+| "Good morning, what needs my attention in the Electronics store today?" | `get_marketing_overview` and `find_promotion_issues`: the budget, promotions over budget or policy, coupons missing for a coming promotion |
+| "Which promotions conflict with Black Friday?" | `find_promotion_conflicts`: stacking and shadowing, with what to change |
+| "Why did order CO-10482 not get the WELCOME10 discount?" | `explain_promotion_evaluation`: the rule that failed, in plain words |
+| "Activate the Holiday gift guide. Show me the dry run first, then submit it." | `activate_promotion` with `dryRun`: the diff and the warnings; then a pending change for an approver |
+| "Generate 5,000 coupons for the welcome offer" | `generate_coupons`: above 1,000 codes it waits for approval, then runs as a background job |
+
+Then, as an approver, open **Configuration → AI agents (MCP) → Agent approvals** in the back office, review the diff and approve it. [Marketing with an AI agent](../../docs/marketing-demo.md) follows a whole week of such routines.
 
 ## How to extend
 

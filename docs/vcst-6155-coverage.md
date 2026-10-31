@@ -7,7 +7,7 @@ How the module and the samples answer the story [VCST-6155](https://virtocommerc
 | Requirement | Where |
 | --- | --- |
 | A dedicated module that hosts all MCP infrastructure and removes duplication across modules | This module. UCP moved to it on the branch `feat/VCST-6155-ucp-mcp-module` of `vc-module-ucp`, verified on a local platform ([Moving UCP to the MCP module](ucp-migration.md)) |
-| Declarative registration of tools, resources, prompts | `AddMcpTools*`, `AddMcpPrompts*`, `AddMcpResources*` with `[McpScope]`; [Adding tools to a scope](../README.md#adding-tools-to-a-scope) |
+| Declarative registration of tools, resources, prompts | `AddMcpTools*`, `AddMcpPrompts*`, `AddMcpResources*` with `[McpScope]`; [Adding tools to a scope](../README.md#add-tools-to-a-scope) |
 | Scopes: storefront, admin, vendor, custom | `AddMcpScope`; `admin` and `vendor` built in, `ucp` reserved; [Scopes](../README.md#scopes) |
 | Scope from the request domain (primary proposal) or the URL path (alternative) | Both: `/{scope}/mcp` on any host, and `/mcp` on the hosts of `MCP:Scopes:{scope}:Hosts` |
 | Anonymous, authenticated and permission-protected tools, checked before execution | Anonymous scopes; `[McpRequiresUser]`; `[Authorize]` and `[McpPermission]`, checked before the tool runs |
@@ -17,7 +17,7 @@ How the module and the samples answer the story [VCST-6155](https://virtocommerc
 | The author works with their own changes without `mcp:approve` (comment of 2026-10-23) | `list_pending_changes`, `get_pending_change`, `reject_pending_change` for the author's own changes |
 | Seller sees only their own rows, bounded by the principal | `vendor` scope; `GetMcpPermissionGrant` and `McpForbiddenException` give the tool what it needs to filter by seller |
 | Platform operator owns configuration, enablement, rollback levers | `MCP:Scopes:{scope}:Enabled`, `MCP.Tools.Disabled` kill switch, settings |
-| Authentication, authorization, logging, scope resolution, registration, execution infrastructure | The common pipeline; [Common execution pipeline](../README.md#common-execution-pipeline) |
+| Authentication, authorization, logging, scope resolution, registration, execution infrastructure | The common pipeline; [Common execution pipeline](../README.md#tool-call-flow) |
 | Rate limits | Not in the module, by decision: they belong to the network infrastructure ([Rate limiting and CORS](../README.md#rate-limiting-and-cors)) |
 | Sensitive data, `take` limit, kill switch (comment of 2026-10-27) | `[McpSensitive]`, `MCP.Tools.MaxTake`, `MCP.Tools.Disabled` |
 | Long-running operations: a tool starts a background job, other tools return its status or cancel it (comment of 2026-10-27) | `IMcpJobDispatcher`, `get_job_status`, `cancel_job` |

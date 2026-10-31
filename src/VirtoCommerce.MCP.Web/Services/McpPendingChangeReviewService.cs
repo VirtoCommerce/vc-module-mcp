@@ -4,7 +4,6 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -16,7 +15,6 @@ using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Models;
 using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.Security;
-using VirtoCommerce.Platform.Core.Settings;
 
 namespace VirtoCommerce.MCP.Web.Services;
 
@@ -29,9 +27,6 @@ public class McpPendingChangeReviewService(
     McpToolAuthorizationService toolAuthorizationService,
     McpToolAvailabilityService toolAvailabilityService,
     McpPendingChangeExecutor pendingChangeExecutor,
-    McpAuditWriter auditWriter,
-    ISettingsManager settingsManager,
-    IHttpContextAccessor httpContextAccessor,
     TimeProvider timeProvider)
 {
     // Client id of the audit entries of reviews made in the back office rather than by an agent.
@@ -73,20 +68,13 @@ public class McpPendingChangeReviewService(
 
         using var activity = McpDiagnostics.StartReview(scope.Name, change.ToolName, "approve", change.Id, BackOfficeClientId);
 
-        // A tool that reads its scope from the request finds the scope of the change.
-        var httpContext = httpContextAccessor.HttpContext;
-        if (httpContext != null && httpContext.GetMcpScope() == null)
-        {
-            httpContext.SetMcpScope(scope);
-        }
-
         change = await approvalService.ApproveAsync(change.Id, user.GetUserId(), user.GetUserName(), comment);
 
-        var result = await pendingChangeExecutor.ExecuteAsync(services, user, tool, change, BackOfficeClientId);
+        var result = await pendingChangeExecutor.ExecuteAsync(services, user, scope, tool, change, BackOfficeClientId);
         var succeeded = result.IsError != true;
         change = await approvalService.CompleteAsync(change, JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions), succeeded);
 
-        await WriteDecisionAuditAsync(user, change, ModuleConstants.ToolNames.ApprovePendingChange);
+        await pendingChangeExecutor.WriteReviewAuditAsync(user, change, ModuleConstants.ToolNames.ApprovePendingChange, BackOfficeClientId);
 
         return await ToDetailsAsync(user, change);
     }
@@ -98,7 +86,7 @@ public class McpPendingChangeReviewService(
         using var activity = McpDiagnostics.StartReview(change.ScopeName, change.ToolName, "reject", change.Id, BackOfficeClientId);
 
         change = await approvalService.RejectAsync(change.Id, user.GetUserId(), user.GetUserName(), reason);
-        await WriteDecisionAuditAsync(user, change, ModuleConstants.ToolNames.RejectPendingChange);
+        await pendingChangeExecutor.WriteReviewAuditAsync(user, change, ModuleConstants.ToolNames.RejectPendingChange, BackOfficeClientId);
 
         return await ToDetailsAsync(user, change);
     }
@@ -157,22 +145,11 @@ public class McpPendingChangeReviewService(
         var isRequester = !string.IsNullOrEmpty(change.RequestedByUserId) &&
             string.Equals(change.RequestedByUserId, user.GetUserId(), StringComparison.OrdinalIgnoreCase);
 
-        if (isRequester && !await settingsManager.GetValueAsync<bool>(ModuleConstants.Settings.Approval.AllowSelfApproval))
+        if (isRequester && !await approvalService.IsSelfApprovalAllowedAsync())
         {
             return "You requested this change, so another user must approve it.";
         }
 
         return null;
-    }
-
-    private Task WriteDecisionAuditAsync(ClaimsPrincipal user, McpPendingChange change, string toolName)
-    {
-        var audit = auditWriter.Create(change.ScopeName, toolName, user);
-        audit.ClientId = BackOfficeClientId;
-        audit.PendingChangeId = change.Id;
-        audit.Outcome = McpAuditOutcome.Succeeded;
-        audit.TraceId = System.Diagnostics.Activity.Current?.TraceId.ToString();
-
-        return auditWriter.WriteAsync(audit, arguments: null, sensitiveArgumentPaths: []);
     }
 }

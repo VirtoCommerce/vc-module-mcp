@@ -32,7 +32,7 @@ public class McpClaimsPrincipalExtensionsTests
 
         // Assert
         Assert.True(grant.IsGlobal);
-        Assert.Null(grant.GetScopeValues(StoreScope));
+        Assert.Empty(grant.GetScopeValues(StoreScope));
         Assert.True(grant.Allows(StoreScope, "any-store"));
     }
 

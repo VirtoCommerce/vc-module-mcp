@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
@@ -28,6 +29,11 @@ public class ContentTools(
     IMcpJobDispatcher jobDispatcher)
 {
     private const string Everyone = "everyone";
+
+    // Hero banners show about this many characters of a headline.
+    private const int HeroHeadlineLength = 80;
+
+    private const string FlatArgumentsJustification = "Each parameter is an argument of the MCP tool's input schema; an agent fills flat arguments more reliably than a nested object.";
 
     [McpServerTool(Name = "get_placement_map", ReadOnly = true, Destructive = false, Idempotent = true)]
     [McpPermission(MarketingSampleConstants.ContentReadPermission)]
@@ -126,40 +132,17 @@ public class ContentTools(
         var stores = string.IsNullOrEmpty(store_id) ? marketing.GetStores() : [GetStore(store_id)];
         var findings = new List<object>();
 
-        foreach (var store in stores)
+        foreach (var storeId in stores.Select(store => store.Id))
         {
-            var publications = content.GetPublications(store.Id);
+            var publications = content.GetPublications(storeId);
 
-            foreach (var placeholder in content.GetPlaceholders(store.Id))
+            foreach (var placeholder in content.GetPlaceholders(storeId))
             {
-                var forEveryone = publications.Where(x => x.Placeholder == placeholder.Name && x.SegmentId == null).ToList();
-                foreach (var (from, until) in FindEmptyRanges(forEveryone, today, to))
-                {
-                    findings.Add(new { kind = "empty_slot", store_id = store.Id, placeholder = placeholder.Name, from = MarketingFormat.Date(from), to = MarketingFormat.Date(until), message = $"Nothing is published for most customers from {from:yyyy-MM-dd} to {until:yyyy-MM-dd}." });
-                }
-
-                foreach (var publication in forEveryone.Where(x => x.EndDate >= today && x.EndDate < to))
-                {
-                    if (!forEveryone.Any(x => x.Id != publication.Id && x.StartDate <= publication.EndDate.AddDays(1) && x.EndDate > publication.EndDate))
-                    {
-                        findings.Add(new { kind = "no_successor", store_id = store.Id, placeholder = placeholder.Name, publication_id = publication.Id, item = content.GetItem(publication.ItemId)?.Name, message = $"Ends {publication.EndDate:yyyy-MM-dd} and nothing follows it." });
-                    }
-                }
+                findings.AddRange(FindPlaceholderGaps(storeId, placeholder.Name, publications, today, to));
             }
 
-            foreach (var publication in publications.Where(x => x.SegmentId != null && x.EndDate >= today && !SegmentExists(store.Id, x.SegmentId)))
-            {
-                findings.Add(new { kind = "unreachable_audience", store_id = store.Id, placeholder = publication.Placeholder, publication_id = publication.Id, item = content.GetItem(publication.ItemId)?.Name, message = $"Targets segment '{publication.SegmentId}', which does not exist in the store: no customer ever sees it." });
-            }
-
-            foreach (var publication in publications.Where(x => x.EndDate >= today && x.StartDate <= to))
-            {
-                var promotion = marketing.GetPromotion(content.GetItem(publication.ItemId)?.PromotionId);
-                if (promotion != null && (promotion.GetStatus(publication.StartDate) is PromotionStatus.Draft or PromotionStatus.Paused || promotion.EndDate < publication.EndDate))
-                {
-                    findings.Add(new { kind = "promotion_mismatch", store_id = store.Id, placeholder = publication.Placeholder, publication_id = publication.Id, item = content.GetItem(publication.ItemId)?.Name, message = $"Advertises promotion '{promotion.Id}', which is {promotion.GetStatus(content.Now)} and ends {MarketingFormat.Date(promotion.EndDate) ?? "never"}, while the banner runs until {publication.EndDate:yyyy-MM-dd}." });
-                }
-            }
+            findings.AddRange(FindUnreachableAudiences(storeId, publications, today));
+            findings.AddRange(FindPromotionMismatches(storeId, publications, today, to));
         }
 
         return new { from = MarketingFormat.Date(today), to = MarketingFormat.Date(to), total_count = findings.Count, findings };
@@ -182,14 +165,7 @@ public class ContentTools(
         var candidates = content.GetPublications(store.Id)
             .Where(x => x.Placeholder == slot.Name)
             .OrderByDescending(x => x.Priority)
-            .Select(x => (Publication: x, Reason: x switch
-            {
-                _ when x.StartDate > day => $"starts {x.StartDate:yyyy-MM-dd}",
-                _ when x.EndDate < day => $"ended {x.EndDate:yyyy-MM-dd}",
-                _ when x.SegmentId != null && !SegmentExists(store.Id, x.SegmentId) => $"targets segment '{x.SegmentId}', which does not exist",
-                _ when x.SegmentId != null && !string.Equals(x.SegmentId, segment_id, StringComparison.OrdinalIgnoreCase) => $"only for segment '{x.SegmentId}'",
-                _ => null,
-            }))
+            .Select(x => (Publication: x, Reason: GetHiddenReason(x, store.Id, segment_id, day)))
             .ToList();
         var winner = candidates.FirstOrDefault(x => x.Reason == null).Publication;
 
@@ -199,7 +175,7 @@ public class ContentTools(
             placeholder = slot.Name,
             customer_segment = segment_id ?? "none",
             date = MarketingFormat.Date(day),
-            shown = winner == null ? null : new { publication_id = winner.Id, item = content.GetItem(winner.ItemId)?.Name, headline = content.GetItem(winner.ItemId)?.Headline, priority = winner.Priority },
+            shown = DescribeShown(winner),
             not_shown = candidates.Where(x => x.Publication != winner).Select(x => new
             {
                 publication_id = x.Publication.Id,
@@ -212,6 +188,7 @@ public class ContentTools(
     [McpServerTool(Name = "create_content_item", ReadOnly = false, Destructive = false, Idempotent = false)]
     [McpPermission(MarketingSampleConstants.ContentCreatePermission)]
     [Description("Create a content item (banner, HTML block or product carousel). It is not shown anywhere until it is published with publish_content.")]
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = FlatArgumentsJustification)]
     public object CreateContentItem(
         [Description("Name of the item.")] string name,
         [Description("Folder, for example 'Banners/Black Friday'.")] string folder,
@@ -284,9 +261,9 @@ public class ContentTools(
             preview.AddWarning($"Brief: {brief}");
         }
 
-        if (headline.Length > 80)
+        if (headline.Length > HeroHeadlineLength)
         {
-            preview.AddWarning($"The headline has {headline.Length} characters; hero banners show about 80.");
+            preview.AddWarning($"The headline has {headline.Length} characters; hero banners show about {HeroHeadlineLength}.");
         }
 
         if (!dryRun)
@@ -305,6 +282,7 @@ public class ContentTools(
     [McpRequiresApproval(Condition = nameof(GoesLiveToday))]
     [Description("Show a content item in a placeholder of a store for a period, optionally for one customer segment. Scheduling " +
         "for a later day applies at once; a window that includes today goes live immediately and is submitted for approval.")]
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = FlatArgumentsJustification)]
     public object PublishContent(
         [Description("Content item id, from search_content_items.")] string item_id,
         [Description("Store id.")] string store_id,
@@ -448,36 +426,160 @@ public class ContentTools(
             .AddChange("window", null, $"{publication.StartDate:yyyy-MM-dd} to {publication.EndDate:yyyy-MM-dd}")
             .AddChange("audience", null, publication.SegmentId ?? Everyone);
 
+        AddAudienceWarning(preview, publication);
+        AddLanguageWarning(preview, publication, item);
+        AddOverlapWarnings(preview, publication);
+        AddPromotionDatesWarning(preview, publication, item);
+
+        return preview;
+    }
+
+    private void AddAudienceWarning(McpChangePreview preview, DemoPublication publication)
+    {
         if (publication.SegmentId != null && !SegmentExists(publication.StoreId, publication.SegmentId))
         {
             preview.AddWarning($"Segment '{publication.SegmentId}' does not exist in store {publication.StoreId}: no customer would see it.");
         }
+    }
 
+    private void AddLanguageWarning(McpChangePreview preview, DemoPublication publication, DemoContentItem item)
+    {
         var storeLanguages = marketing.GetStore(publication.StoreId)?.Languages ?? [];
         var missing = storeLanguages.Except(item?.Languages ?? [], StringComparer.OrdinalIgnoreCase).ToList();
         if (missing.Count > 0)
         {
             preview.AddWarning($"The item has no text for {string.Join(", ", missing)}.");
         }
+    }
 
-        foreach (var other in content.GetPublications(publication.StoreId).Where(x => x.Id != publication.Id && x.Placeholder == publication.Placeholder &&
-            x.StartDate <= publication.EndDate && publication.StartDate <= x.EndDate && (x.SegmentId == null || x.SegmentId == publication.SegmentId)))
+    // Other publications of the same placeholder, window and audience: the priority decides which one is shown.
+    private void AddOverlapWarnings(McpChangePreview preview, DemoPublication publication)
+    {
+        foreach (var other in content.GetPublications(publication.StoreId).Where(x => Competes(x, publication)))
         {
+            var name = content.GetItem(other.ItemId)?.Name;
             preview.AddWarning(other.Priority.CompareTo(publication.Priority) switch
             {
-                > 0 => $"'{content.GetItem(other.ItemId)?.Name}' ({other.Id}) has priority {other.Priority} in the same window and wins over this one.",
-                < 0 => $"This one replaces '{content.GetItem(other.ItemId)?.Name}' ({other.Id}) while both run.",
-                _ => $"'{content.GetItem(other.ItemId)?.Name}' ({other.Id}) has the same priority {other.Priority} in the same window: which one is shown is not defined. Change the priority.",
+                > 0 => $"'{name}' ({other.Id}) has priority {other.Priority} in the same window and wins over this one.",
+                < 0 => $"This one replaces '{name}' ({other.Id}) while both run.",
+                _ => $"'{name}' ({other.Id}) has the same priority {other.Priority} in the same window: which one is shown is not defined. Change the priority.",
             });
         }
+    }
 
+    private void AddPromotionDatesWarning(McpChangePreview preview, DemoPublication publication, DemoContentItem item)
+    {
         var promotion = marketing.GetPromotion(item?.PromotionId);
         if (promotion != null && (promotion.StartDate > publication.StartDate || promotion.EndDate < publication.EndDate))
         {
-            preview.AddWarning($"The banner advertises '{promotion.Name}', which runs {MarketingFormat.Date(promotion.StartDate)} to {MarketingFormat.Date(promotion.EndDate) ?? "no end"}; align the dates.");
+            preview.AddWarning($"The banner advertises '{promotion.Name}', which runs {MarketingFormat.Date(promotion.StartDate)} to " +
+                $"{MarketingFormat.Date(promotion.EndDate) ?? "no end"}; align the dates.");
+        }
+    }
+
+    // Empty slots of a placeholder for most customers, and publications for everyone that end without a successor.
+    private IEnumerable<object> FindPlaceholderGaps(string storeId, string placeholder, IReadOnlyList<DemoPublication> publications, DateTime today, DateTime to)
+    {
+        var forEveryone = publications.Where(x => x.Placeholder == placeholder && x.SegmentId == null).ToList();
+        foreach (var (from, until) in FindEmptyRanges(forEveryone, today, to))
+        {
+            yield return new
+            {
+                kind = "empty_slot",
+                store_id = storeId,
+                placeholder,
+                from = MarketingFormat.Date(from),
+                to = MarketingFormat.Date(until),
+                message = $"Nothing is published for most customers from {from:yyyy-MM-dd} to {until:yyyy-MM-dd}.",
+            };
         }
 
-        return preview;
+        foreach (var publication in forEveryone.Where(x => x.EndDate >= today && x.EndDate < to && !HasSuccessor(x, forEveryone)))
+        {
+            yield return new
+            {
+                kind = "no_successor",
+                store_id = storeId,
+                placeholder,
+                publication_id = publication.Id,
+                item = content.GetItem(publication.ItemId)?.Name,
+                message = $"Ends {publication.EndDate:yyyy-MM-dd} and nothing follows it.",
+            };
+        }
+    }
+
+    // Publications for a segment that no longer exists in the store.
+    private IEnumerable<object> FindUnreachableAudiences(string storeId, IReadOnlyList<DemoPublication> publications, DateTime today)
+    {
+        return publications
+            .Where(x => x.SegmentId != null && x.EndDate >= today && !SegmentExists(storeId, x.SegmentId))
+            .Select(publication => new
+            {
+                kind = "unreachable_audience",
+                store_id = storeId,
+                placeholder = publication.Placeholder,
+                publication_id = publication.Id,
+                item = content.GetItem(publication.ItemId)?.Name,
+                message = $"Targets segment '{publication.SegmentId}', which does not exist in the store: no customer ever sees it.",
+            });
+    }
+
+    // Banners of a promotion that is not live, or ends earlier, while the banner runs.
+    private IEnumerable<object> FindPromotionMismatches(string storeId, IReadOnlyList<DemoPublication> publications, DateTime today, DateTime to)
+    {
+        foreach (var publication in publications.Where(x => x.EndDate >= today && x.StartDate <= to))
+        {
+            var promotion = marketing.GetPromotion(content.GetItem(publication.ItemId)?.PromotionId);
+            if (promotion != null && IsNotLiveDuring(promotion, publication))
+            {
+                yield return new
+                {
+                    kind = "promotion_mismatch",
+                    store_id = storeId,
+                    placeholder = publication.Placeholder,
+                    publication_id = publication.Id,
+                    item = content.GetItem(publication.ItemId)?.Name,
+                    message = $"Advertises promotion '{promotion.Id}', which is {promotion.GetStatus(content.Now)} and ends " +
+                        $"{MarketingFormat.Date(promotion.EndDate) ?? "never"}, while the banner runs until {publication.EndDate:yyyy-MM-dd}.",
+                };
+            }
+        }
+    }
+
+    // Why the storefront does not show a publication to a customer of the segment on the day; null when it may show it.
+    private string GetHiddenReason(DemoPublication publication, string storeId, string segmentId, DateTime day)
+    {
+        if (publication.StartDate > day)
+        {
+            return $"starts {publication.StartDate:yyyy-MM-dd}";
+        }
+
+        if (publication.EndDate < day)
+        {
+            return $"ended {publication.EndDate:yyyy-MM-dd}";
+        }
+
+        if (publication.SegmentId == null)
+        {
+            return null;
+        }
+
+        if (!SegmentExists(storeId, publication.SegmentId))
+        {
+            return $"targets segment '{publication.SegmentId}', which does not exist";
+        }
+
+        return string.Equals(publication.SegmentId, segmentId, StringComparison.OrdinalIgnoreCase) ? null : $"only for segment '{publication.SegmentId}'";
+    }
+
+    private object DescribeShown(DemoPublication winner)
+    {
+        if (winner == null)
+        {
+            return null;
+        }
+
+        return new { publication_id = winner.Id, item = content.GetItem(winner.ItemId)?.Name, headline = content.GetItem(winner.ItemId)?.Headline, priority = winner.Priority };
     }
 
     private void ValidateWindow(DemoPublication publication)
@@ -501,6 +603,33 @@ public class ContentTools(
     private bool SegmentExists(string storeId, string segmentId)
     {
         return marketing.GetSegment(segmentId)?.StoreIds.Contains(storeId) == true;
+    }
+
+    private static bool HasSuccessor(DemoPublication publication, List<DemoPublication> publications)
+    {
+        return publications.Any(x => x.Id != publication.Id && x.StartDate <= publication.EndDate.AddDays(1) && x.EndDate > publication.EndDate);
+    }
+
+    private static bool IsNotLiveDuring(DemoPromotion promotion, DemoPublication publication)
+    {
+        return promotion.GetStatus(publication.StartDate) is PromotionStatus.Draft or PromotionStatus.Paused || promotion.EndDate < publication.EndDate;
+    }
+
+    // Same placeholder, overlapping windows, and an audience that includes the publication's audience.
+    private static bool Competes(DemoPublication other, DemoPublication publication)
+    {
+        return other.Id != publication.Id && other.Placeholder == publication.Placeholder && WindowsOverlap(other, publication) && Reaches(other, publication.SegmentId);
+    }
+
+    // A publication for everyone reaches every segment; one for a segment reaches only that segment.
+    private static bool Reaches(DemoPublication publication, string segmentId)
+    {
+        return publication.SegmentId == null || publication.SegmentId == segmentId;
+    }
+
+    private static bool WindowsOverlap(DemoPublication a, DemoPublication b)
+    {
+        return a.StartDate <= b.EndDate && b.StartDate <= a.EndDate;
     }
 
     private static IEnumerable<(DateTime From, DateTime To)> FindEmptyRanges(IReadOnlyCollection<DemoPublication> publications, DateTime from, DateTime to)

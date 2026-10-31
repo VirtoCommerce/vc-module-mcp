@@ -20,6 +20,7 @@ public static class MarketingSampleConstants
     public const decimal MaxPercentWithoutSignOff = 25m;
     public const decimal MaxPercent = 50m;
     public const decimal BudgetWarningShare = 0.85m;
+    public const int MinExclusivePriority = 50;
 
     public const int MaxCouponsPerJob = 100_000;
 }

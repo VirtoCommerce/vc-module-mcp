@@ -238,12 +238,22 @@ public class McpController(
                         Destructive = tool.ProtocolTool.Annotations?.DestructiveHint == true,
                         RequiresApproval = tool.Metadata.OfType<McpRequiresApprovalAttribute>().Any(),
                         IsEnabled = !scopeDisabled && !toolDisabled,
-                        DisabledBy = scopeDisabled ? McpToolDisabledBy.Scope : toolDisabled ? McpToolDisabledBy.Tool : null,
+                        DisabledBy = GetDisabledBy(scopeDisabled, toolDisabled),
                     };
                 }));
         }
 
         return result;
+    }
+
+    private static string GetDisabledBy(bool scopeDisabled, bool toolDisabled)
+    {
+        if (scopeDisabled)
+        {
+            return McpToolDisabledBy.Scope;
+        }
+
+        return toolDisabled ? McpToolDisabledBy.Tool : null;
     }
 
     private async Task<bool> IsAuthorizedAsync(string permission)

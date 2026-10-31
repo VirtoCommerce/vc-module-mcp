@@ -1420,8 +1420,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [McpPermission(ScopedPermission)]
         public static string ScopedTool(RequestContext<CallToolRequestParams> context)
         {
-            var stores = context.User.GetMcpPermissionGrant(ScopedPermission).GetScopeValues(StoreScopeType);
-            return stores == null ? "all stores" : string.Join(",", stores);
+            var grant = context.User.GetMcpPermissionGrant(ScopedPermission);
+            return grant.IsGlobal ? "all stores" : string.Join(",", grant.GetScopeValues(StoreScopeType));
         }
     }
 
