@@ -42,7 +42,7 @@ You need a platform with the `VirtoCommerce.MCP` and `VirtoCommerce.Marketing` m
       "displayName": "Marketing agent",
       "clientId": "mcp-demo",
       "clientType": "public",
-      "consentType": "implicit",
+      "consentType": "explicit",
       "redirectUris": [ "http://localhost:65111/callback" ],
       "requirements": [ "ft:pkce" ],
       "permissions": [ "rsrc:http://localhost:10645/admin/mcp" ]

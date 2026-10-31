@@ -3,7 +3,8 @@
     "mcp:access": "Yhdistä tekoälyagentit Backofficen MCP-palvelimeen",
     "mcp:approve": "Tarkista, hyväksy ja hylkää MCP-työkalujen lähettämät muutokset",
     "mcp:audit:read": "Lue MCP-työkalukutsujen auditointiloki",
-    "mcp:tools:manage": "Kytke MCP-työkalut päälle ja pois agenteille"
+    "mcp:tools:manage": "Kytke MCP-työkalut päälle ja pois agenteille",
+    "mcp:agents:manage": "Näe ja katkaise kaikkien käyttäjien tekoälyagentit"
   },
   "settings": {
     "MCP": {

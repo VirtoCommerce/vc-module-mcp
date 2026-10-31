@@ -56,7 +56,7 @@ The platform does not register MCP clients on the fly, so the client is register
   "displayName": "MCP demo",
   "clientId": "mcp-demo",
   "clientType": "public",
-  "consentType": "implicit",
+  "consentType": "explicit",
   "redirectUris": [ "http://localhost:65111/callback" ],
   "postLogoutRedirectUris": [],
   "requirements": [ "ft:pkce" ],
@@ -68,7 +68,7 @@ The platform does not register MCP clients on the fly, so the client is register
 
 - `rsrc:` allows the client to request tokens for the MCP endpoint.
 - The redirect URI is where Claude Code listens after the sign-in; the port must match `--callback-port` in step 5.
-- Set `"consentType": "explicit"` to show the platform consent screen on the first sign-in.
+- `"consentType": "explicit"` shows the platform consent screen on the first sign-in, naming the agent; `"implicit"` skips it.
 
 ## 4. Create roles and users
 

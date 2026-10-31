@@ -5,6 +5,7 @@
       "APPROVALS": "Agent approvals",
       "AUDIT": "Agent audit log",
       "TOOLS": "Agent tools",
+      "AGENTS": "Connected agents",
       "COUNTER": "{count} changes waiting for your review"
     },
     "APPROVALS": {
@@ -56,6 +57,18 @@
       "KIND_WRITE": "Write",
       "KIND_APPROVAL": "Approval",
       "CONFIRM_OFF_SCOPE": "Switch off every tool of the {scope} scope? Agents get an error until you switch it on again."
+    },
+    "AGENTS": {
+      "TITLE": "Connected agents",
+      "EMPTY": "No agent is connected",
+      "EMPTY_HINT": "An agent appears here once a user signs in to it, for example from Claude.",
+      "DISCONNECT": "Disconnect",
+      "CONFIRM_DISCONNECT": "Disconnect {agent} for {user}? Its next request is refused, and the user signs in again to reconnect.",
+      "DISCONNECTED": "{agent} is disconnected",
+      "CONNECTED": "Connected",
+      "LAST_USED": "Last used",
+      "SESSIONS": "Active sign-ins",
+      "ENDPOINT": "MCP endpoint"
     },
     "FIELDS": {
       "TOOL": "Tool",

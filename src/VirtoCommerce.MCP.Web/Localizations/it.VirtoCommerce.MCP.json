@@ -3,7 +3,8 @@
     "mcp:access": "Collegare agenti IA al server MCP del Backoffice",
     "mcp:approve": "Esaminare, approvare e rifiutare le modifiche inviate dagli strumenti MCP",
     "mcp:audit:read": "Leggere il registro di audit delle chiamate agli strumenti MCP",
-    "mcp:tools:manage": "Attivare e disattivare gli strumenti MCP per gli agenti"
+    "mcp:tools:manage": "Attivare e disattivare gli strumenti MCP per gli agenti",
+    "mcp:agents:manage": "Vedere e disconnettere gli agenti IA di tutti gli utenti"
   },
   "settings": {
     "MCP": {

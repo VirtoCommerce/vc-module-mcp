@@ -17,6 +17,7 @@ using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Services;
+using VirtoCommerce.Platform.Core.Security;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Services;
@@ -40,6 +41,10 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
 
     public McpPendingChangeReviewServiceTests()
     {
+        // GetUserId and GetUserName read the claim types the platform sets at startup
+        ClaimsPrincipalExtensions.UserIdClaimTypes = ["sub", ClaimTypes.NameIdentifier];
+        ClaimsPrincipalExtensions.UserNameClaimTypes = ["name"];
+
         _toolAvailabilityService = new Mock<McpToolAvailabilityService>(SettingsManager.Object);
         _auditWriter = new Mock<McpAuditWriter>(Mock.Of<IMcpAuditEntryService>(), SettingsManager.Object, NullLogger<McpAuditWriter>.Instance) { CallBase = true };
         _auditWriter
@@ -278,7 +283,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
         [
             new Claim(ClaimTypes.NameIdentifier, userId),
             new Claim("sub", userId),
-            new Claim(ClaimTypes.Name, userId),
+            new Claim("name", userId),
         ], "test"));
     }
 }

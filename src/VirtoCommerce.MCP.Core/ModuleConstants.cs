@@ -21,12 +21,15 @@ public static class ModuleConstants
 
             public const string ToolsManage = "mcp:tools:manage";
 
+            public const string AgentsManage = "mcp:agents:manage";
+
             public static string[] AllPermissions { get; } =
             [
                 Access,
                 Approve,
                 AuditRead,
                 ToolsManage,
+                AgentsManage,
             ];
         }
     }

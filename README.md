@@ -24,7 +24,7 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
 
 ## Connect an AI agent
 
-An agent connects to an MCP endpoint of the platform and signs in as a platform user. The steps below connect an agent to the back-office endpoint, `/admin/mcp`; replace `https://admin.example.com` with the public address of your platform.
+An agent connects to an MCP endpoint of the platform and signs in as a platform user. The steps below connect an agent to the back-office endpoint, `/admin/mcp`, of a platform at `https://virtostart-demo-admin.govirto.com`; replace it with the public address of your platform. The endpoint is always the platform's public HTTPS address followed by `/admin/mcp`.
 
 ### 1. Prepare the platform (administrator, once)
 
@@ -33,49 +33,80 @@ An agent connects to an MCP endpoint of the platform and signs in as a platform 
 
     ```json
     "Authorization": {
-      "Resources": [ "https://admin.example.com/admin/mcp" ]
+      "Resources": [ "https://virtostart-demo-admin.govirto.com/admin/mcp" ]
     }
     ```
 
-1. Register the agent as an OAuth client with `POST /api/platform/oauthapps` (Swagger at `/docs`). It is a public client: the agent holds no secret, only the user's token. The redirect URI is where the agent receives the sign-in:
+1. Register the agent as an OAuth client with `POST https://virtostart-demo-admin.govirto.com/api/platform/oauthapps` (Swagger at `/docs`). It is a public client: the agent holds no secret, only the user's token. The redirect URI is where the agent receives the sign-in, and explicit consent shows the user which agent they let act as them, once per user and agent:
 
     ```json
     {
       "clientId": "claude-code",
       "displayName": "Claude Code",
       "clientType": "public",
-      "consentType": "implicit",
+      "consentType": "explicit",
       "redirectUris": [ "http://localhost:65111/callback" ],
       "requirements": [ "ft:pkce" ],
-      "permissions": [ "rsrc:https://admin.example.com/admin/mcp" ]
+      "permissions": [ "rsrc:https://virtostart-demo-admin.govirto.com/admin/mcp" ]
     }
     ```
 
-1. Grant permissions with roles: `mcp:access` to everyone who connects an agent, `mcp:approve` to approvers, `mcp:audit:read` and `mcp:tools:manage` to the people who run the agents, plus the permissions of the tools each person uses (for example `marketing:read`, limited to their stores).
+    `http://localhost:65111/callback` is not the platform: it is the address where Claude Code, on the user's own computer, receives the result of the sign-in. Keep it as it is for Claude Code; other agents have their own callback address, for example `https://claude.ai/api/mcp/auth_callback` for claude.ai.
 
-The platform does not yet register MCP clients on the fly (OAuth client metadata documents or dynamic registration), so each kind of agent is registered once.
+1. Grant permissions with roles: `mcp:access` to everyone who connects an agent, `mcp:approve` to approvers, `mcp:audit:read`, `mcp:tools:manage` and `mcp:agents:manage` to the people who run the agents, plus the permissions of the tools each person uses (for example `marketing:read`, limited to their stores).
+
+> [!NOTE]
+> Registering each kind of agent by hand is a stopgap. The MCP specification prefers clients that identify themselves with a client ID metadata document, so that a user connects with the endpoint URL alone, as with Shopify, BigCommerce or commercetools; the platform does not support it yet ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)). Until then, also note that `POST /api/platform/oauthapps` adds default permissions to every client (`client_credentials`, `email`, `profile`, end session). An agent needs only the authorization code and refresh token grants and the `rsrc:` resource; the extra grants give a public client no access, since it holds no secret.
 
 ### 2. Connect the agent (each user)
 
 **Claude Code**
 
 ```bash
-claude mcp add --transport http --client-id claude-code --callback-port 65111 virto https://admin.example.com/admin/mcp
+claude mcp add --transport http --client-id claude-code --callback-port 65111 virto https://virtostart-demo-admin.govirto.com/admin/mcp
 ```
 
 Then in Claude Code run `/mcp`, select `virto` and choose **Authenticate**. The platform sign-in page opens in the browser; after the sign-in the agent lists the tools the user may use. Add `--scope project` to keep the server in the folder's `.mcp.json`, to share it with a team; the token stays in the user's profile. The callback port must match the redirect URI of the client.
 
 **Claude Desktop and claude.ai**
 
-Add a custom connector (**Settings → Connectors → Add custom connector**) with the URL `https://admin.example.com/admin/mcp` and, under the advanced settings, the OAuth client id. Claude connects from Anthropic's cloud, so the endpoint must be reachable from the internet over HTTPS, and the client must be registered with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback` at the time of writing; check the current Claude documentation).
+Add a custom connector (**Settings → Connectors → Add custom connector**) with the URL `https://virtostart-demo-admin.govirto.com/admin/mcp` and, under the advanced settings, the OAuth client id. Claude connects from Anthropic's cloud, so the endpoint must be reachable from the internet over HTTPS, and the client must be registered with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback` at the time of writing; check the current Claude documentation).
 
 **Other MCP clients**
 
 Any client that supports the streamable HTTP transport and OAuth with PKCE and a pre-registered client id works the same way: ChatGPT connectors, VS Code, Cursor, the MCP Inspector or your own agent built with an MCP SDK. Register one OAuth client for each, with that client's redirect URI.
 
-### 3. Check the connection
+### Package a connector for a solution (system integrators)
 
-Ask the agent "What can you do in Virto?" or call a read-only tool. In the back office, **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id.
+A system integrator ships "Virto Commerce for Contoso" to a client's Claude organization as a connector, so the client's people click **Connect** and sign in, with no setup of their own:
+
+1. **Toolset.** Put the solution's tools, prompts and resources in a `VirtoCommerce.<Solution>.MCP` project (see [Add tools to a scope](#add-tools-to-a-scope)), protected by the client's roles; extend the standard toolsets as described in [How to extend](#how-to-extend).
+1. **Name and instructions.** Register the `admin` scope again with the solution's title and instructions; Claude shows them as the server's name and reads the instructions before using the tools:
+
+    ```csharp
+    serviceCollection.AddMcpScope(new McpScope
+    {
+        Name = McpScopes.Admin,
+        Title = "Contoso Commerce",
+        Instructions = "Contoso sells office supplies in three stores. Prices are in USD. Always run a dry run first...",
+        RequireAuthenticatedUser = true,
+        Permissions = [ModuleConstants.Security.Permissions.Access],
+        ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
+    });
+    ```
+
+1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
+1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [step 1](#1-prepare-the-platform-administrator-once).
+1. **Roles.** Grant the client's people `mcp:access` and the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
+1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
+1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
+1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
+
+A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Once the platform supports client ID metadata documents ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)), the OAuth client step goes away: the URL alone is enough.
+
+### 3. Check and manage the connection
+
+Ask the agent "What can you do in Virto?" or call a read-only tool. In the back office, **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agents each user signed in to, with when they were last used. **Disconnect** revokes the agent's sign-in: its next request is refused, and the user signs in again to reconnect. Users see and disconnect their own agents; `mcp:agents:manage` shows everyone's.
 
 | Symptom | Cause |
 | --- | --- |
@@ -135,6 +166,7 @@ Invalid origins stop the platform at startup: an origin is an absolute `http` or
 | `mcp:approve` | Review, approve and reject changes submitted in the `admin` scope. Other scopes name their own approver permission. |
 | `mcp:audit:read` | Read the tool call audit log |
 | `mcp:tools:manage` | See the tools of every scope and switch them on and off |
+| `mcp:agents:manage` | See and disconnect the AI agents of every user; without it, users see and disconnect their own |
 
 ### Observability
 
@@ -263,13 +295,14 @@ A tool that is switched off disappears from `tools/list`, a call to it is refuse
 
 ### Back office
 
-The module ships an [Admin Shell](https://github.com/VirtoCommerce/vc-module-admin-shell) plugin: three screens under **Configuration → AI agents (MCP)**, built with VC-Shell and laid out for desktop and phone.
+The module ships an [Admin Shell](https://github.com/VirtoCommerce/vc-module-admin-shell) plugin: four screens under **Configuration → AI agents (MCP)**, built with VC-Shell and laid out for desktop and phone.
 
 | Screen | Who | What it does |
 | --- | --- | --- |
 | Agent approvals | approvers of a scope (`mcp:approve`, or the scope's `ApprovalPermission`) | The queue of changes agents asked to make, with a menu counter. A change opens with **what will change**: the object, a *now → after* diff and the warnings of its dry run, then the request and the arguments. **Approve** runs the tool right away as the reviewer, with the same rules as `approve_pending_change`; **Reject** records the reason. Once applied, the screen shows the tool's result as a diff. |
 | Agent audit log | `mcp:audit:read` | Every tool call with the user, the client, the scope, the duration and the outcome, filtered by outcome and scope. The search box takes a tool name, or the trace id an agent reported. A call links to the change it submitted or executed. |
 | Agent tools | `mcp:tools:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
+| Connected agents | `mcp:access` for one's own agents, `mcp:agents:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
 
 The plugin is in `src/VirtoCommerce.MCP.Web/vue` (Vue 3, `@vc-shell/framework`, Yarn 4). `dotnet publish`, and so `vc-build Compress`, builds it into the package as `plugins/admin-shell`; `-p:SkipAdminShellPlugin=true` leaves it out. To work on it against a running platform:
 
@@ -512,6 +545,7 @@ The behaviour of this module can be replaced through DI:
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
 | `McpSessionService` | `IMcpSessionService` | Token validity and sign-out |
+| `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |
 
 ### REST API
 
@@ -528,6 +562,8 @@ Base route: `api/mcp`
 | `POST` | `/audit/search` | `mcp:audit:read` | Search the audit log, by tool, outcome, scope, user or trace id |
 | `GET` | `/tools` | `mcp:tools:manage` | The tools of every scope and whether they are switched on |
 | `PUT` | `/tools/availability` | `mcp:tools:manage` | Switch a tool, or a scope with `*`, on or off |
+| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:agents:manage` | Agents users signed in to, with their client, endpoint and activity |
+| `DELETE` | `/connected-agents/{id}` | the agent's user, or `mcp:agents:manage` | Disconnect an agent: revoke its authorization and tokens |
 
 MCP endpoints: `POST /{scope}/mcp`, `POST /mcp` on a host of a scope, and the protected resource metadata at `GET /.well-known/oauth-protected-resource/{scope}/mcp`.
 

@@ -1,5 +1,8 @@
 {
-  "remote": { "name": "mcp_admin", "exposed": "./Module" },
+  "remote": {
+    "name": "mcp_admin",
+    "exposed": "./Module"
+  },
   "contributions": {
     "menu": [
       {
@@ -33,6 +36,17 @@
         "route": "/mcp-tools",
         "permission": "mcp:tools:manage",
         "priority": 670
+      },
+      {
+        "id": "mcpAgents",
+        "sectionId": "configuration",
+        "group": "AI agents (MCP)",
+        "title": "Connected agents",
+        "titleKey": "MCP.MENU.AGENTS",
+        "icon": "lucide-plug",
+        "route": "/mcp-agents",
+        "permission": "mcp:access",
+        "priority": 680
       }
     ]
   }

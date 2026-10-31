@@ -76,6 +76,18 @@ export interface McpToolInfo {
   disabledBy?: "Tool" | "Scope";
 }
 
+export interface McpConnectedAgent {
+  id: string;
+  clientId?: string;
+  clientName?: string;
+  userId?: string;
+  userName?: string;
+  resources?: string[];
+  connectedDate?: string;
+  lastUsedDate?: string;
+  activeSessionCount: number;
+}
+
 export interface PendingChangeCriteria {
   scopeNames?: string[];
   statuses?: string[];
@@ -141,4 +153,7 @@ export const mcpApi = {
   getTools: () => request<McpToolInfo[]>("GET", "/api/mcp/tools"),
   setToolEnabled: (scopeName: string, toolName: string, enabled: boolean) =>
     request<McpToolInfo[]>("PUT", "/api/mcp/tools/availability", { scopeName, toolName, enabled }),
+  searchConnectedAgents: (criteria: { userId?: string; clientId?: string; skip?: number; take?: number }) =>
+    request<SearchResult<McpConnectedAgent>>("POST", "/api/mcp/connected-agents/search", criteria),
+  disconnectAgent: (id: string) => request<void>("DELETE", `/api/mcp/connected-agents/${encodeURIComponent(id)}`),
 };
