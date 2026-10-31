@@ -1,4 +1,4 @@
-# MCP Module
+# Model Context Protocol (MCP) Module
 
 ## Overview
 
