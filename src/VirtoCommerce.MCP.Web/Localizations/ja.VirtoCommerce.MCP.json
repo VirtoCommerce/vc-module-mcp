@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "AI エージェントを Backoffice の MCP サーバーに接続する",
+    "mcp:approve": "MCP ツールが送信した変更を確認、承認、却下する",
+    "mcp:audit:read": "MCP ツール呼び出しの監査ログを閲覧する",
+    "mcp:tools:manage": "エージェント向けの MCP ツールをオン/オフにする",
+    "mcp:agents:manage": "すべてのユーザーの AI エージェントを表示して切断する"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "自己承認を許可",
+          "description": "有効にすると、ユーザーは自分が依頼した変更を承認できます。既定では無効で、変更は別のユーザーが承認する必要があります。"
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "保留中の変更の有効期間（時間）",
+          "description": "この時間内に確認されなかった変更は期限切れになり、承認できなくなります。"
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "MCP ツール呼び出しを監査",
+          "description": "MCP スコープ経由のすべてのツール呼び出しについて、ユーザー、ツール、結果、所要時間を記録します。"
+        },
+        "LogArguments": {
+          "title": "ツール呼び出しの引数を記録",
+          "description": "各ツール呼び出しの引数を監査ログに保存します。引数に個人データが含まれる可能性がある場合は無効にしてください。"
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "MCP データのクリーンアップ",
+          "description": "古い監査エントリと確認済みの保留中の変更を定期的に削除します。"
+        },
+        "Cron": {
+          "title": "クリーンアップのスケジュール",
+          "description": "クリーンアップを実行するタイミング（UTC）。"
+        },
+        "AuditRetentionDays": {
+          "title": "監査ログの保持期間（日）",
+          "description": "これより古い監査エントリは削除されます。"
+        },
+        "PendingChangeRetentionDays": {
+          "title": "保留中の変更の保持期間（日）",
+          "description": "これより古い適用済み、失敗、却下、期限切れの変更は削除されます。承認されたまま完了しなかった変更は保持されます。"
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "無効化されたツール",
+          "description": "エージェントが表示も呼び出しもできないツールを 1 行に 1 つ指定します。すべてのスコープは tool_name、特定のスコープは scope/tool_name、スコープ全体は scope/* です。再起動なしで次のリクエストから適用されます。"
+        },
+        "MaxTake": {
+          "title": "最大行数",
+          "description": "一覧ツールが 1 回の呼び出しで返す最大行数。これを超える要求は上限に切り詰められます。"
+        }
+      }
+    }
+  }
+}

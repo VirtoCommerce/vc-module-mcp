@@ -1,0 +1,53 @@
+{
+  "remote": {
+    "name": "mcp_admin",
+    "exposed": "./Module"
+  },
+  "contributions": {
+    "menu": [
+      {
+        "id": "mcpApprovals",
+        "sectionId": "configuration",
+        "group": "AI agents (MCP)",
+        "title": "Agent approvals",
+        "titleKey": "MCP.MENU.APPROVALS",
+        "icon": "lucide-shield-check",
+        "route": "/mcp-approvals",
+        "priority": 650
+      },
+      {
+        "id": "mcpAudit",
+        "sectionId": "configuration",
+        "group": "AI agents (MCP)",
+        "title": "Agent audit log",
+        "titleKey": "MCP.MENU.AUDIT",
+        "icon": "lucide-scroll-text",
+        "route": "/mcp-audit",
+        "permission": "mcp:audit:read",
+        "priority": 660
+      },
+      {
+        "id": "mcpTools",
+        "sectionId": "configuration",
+        "group": "AI agents (MCP)",
+        "title": "Agent tools",
+        "titleKey": "MCP.MENU.TOOLS",
+        "icon": "lucide-toggle-right",
+        "route": "/mcp-tools",
+        "permission": "mcp:tools:manage",
+        "priority": 670
+      },
+      {
+        "id": "mcpAgents",
+        "sectionId": "configuration",
+        "group": "AI agents (MCP)",
+        "title": "Connected agents",
+        "titleKey": "MCP.MENU.AGENTS",
+        "icon": "lucide-plug",
+        "route": "/mcp-agents",
+        "permission": "mcp:access",
+        "priority": 680
+      }
+    ]
+  }
+}

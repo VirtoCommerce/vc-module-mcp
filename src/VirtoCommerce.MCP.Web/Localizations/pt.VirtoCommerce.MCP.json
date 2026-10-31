@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "Conectar agentes de IA ao servidor MCP do Backoffice",
+    "mcp:approve": "Revisar, aprovar e rejeitar alterações enviadas por ferramentas MCP",
+    "mcp:audit:read": "Ler o log de auditoria das chamadas de ferramentas MCP",
+    "mcp:tools:manage": "Ativar e desativar ferramentas MCP para agentes",
+    "mcp:agents:manage": "Ver e desconectar os agentes de IA de todos os usuários"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Permitir autoaprovação",
+          "description": "Quando ativado, um usuário pode aprovar uma alteração que ele mesmo solicitou. Desativado por padrão: a alteração precisa ser aprovada por outro usuário."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Validade das alterações pendentes (horas)",
+          "description": "Uma alteração que não for revisada dentro desse prazo expira e não pode mais ser aprovada."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Auditar chamadas de ferramentas MCP",
+          "description": "Registra cada chamada de ferramenta feita por um escopo MCP: o usuário, a ferramenta, o resultado e a duração."
+        },
+        "LogArguments": {
+          "title": "Registrar argumentos das chamadas",
+          "description": "Armazena os argumentos de cada chamada de ferramenta no log de auditoria. Desative se os argumentos puderem conter dados pessoais."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Limpar dados do MCP",
+          "description": "Exclui periodicamente registros de auditoria antigos e alterações pendentes já revisadas."
+        },
+        "Cron": {
+          "title": "Agendamento da limpeza",
+          "description": "Quando a limpeza é executada, em UTC."
+        },
+        "AuditRetentionDays": {
+          "title": "Retenção da auditoria (dias)",
+          "description": "Registros de auditoria mais antigos são excluídos."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Retenção das alterações pendentes (dias)",
+          "description": "Alterações aplicadas, com falha, rejeitadas e expiradas mais antigas são excluídas. Alterações aprovadas que nunca foram concluídas são mantidas."
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Ferramentas desativadas",
+          "description": "Ferramentas que os agentes não podem ver nem chamar, uma por linha: tool_name para todos os escopos, scope/tool_name para um escopo ou scope/* para um escopo inteiro. Vale a partir da próxima solicitação, sem reiniciar."
+        },
+        "MaxTake": {
+          "title": "Número máximo de linhas",
+          "description": "Maior número de linhas que uma ferramenta de lista retorna em uma chamada. Solicitações maiores são limitadas."
+        }
+      }
+    }
+  }
+}

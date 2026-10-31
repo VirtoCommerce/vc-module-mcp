@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <SonarQubeTestProject>false</SonarQubeTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="VirtoCommerce.Platform.Data" Version="3.1085.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />
+  </ItemGroup>
+</Project>

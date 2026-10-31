@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <SonarQubeTestProject>false</SonarQubeTestProject>
+    <NoWarn>1591;NU1608</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="dist\**" />
+    <Content Remove="dist\**" />
+    <EmbeddedResource Remove="dist\**" />
+    <None Remove="dist\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Admin Shell plugin: Vue sources in vue/, built into plugins/admin-shell/ -->
+    <Compile Remove="vue\**" />
+    <Content Remove="vue\**" />
+    <EmbeddedResource Remove="vue\**" />
+    <None Remove="vue\**" />
+    <Content Remove="plugins\**" />
+    <None Remove="plugins\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Update="Localizations\**">
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
+    <PackageReference Include="VirtoCommerce.Platform.Security" Version="3.1085.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />
+    <ProjectReference Include="..\VirtoCommerce.MCP.Data\VirtoCommerce.MCP.Data.csproj" />
+    <ProjectReference Include="..\VirtoCommerce.MCP.Data.MySql\VirtoCommerce.MCP.Data.MySql.csproj" />
+    <ProjectReference Include="..\VirtoCommerce.MCP.Data.PostgreSql\VirtoCommerce.MCP.Data.PostgreSql.csproj" />
+    <ProjectReference Include="..\VirtoCommerce.MCP.Data.SqlServer\VirtoCommerce.MCP.Data.SqlServer.csproj" />
+  </ItemGroup>
+  <!-- Builds the Admin Shell plugin on publish (vc-build Compress) and ships it in the module package as plugins/admin-shell/.
+       -p:SkipAdminShellPlugin=true publishes without it. -->
+  <Target Name="BuildAdminShellPlugin" BeforeTargets="Publish" Condition="'$(SkipAdminShellPlugin)' != 'true' AND Exists('$(MSBuildProjectDirectory)\vue\package.json')">
+    <Exec Command="corepack enable" ContinueOnError="true" />
+    <Exec Command="yarn install --immutable" WorkingDirectory="$(MSBuildProjectDirectory)\vue" />
+    <Exec Command="yarn type-check" WorkingDirectory="$(MSBuildProjectDirectory)\vue" />
+    <Exec Command="yarn build" WorkingDirectory="$(MSBuildProjectDirectory)\vue" />
+  </Target>
+  <Target Name="CopyAdminShellPluginOnPublish" AfterTargets="Publish" DependsOnTargets="BuildAdminShellPlugin" Condition="'$(SkipAdminShellPlugin)' != 'true'">
+    <ItemGroup>
+      <AdminShellPlugin Include="$(MSBuildProjectDirectory)\plugins\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AdminShellPlugin)" DestinationFiles="$(PublishDir)\..\plugins\%(RecursiveDir)%(Filename)%(Extension)" />
+  </Target>
+</Project>

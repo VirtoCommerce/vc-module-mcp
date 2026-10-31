@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "Connect AI agents to the Backoffice MCP server",
+    "mcp:approve": "Review, approve and reject changes submitted by MCP tools",
+    "mcp:audit:read": "Read the MCP tool call audit log",
+    "mcp:tools:manage": "Switch MCP tools on and off for agents",
+    "mcp:agents:manage": "See and disconnect the AI agents of every user"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Allow self-approval",
+          "description": "When enabled, a user can approve a change that they requested themselves. Disabled by default: a change must be approved by another user."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Pending change lifetime (hours)",
+          "description": "A change that is not reviewed within this time expires and can no longer be approved."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Audit MCP tool calls",
+          "description": "Record every tool call made through an MCP scope: the user, the tool, the outcome and the duration."
+        },
+        "LogArguments": {
+          "title": "Record tool call arguments",
+          "description": "Store the arguments of each tool call in the audit log. Disable if tool arguments may contain personal data."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Clean up MCP data",
+          "description": "Periodically delete old audit entries and reviewed pending changes."
+        },
+        "Cron": {
+          "title": "Cleanup schedule",
+          "description": "When the cleanup runs, in UTC."
+        },
+        "AuditRetentionDays": {
+          "title": "Audit retention (days)",
+          "description": "Audit entries older than this are deleted."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Pending change retention (days)",
+          "description": "Applied, failed, rejected and expired changes older than this are deleted. Approved changes that never completed are kept."
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Disabled tools",
+          "description": "Tools that agents can neither see nor call, one per line: tool_name for every scope, scope/tool_name for one scope, or scope/* for a whole scope. Applies to the next request, with no restart."
+        },
+        "MaxTake": {
+          "title": "Maximum number of rows",
+          "description": "Largest number of rows a list tool returns in one call. Larger requests are capped."
+        }
+      }
+    }
+  }
+}

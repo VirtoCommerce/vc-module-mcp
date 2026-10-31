@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "Connecter des agents IA au serveur MCP du Backoffice",
+    "mcp:approve": "Examiner, approuver et rejeter les modifications soumises par les outils MCP",
+    "mcp:audit:read": "Consulter le journal d'audit des appels aux outils MCP",
+    "mcp:tools:manage": "Activer et désactiver les outils MCP pour les agents",
+    "mcp:agents:manage": "Voir et déconnecter les agents IA de tous les utilisateurs"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Autoriser l'auto-approbation",
+          "description": "Si cette option est activée, un utilisateur peut approuver une modification qu'il a lui-même demandée. Désactivée par défaut : une modification doit être approuvée par un autre utilisateur."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Durée de validité des modifications en attente (heures)",
+          "description": "Une modification qui n'est pas examinée dans ce délai expire et ne peut plus être approuvée."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Auditer les appels aux outils MCP",
+          "description": "Enregistrer chaque appel d'outil effectué via une portée MCP : l'utilisateur, l'outil, le résultat et la durée."
+        },
+        "LogArguments": {
+          "title": "Enregistrer les arguments des appels",
+          "description": "Conserver les arguments de chaque appel d'outil dans le journal d'audit. Désactivez cette option si les arguments peuvent contenir des données personnelles."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Nettoyer les données MCP",
+          "description": "Supprimer régulièrement les anciennes entrées d'audit et les modifications en attente déjà examinées."
+        },
+        "Cron": {
+          "title": "Planification du nettoyage",
+          "description": "Moment où le nettoyage s'exécute, en UTC."
+        },
+        "AuditRetentionDays": {
+          "title": "Conservation de l'audit (jours)",
+          "description": "Les entrées d'audit plus anciennes sont supprimées."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Conservation des modifications en attente (jours)",
+          "description": "Les modifications appliquées, échouées, rejetées et expirées plus anciennes sont supprimées. Les modifications approuvées qui n'ont jamais abouti sont conservées."
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Outils désactivés",
+          "description": "Outils que les agents ne peuvent ni voir ni appeler, un par ligne : tool_name pour toutes les portées, scope/tool_name pour une portée ou scope/* pour une portée entière. S'applique dès la requête suivante, sans redémarrage."
+        },
+        "MaxTake": {
+          "title": "Nombre maximal de lignes",
+          "description": "Nombre maximal de lignes renvoyées par un outil de liste en un appel. Les demandes plus grandes sont plafonnées."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module>
+  <id>VirtoCommerce.MCP</id>
+  <version>3.1000.0</version>
+  <version-tag></version-tag>
+
+  <platformVersion>3.1085.0</platformVersion>
+
+  <title>Model Context Protocol</title>
+  <description>Platform MCP infrastructure: scoped MCP endpoints for back-office and vendor agents, declarative registration of tools, prompts and resources, permission checks, change approval and audit.</description>
+
+  <authors>
+    <author>VirtoCommerce</author>
+  </authors>
+  <owners>
+    <owner>Virto Commerce</owner>
+  </owners>
+
+  <projectUrl>https://github.com/VirtoCommerce/vc-module-mcp</projectUrl>
+  <iconUrl>Modules/$(VirtoCommerce.MCP)/Content/logo.svg</iconUrl>
+  <requireLicenseAcceptance>false</requireLicenseAcceptance>
+
+  <assemblyFile>VirtoCommerce.MCP.Web.dll</assemblyFile>
+  <moduleType>VirtoCommerce.MCP.Web.Module, VirtoCommerce.MCP.Web</moduleType>
+  <startupType>VirtoCommerce.MCP.Web.McpStartup, VirtoCommerce.MCP.Web</startupType>
+
+  <releaseNotes>First version.</releaseNotes>
+  <copyright>Copyright © 2026 Virto Commerce. All rights reserved</copyright>
+  <tags>mcp ai agents</tags>
+  <useFullTypeNameInSwagger>false</useFullTypeNameInSwagger>
+</module>

@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "KI-Agenten mit dem MCP-Server des Backoffice verbinden",
+    "mcp:approve": "Von MCP-Tools eingereichte Änderungen prüfen, genehmigen und ablehnen",
+    "mcp:audit:read": "Das Audit-Protokoll der MCP-Tool-Aufrufe lesen",
+    "mcp:tools:manage": "MCP-Tools für Agenten ein- und ausschalten",
+    "mcp:agents:manage": "Die KI-Agenten aller Benutzer sehen und trennen"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Selbstgenehmigung erlauben",
+          "description": "Wenn aktiviert, kann ein Benutzer eine Änderung genehmigen, die er selbst angefordert hat. Standardmäßig deaktiviert: Eine Änderung muss von einem anderen Benutzer genehmigt werden."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Gültigkeitsdauer ausstehender Änderungen (Stunden)",
+          "description": "Eine Änderung, die nicht innerhalb dieser Zeit geprüft wird, läuft ab und kann nicht mehr genehmigt werden."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "MCP-Tool-Aufrufe protokollieren",
+          "description": "Jeden Tool-Aufruf über einen MCP-Scope protokollieren: den Benutzer, das Tool, das Ergebnis und die Dauer."
+        },
+        "LogArguments": {
+          "title": "Argumente der Tool-Aufrufe protokollieren",
+          "description": "Die Argumente jedes Tool-Aufrufs im Audit-Protokoll speichern. Deaktivieren, wenn Tool-Argumente personenbezogene Daten enthalten können."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "MCP-Daten bereinigen",
+          "description": "Alte Audit-Einträge und geprüfte ausstehende Änderungen regelmäßig löschen."
+        },
+        "Cron": {
+          "title": "Zeitplan der Bereinigung",
+          "description": "Wann die Bereinigung ausgeführt wird, in UTC."
+        },
+        "AuditRetentionDays": {
+          "title": "Aufbewahrung des Audit-Protokolls (Tage)",
+          "description": "Ältere Audit-Einträge werden gelöscht."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Aufbewahrung ausstehender Änderungen (Tage)",
+          "description": "Ältere angewendete, fehlgeschlagene, abgelehnte und abgelaufene Änderungen werden gelöscht. Genehmigte Änderungen, die nie abgeschlossen wurden, bleiben erhalten."
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Deaktivierte Tools",
+          "description": "Tools, die Agenten weder sehen noch aufrufen können, eines pro Zeile: tool_name für alle Scopes, scope/tool_name für einen Scope oder scope/* für einen ganzen Scope. Gilt ab der nächsten Anfrage, ohne Neustart."
+        },
+        "MaxTake": {
+          "title": "Maximale Anzahl der Zeilen",
+          "description": "Höchste Anzahl der Zeilen, die ein Listen-Tool in einem Aufruf zurückgibt. Größere Anfragen werden begrenzt."
+        }
+      }
+    }
+  }
+}

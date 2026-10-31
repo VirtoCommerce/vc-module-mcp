@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "Ansluta AI-agenter till MCP-servern i Backoffice",
+    "mcp:approve": "Granska, godkänna och avvisa ändringar som skickats in av MCP-verktyg",
+    "mcp:audit:read": "Läsa granskningsloggen för MCP-verktygsanrop",
+    "mcp:tools:manage": "Slå på och av MCP-verktyg för agenter",
+    "mcp:agents:manage": "Se och koppla från AI-agenterna för alla användare"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Tillåt eget godkännande",
+          "description": "När inställningen är aktiverad kan en användare godkänna en ändring som användaren själv har begärt. Inaktiverad som standard: en ändring måste godkännas av en annan användare."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Giltighetstid för väntande ändringar (timmar)",
+          "description": "En ändring som inte granskas inom denna tid upphör att gälla och kan inte längre godkännas."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Granska MCP-verktygsanrop",
+          "description": "Registrera varje verktygsanrop som görs via ett MCP-omfång: användaren, verktyget, utfallet och varaktigheten."
+        },
+        "LogArguments": {
+          "title": "Registrera argument i verktygsanrop",
+          "description": "Spara argumenten för varje verktygsanrop i granskningsloggen. Inaktivera om argumenten kan innehålla personuppgifter."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Rensa MCP-data",
+          "description": "Ta regelbundet bort gamla granskningsposter och granskade väntande ändringar."
+        },
+        "Cron": {
+          "title": "Schema för rensning",
+          "description": "När rensningen körs, i UTC."
+        },
+        "AuditRetentionDays": {
+          "title": "Lagring av granskningslogg (dagar)",
+          "description": "Äldre granskningsposter tas bort."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Lagring av väntande ändringar (dagar)",
+          "description": "Äldre genomförda, misslyckade, avvisade och utgångna ändringar tas bort. Godkända ändringar som aldrig slutfördes behålls."
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Inaktiverade verktyg",
+          "description": "Verktyg som agenter varken kan se eller anropa, ett per rad: tool_name för alla omfång, scope/tool_name för ett omfång eller scope/* för ett helt omfång. Gäller från nästa begäran, utan omstart."
+        },
+        "MaxTake": {
+          "title": "Högsta antal rader",
+          "description": "Högsta antal rader som ett listverktyg returnerar i ett anrop. Större förfrågningar begränsas."
+        }
+      }
+    }
+  }
+}

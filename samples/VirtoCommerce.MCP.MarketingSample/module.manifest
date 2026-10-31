@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module>
+  <id>VirtoCommerce.MCP.MarketingSample</id>
+  <version>3.1000.0</version>
+  <version-tag></version-tag>
+
+  <platformVersion>3.1085.0</platformVersion>
+  <dependencies>
+    <dependency id="VirtoCommerce.MCP" version="3.1000.0" />
+    <!-- The tools are protected with the permissions of the Marketing module: marketing:read, marketing:create, marketing:update. -->
+    <dependency id="VirtoCommerce.Marketing" version="3.1009.0" />
+    <!-- The content tools are protected with the permissions of the Content module: content:read, content:create, content:update. -->
+    <dependency id="VirtoCommerce.Content" version="3.1007.0" />
+  </dependencies>
+
+  <title>MCP Marketing Sample</title>
+  <description>Sample module for the MCP marketing demo: a marketer's toolset for an AI agent (overview, finders, analysis, intent-level actions with approval, bulk coupon jobs, prompts and resources) over realistic mock promotion data.</description>
+
+  <authors>
+    <author>VirtoCommerce</author>
+  </authors>
+  <owners>
+    <owner>Virto Commerce</owner>
+  </owners>
+
+  <projectUrl>https://github.com/VirtoCommerce/vc-module-mcp</projectUrl>
+  <requireLicenseAcceptance>false</requireLicenseAcceptance>
+
+  <assemblyFile>VirtoCommerce.MCP.MarketingSample.dll</assemblyFile>
+  <moduleType>VirtoCommerce.MCP.MarketingSample.Module, VirtoCommerce.MCP.MarketingSample</moduleType>
+
+  <releaseNotes>Sample module.</releaseNotes>
+  <copyright>Copyright © 2026 Virto Commerce. All rights reserved</copyright>
+  <tags>sample mcp marketing</tags>
+  <useFullTypeNameInSwagger>false</useFullTypeNameInSwagger>
+</module>

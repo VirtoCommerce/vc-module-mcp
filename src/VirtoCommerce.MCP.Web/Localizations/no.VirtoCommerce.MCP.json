@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "mcp:access": "Koble KI-agenter til MCP-serveren i Backoffice",
+    "mcp:approve": "Gjennomgå, godkjenne og avvise endringer sendt inn av MCP-verktøy",
+    "mcp:audit:read": "Lese revisjonsloggen for MCP-verktøykall",
+    "mcp:tools:manage": "Slå MCP-verktøy av og på for agenter",
+    "mcp:agents:manage": "Se og koble fra AI-agentene til alle brukere"
+  },
+  "settings": {
+    "MCP": {
+      "Approval": {
+        "AllowSelfApproval": {
+          "title": "Tillat egengodkjenning",
+          "description": "Når dette er aktivert, kan en bruker godkjenne en endring vedkommende selv har bedt om. Deaktivert som standard: en endring må godkjennes av en annen bruker."
+        },
+        "PendingChangeLifetimeHours": {
+          "title": "Gyldighetstid for ventende endringer (timer)",
+          "description": "En endring som ikke blir gjennomgått innen denne tiden, utløper og kan ikke lenger godkjennes."
+        }
+      },
+      "Audit": {
+        "Enabled": {
+          "title": "Revider MCP-verktøykall",
+          "description": "Registrer hvert verktøykall gjort gjennom et MCP-omfang: brukeren, verktøyet, resultatet og varigheten."
+        },
+        "LogArguments": {
+          "title": "Registrer argumentene i verktøykall",
+          "description": "Lagre argumentene i hvert verktøykall i revisjonsloggen. Deaktiver hvis argumentene kan inneholde personopplysninger."
+        }
+      },
+      "Cleanup": {
+        "Enabled": {
+          "title": "Rydd opp i MCP-data",
+          "description": "Slett jevnlig gamle revisjonsoppføringer og gjennomgåtte ventende endringer."
+        },
+        "Cron": {
+          "title": "Tidsplan for opprydding",
+          "description": "Når oppryddingen kjøres, i UTC."
+        },
+        "AuditRetentionDays": {
+          "title": "Oppbevaring av revisjonslogg (dager)",
+          "description": "Eldre revisjonsoppføringer slettes."
+        },
+        "PendingChangeRetentionDays": {
+          "title": "Oppbevaring av ventende endringer (dager)",
+          "description": "Eldre utførte, mislykkede, avviste og utløpte endringer slettes. Godkjente endringer som aldri ble fullført, beholdes."
+        }
+      },
+      "Tools": {
+        "Disabled": {
+          "title": "Deaktiverte verktøy",
+          "description": "Verktøy som agenter verken kan se eller kalle, ett per linje: tool_name for alle omfang, scope/tool_name for ett omfang eller scope/* for et helt omfang. Gjelder fra neste forespørsel, uten omstart."
+        },
+        "MaxTake": {
+          "title": "Maksimalt antall rader",
+          "description": "Høyeste antall rader et listeverktøy returnerer i ett kall. Større forespørsler begrenses."
+        }
+      }
+    }
+  }
+}

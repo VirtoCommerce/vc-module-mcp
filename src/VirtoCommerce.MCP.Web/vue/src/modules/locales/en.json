@@ -1,0 +1,122 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "AI agents (MCP)",
+      "APPROVALS": "Agent approvals",
+      "AUDIT": "Agent audit log",
+      "TOOLS": "Agent tools",
+      "AGENTS": "Connected agents",
+      "COUNTER": "{count} changes waiting for your review"
+    },
+    "APPROVALS": {
+      "TITLE": "Agent approvals",
+      "EMPTY": "Nothing waits for your review",
+      "EMPTY_HINT": "When an agent asks to make a change that needs approval, it appears here.",
+      "NOT_APPROVER": "You do not review agent changes in any MCP scope."
+    },
+    "APPROVAL": {
+      "TITLE": "Change by an agent",
+      "WHAT_CHANGES": "What will change",
+      "WHAT_CHANGED": "What changed",
+      "NO_DIFF": "The tool did not describe its change as a diff. Check its arguments and preview below.",
+      "WARNINGS": "Check before approving",
+      "NOTES": "Notes from the preview",
+      "REQUEST": "Request",
+      "ARGUMENTS": "Arguments",
+      "PREVIEW": "Dry-run preview",
+      "RESULT": "Result",
+      "COMMENT": "Comment",
+      "COMMENT_PLACEHOLDER": "Optional note for the requester and the audit log",
+      "REVIEW": "Review",
+      "FIELD": "Field",
+      "FROM": "Now",
+      "TO": "After",
+      "OBJECT": "Object",
+      "APPROVED": "Approved and applied",
+      "APPROVED_FAILED": "Approved, but the tool failed: see the result",
+      "REJECTED": "Rejected"
+    },
+    "AUDIT": {
+      "TITLE": "Agent audit log",
+      "DETAILS": "Tool call",
+      "EMPTY": "No tool calls found",
+      "SEARCH": "Tool name or trace id",
+      "TRACE_HINT": "Search the traces and logs of your monitoring tool by this id.",
+      "OPEN_CHANGE": "Open the change"
+    },
+    "TOOLS": {
+      "TITLE": "Agent tools",
+      "EMPTY": "No tools",
+      "SCOPES": "Scopes",
+      "SCOPE_ON": "Agents can use this scope",
+      "SCOPE_OFF_HINT": "Every tool of the scope is switched off",
+      "SWITCHED_ON": "{name} is switched on",
+      "SWITCHED_OFF": "{name} is switched off",
+      "OFF_BY_SCOPE": "Off: the scope is switched off",
+      "KIND_READ": "Read",
+      "KIND_WRITE": "Write",
+      "KIND_APPROVAL": "Approval",
+      "CONFIRM_OFF_SCOPE": "Switch off every tool of the {scope} scope? Agents get an error until you switch it on again."
+    },
+    "AGENTS": {
+      "TITLE": "Connected agents",
+      "EMPTY": "No agent is connected",
+      "EMPTY_HINT": "An agent appears here once a user signs in to it, for example from Claude.",
+      "DISCONNECT": "Disconnect",
+      "CONFIRM_DISCONNECT": "Disconnect {agent} for {user}? Its next request is refused, and the user signs in again to reconnect.",
+      "DISCONNECTED": "{agent} is disconnected",
+      "CONNECTED": "Connected",
+      "LAST_USED": "Last used",
+      "SESSIONS": "Active sign-ins",
+      "ENDPOINT": "MCP endpoint"
+    },
+    "FIELDS": {
+      "TOOL": "Tool",
+      "SCOPE": "Scope",
+      "STATUS": "Status",
+      "OUTCOME": "Outcome",
+      "REQUESTED_BY": "Requested by",
+      "REQUESTED_AT": "Requested",
+      "EXPIRES": "Expires",
+      "REVIEWED_BY": "Reviewed by",
+      "REVIEWED_AT": "Reviewed",
+      "USER": "User",
+      "CLIENT": "Client",
+      "DATE": "Date",
+      "DURATION": "Duration, ms",
+      "ERROR": "Error",
+      "TRACE_ID": "Trace id",
+      "KIND": "Kind",
+      "ENABLED": "Enabled",
+      "DESCRIPTION": "Description"
+    },
+    "STATUS": {
+      "Pending": "Pending",
+      "Approved": "Approved",
+      "Applied": "Applied",
+      "Failed": "Failed",
+      "Rejected": "Rejected",
+      "Expired": "Expired"
+    },
+    "OUTCOME": {
+      "Succeeded": "Succeeded",
+      "Failed": "Failed",
+      "Error": "Error",
+      "Forbidden": "Forbidden",
+      "PendingApproval": "Waiting for approval",
+      "Disabled": "Switched off"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Refresh",
+      "APPROVE": "Approve",
+      "REJECT": "Reject",
+      "ENABLE_SCOPE": "Switch scope on",
+      "DISABLE_SCOPE": "Switch scope off"
+    },
+    "ALERTS": {
+      "APPROVE": "Approve this change? The tool runs right away as you.",
+      "REJECT": "Reject this change? It will never run.",
+      "LOAD_FAILED": "Could not load: {message}"
+    }
+  }
+}
