@@ -6,7 +6,7 @@ The MCP module connects AI agents such as Claude, ChatGPT or your own agent to t
 
 An agent works as the signed-in user: it sees only the tools that user may use, limited to the user's stores, and a change it asks for can wait in the back office until an approver applies it. Built on the official C# SDK, [ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore).
 
-**Who reads what.** Administrators, approvers and business users: [Connect an AI agent](#connect-an-ai-agent) and [Work with agents in the back office](#work-with-agents-in-the-back-office). System integrators and developers: [Configuration](#configuration) and the sections after it.
+**Who reads what.** Business users: [Connect an AI agent](#connect-an-ai-agent). Administrators: [Set up the platform for agents](#set-up-the-platform-for-agents). Approvers and administrators: [Work with agents in the back office](#work-with-agents-in-the-back-office). System integrators and developers: [Configuration](#configuration) and the sections after it.
 
 ## Key Features
 
@@ -26,12 +26,62 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
 
 ## Connect an AI agent
 
-An agent connects to an MCP endpoint of the platform and signs in as a platform user. The steps below connect an agent to the back-office endpoint, `/admin/mcp`, of a platform at `https://virtostart-demo-admin.govirto.com`; replace it with the public address of your platform. The endpoint is always the platform's public HTTPS address followed by `/admin/mcp`.
+You need two things from your administrator: the **endpoint URL** and the agent's **client id**.
 
-### 1. Prepare the platform (administrator, once)
+```text
+https://virtostart-demo-admin.govirto.com/admin/mcp
+```
 
-1. Install `VirtoCommerce.MCP` (platform 3.1091.0 or later) and the modules that bring tools. Bulk tools also need `VirtoCommerce.BackgroundJobs`; it is optional, and without it a bulk tool answers that background jobs are not available.
-1. Allow the platform to issue tokens for the endpoint, in `appsettings.json`:
+The endpoint is your platform's public HTTPS address followed by `/admin/mcp`; replace the demo address above with yours. If you are the administrator and nobody has set the platform up yet, do [Set up the platform for agents](#set-up-the-platform-for-agents) first, once.
+
+Then pick your agent:
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http --client-id claude-code --callback-port 65111 virto https://virtostart-demo-admin.govirto.com/admin/mcp
+```
+
+In Claude Code, run `/mcp`, select `virto`, choose **Authenticate** and sign in. Add `--scope project` to share the server with your team through the folder's `.mcp.json`; the token stays in your profile.
+
+**Claude Desktop and claude.ai**
+
+1. **Settings → Connectors → Add custom connector.**
+1. Name: `Virto Commerce`. URL: the endpoint. Under **Advanced settings**, OAuth client id: the one your administrator gave you.
+1. **Connect**, sign in and allow access.
+
+**ChatGPT**
+
+In developer mode (ChatGPT Business, Enterprise or Edu), **Settings → Apps → Create** an app with the endpoint URL, authentication **OAuth** and the client id, then sign in and allow access. See OpenAI's [developer mode guide](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta).
+
+**VS Code**
+
+Add the server to `.vscode/mcp.json`, then choose **Start** above it; VS Code asks for the client id and opens the sign-in:
+
+```json
+{
+  "servers": {
+    "virto": { "type": "http", "url": "https://virtostart-demo-admin.govirto.com/admin/mcp" }
+  }
+}
+```
+
+**Other agents.** Any MCP client with the streamable HTTP transport and OAuth with a client id works the same way: give it the endpoint and the client id.
+
+**Try it.** The agent works as you: it sees only the tools you may use, in your stores. Ask for example:
+
+* *What can you do in Virto Commerce?*
+* *Which promotions end this week, and how do they perform?*
+* *Pause the "Summer sale" promotion.* When a tool needs approval, the change waits in **Agent approvals** until an approver applies it, and the agent gives you its change id.
+
+Menu names in the agents change from release to release; if a step does not match, check the agent's own documentation. If the sign-in fails, see [Troubleshooting](#troubleshooting).
+
+## Set up the platform for agents
+
+An administrator does this once per platform, and registers one OAuth client per kind of agent.
+
+1. **Install** `VirtoCommerce.MCP` (platform 3.1091.0 or later) and the modules that bring tools. Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
+1. **Allow tokens for the endpoint** in `appsettings.json`:
 
     ```json
     "Authorization": {
@@ -39,7 +89,7 @@ An agent connects to an MCP endpoint of the platform and signs in as a platform 
     }
     ```
 
-1. Register the agent as an OAuth client with `POST https://virtostart-demo-admin.govirto.com/api/platform/oauthapps` (Swagger at `/docs`). It is a public client: the agent holds no secret, only the user's token. The redirect URI is where the agent receives the sign-in, and explicit consent shows the user which agent they let act as them, once per user and agent:
+1. **Register the agent** as an OAuth client with `POST /api/platform/oauthapps` (Swagger at `/docs`). Change only `clientId`, `displayName` and `redirectUris` from one agent to the next:
 
     ```json
     {
@@ -53,34 +103,33 @@ An agent connects to an MCP endpoint of the platform and signs in as a platform 
     }
     ```
 
-    `http://localhost:65111/callback` is not the platform: it is the address where Claude Code, on the user's own computer, receives the result of the sign-in. Keep it as it is for Claude Code; other agents have their own callback address, for example `https://claude.ai/api/mcp/auth_callback` for claude.ai.
+    | Agent | Redirect URI |
+    | --- | --- |
+    | Claude Code | `http://localhost:65111/callback` (the port of `--callback-port`) |
+    | Claude Desktop, claude.ai | `https://claude.ai/api/mcp/auth_callback` |
+    | ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect` |
+    | VS Code | `http://127.0.0.1:33418` and `https://vscode.dev/redirect` |
 
-1. Grant permissions with roles: `mcp:access` to everyone who connects an agent, `mcp:approve` to approvers, `mcp:audit:read`, `mcp:tools:manage` and `mcp:agents:manage` to the people who run the agents, plus the permissions of the tools each person uses (for example `marketing:read`, limited to their stores).
+    The redirect URI is where the agent receives the result of the sign-in, not an address of the platform. The values are the ones the agents use at the time of writing; check the agent's documentation if a sign-in ends with an error page.
+
+1. **Grant permissions** with roles: `mcp:access` to everyone who connects an agent, plus the permissions of the tools each person uses (for example `marketing:read`, limited to their stores); `mcp:approve` to approvers; `mcp:audit:read`, `mcp:tools:manage` and `mcp:agents:manage` to the people who run the agents.
+1. **Hand out** the endpoint URL and the client id of each agent.
 
 > [!NOTE]
-> Registering each kind of agent by hand is a stopgap. The MCP specification prefers clients that identify themselves with a client ID metadata document, so that a user connects with the endpoint URL alone, as with Shopify, BigCommerce or commercetools; the platform does not support it yet ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)). Until then, also note that `POST /api/platform/oauthapps` adds default permissions to every client (`client_credentials`, `email`, `profile`, end session). An agent needs only the authorization code and refresh token grants and the `rsrc:` resource; the extra grants give a public client no access, since it holds no secret.
+> Two stories make this shorter. With [VCST-6641](https://virtocommerce.atlassian.net/browse/VCST-6641), the OAuth client is set up in **Security → OAuth applications** of the back office instead of the API. With [VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639), agents that identify themselves with a client ID metadata document connect with the endpoint URL alone, as with Shopify, BigCommerce or commercetools.
 
-### 2. Connect the agent (each user)
+<details>
+<summary>Why each field of the client</summary>
 
-**Claude Code**
+* `clientType: public`: the agent holds no secret, only the user's token.
+* `requirements: ft:pkce`: the sign-in is protected by PKCE, as the MCP specification requires.
+* `consentType: explicit`: the user sees which agent they let act as them, once per user and agent.
+* `permissions: rsrc:…`: the token is issued for this endpoint only (RFC 8707); it must match the URL the agent uses exactly, scheme and port included.
+* `POST /api/platform/oauthapps` also adds default permissions to every client (`client_credentials`, `email`, `profile`, end session). They give a public client no access, since it holds no secret.
 
-```bash
-claude mcp add --transport http --client-id claude-code --callback-port 65111 virto https://virtostart-demo-admin.govirto.com/admin/mcp
-```
+</details>
 
-Then in Claude Code run `/mcp`, select `virto` and choose **Authenticate**. The platform sign-in page opens in the browser; after the sign-in the agent lists the tools the user may use. Add `--scope project` to keep the server in the folder's `.mcp.json`, to share it with a team; the token stays in the user's profile. The callback port must match the redirect URI of the client.
-
-**Claude Desktop and claude.ai**
-
-Add a custom connector (**Settings → Connectors → Add custom connector**) with the URL `https://virtostart-demo-admin.govirto.com/admin/mcp` and, under the advanced settings, the OAuth client id. Claude connects from Anthropic's cloud, so the endpoint must be reachable from the internet over HTTPS, and the client must be registered with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback` at the time of writing; check the current Claude documentation).
-
-**Other MCP clients**
-
-Any client that supports the streamable HTTP transport and OAuth with PKCE and a pre-registered client id works the same way: ChatGPT connectors, VS Code, Cursor, the MCP Inspector or your own agent built with an MCP SDK. Register one OAuth client for each, with that client's redirect URI.
-
-### 3. Check the connection
-
-Ask the agent "What can you do in Virto?" or call a read-only tool. In the back office, **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agent (see [Work with agents in the back office](#work-with-agents-in-the-back-office)).
+### Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
@@ -88,8 +137,9 @@ Ask the agent "What can you do in Virto?" or call a read-only tool. In the back 
 | `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and in the client's `rsrc:` permission exactly, scheme and port included |
 | HTTP 403 | The user lacks the scope's permission, `mcp:access` for `/admin/mcp` |
 | The agent sees fewer tools than expected | Tools the user has no permission for are not listed; a tool switched off in **Agent tools** is not listed either |
+| claude.ai or ChatGPT cannot reach the endpoint | They connect from their own cloud: the endpoint must be reachable from the internet over HTTPS |
 
-[Demo: an AI agent in the back office](docs/demo.md) walks through all of this on a local platform with Claude Code.
+To check a connection, ask the agent "What can you do in Virto Commerce?": **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agent. [Demo: an AI agent in the back office](docs/demo.md) walks through all of this on a local platform with Claude Code.
 
 ## Work with agents in the back office
 
@@ -520,7 +570,7 @@ A system integrator ships "Virto Commerce for Contoso" to a client's Claude orga
     ```
 
 1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
-1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [step 1](#1-prepare-the-platform-administrator-once).
+1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [Set up the platform for agents](#set-up-the-platform-for-agents).
 1. **Roles.** Grant the client's people `mcp:access` and the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
 1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
 1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
