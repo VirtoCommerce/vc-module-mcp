@@ -30,7 +30,7 @@ An agent connects to an MCP endpoint of the platform and signs in as a platform 
 
 ### 1. Prepare the platform (administrator, once)
 
-1. Install `VirtoCommerce.MCP` (platform 3.1085.0 or later) and the modules that bring tools. Bulk tools also need `VirtoCommerce.BackgroundJobs`; it is optional, and without it a bulk tool answers that background jobs are not available.
+1. Install `VirtoCommerce.MCP` (platform 3.1091.0 or later) and the modules that bring tools. Bulk tools also need `VirtoCommerce.BackgroundJobs`; it is optional, and without it a bulk tool answers that background jobs are not available.
 1. Allow the platform to issue tokens for the endpoint, in `appsettings.json`:
 
     ```json

@@ -4,13 +4,13 @@
   <version>3.1000.0</version>
   <version-tag></version-tag>
 
-  <platformVersion>3.1085.0</platformVersion>
+  <platformVersion>3.1091.0</platformVersion>
   <dependencies>
     <dependency id="VirtoCommerce.MCP" version="3.1000.0" />
     <!-- The tools are protected with the permissions of the Marketing module: marketing:read, marketing:create, marketing:update. -->
-    <dependency id="VirtoCommerce.Marketing" version="3.1009.0" />
+    <dependency id="VirtoCommerce.Marketing" version="3.1010.0" />
     <!-- The content tools are protected with the permissions of the Content module: content:read, content:create, content:update. -->
-    <dependency id="VirtoCommerce.Content" version="3.1007.0" />
+    <dependency id="VirtoCommerce.Content" version="3.1008.0" />
   </dependencies>
 
   <title>MCP Marketing Sample</title>
