@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -106,6 +107,22 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var challenge = response.Headers.WwwAuthenticate.ToString();
         Assert.Contains($"resource_metadata=\"{Origin}/.well-known/oauth-protected-resource/admin/mcp\"", challenge);
         Assert.DoesNotContain("error=", challenge);
+    }
+
+    [Fact]
+    public async Task Endpoints_Should_BeMappedPerScope_So_TheRouteNamesTheScope()
+    {
+        // Act: the first request builds the branch with the MCP endpoints
+        await PostAsync(token: null, ToolsList());
+        var routes = _host.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Select(x => x.RoutePattern.RawText)
+            .ToList();
+
+        // Assert: traces name a request after its route, so a template would hide the scope
+        Assert.Contains(routes, x => x.TrimEnd('/') == "/admin/mcp");
+        Assert.Contains(routes, x => x.TrimEnd('/') == "/mcp");
+        Assert.DoesNotContain(routes, x => x.Contains("{scopeName}"));
     }
 
     [Fact]

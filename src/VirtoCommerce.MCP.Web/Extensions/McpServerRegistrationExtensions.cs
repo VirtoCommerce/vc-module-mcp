@@ -43,7 +43,13 @@ public static class McpServerRegistrationExtensions
                 branch.UseAuthorization();
                 branch.UseEndpoints(endpoints =>
                 {
-                    endpoints.MapMcp("/{scopeName}/mcp");
+                    // One endpoint per scope rather than a "/{scopeName}/mcp" template: the route is the request's name in
+                    // traces and Application Insights (POST /admin/mcp), so each scope is told apart.
+                    foreach (var scope in scopeRegistry.Scopes)
+                    {
+                        endpoints.MapMcp(scope.Path);
+                    }
+
                     endpoints.MapMcp(McpScope.HostEndpointPath);
                 });
             });
