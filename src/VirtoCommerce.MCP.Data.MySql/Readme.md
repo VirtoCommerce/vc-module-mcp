@@ -5,7 +5,7 @@ Add-Migration Initial -Context VirtoCommerce.MCP.Data.Repositories.McpDbContext 
 
 ### Entity Framework Core Commands
 ```
-dotnet tool install --global dotnet-ef --version 10.0.1
+dotnet tool install --global dotnet-ef --version 10.0.13
 ```
 
 **Generate Migrations**
