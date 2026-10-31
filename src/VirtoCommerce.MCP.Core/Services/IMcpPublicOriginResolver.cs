@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using VirtoCommerce.MCP.Core.Models;
 
@@ -5,5 +6,5 @@ namespace VirtoCommerce.MCP.Core.Services;
 
 public interface IMcpPublicOriginResolver
 {
-    string GetOrigin(HttpContext context, McpScope scope);
+    Task<string> GetOriginAsync(HttpContext context, McpScope scope);
 }

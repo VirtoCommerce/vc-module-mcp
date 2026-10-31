@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Net.Http.Headers;
@@ -43,24 +42,8 @@ public class McpProbeCompatibilityMiddleware(
 
     private static async Task<bool> IsToolsListRequest(HttpRequest request)
     {
-        request.EnableBuffering();
-
-        try
-        {
-            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: request.HttpContext.RequestAborted);
-            return document.RootElement.ValueKind == JsonValueKind.Object &&
-                document.RootElement.TryGetProperty("method", out var method) &&
-                method.ValueKind == JsonValueKind.String &&
-                method.ValueEquals("tools/list");
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-        finally
-        {
-            request.Body.Position = 0;
-        }
+        var (method, _) = await McpJsonRpcRequestReader.ReadAsync(request);
+        return method == "tools/list";
     }
 
     private async Task RewriteEventStreamResponseAsJson(HttpContext context)

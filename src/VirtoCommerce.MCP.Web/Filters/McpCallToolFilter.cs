@@ -10,6 +10,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -42,13 +43,23 @@ public class McpCallToolFilter(
 
         try
         {
-            return await ExecuteAuditedAsync(next, context, scope, audit, cancellationToken);
+            var result = await ExecuteAuditedAsync(next, context, scope, audit, cancellationToken);
+            return AddTraceId(result);
         }
-        catch (McpException ex)
+        catch (McpProtocolException ex)
         {
             audit.Outcome ??= McpAuditWriter.GetFailureOutcome(ex);
             audit.ErrorMessage = ex.Message;
             throw;
+        }
+        catch (McpException ex)
+        {
+            // A refusal of the tool is returned as the tool's own error, so the agent gets the tool's message as it is
+            // (the SDK would prefix it with "An error occurred invoking ...") along with the trace id.
+            audit.Outcome ??= McpAuditWriter.GetFailureOutcome(ex);
+            audit.ErrorMessage = ex.Message;
+
+            return AddTraceId(CreateErrorResult(ex.Message));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -56,11 +67,7 @@ public class McpCallToolFilter(
             audit.Outcome = McpAuditOutcome.Error;
             audit.ErrorMessage = ex.Message;
 
-            return new CallToolResult
-            {
-                IsError = true,
-                Content = [new TextContentBlock { Text = $"An unexpected error occurred while executing tool '{audit.ToolName}'." }],
-            };
+            return AddTraceId(CreateErrorResult($"An unexpected error occurred while executing tool '{audit.ToolName}'."));
         }
         finally
         {
@@ -84,12 +91,12 @@ public class McpCallToolFilter(
         return context.Items.ContainsKey(AuditedKey);
     }
 
-    public static bool CanBeApprovedIn(string scopeName)
+    public static bool CanBeApprovedIn(McpScope scope)
     {
-        return string.Equals(scopeName, McpScopes.Admin, StringComparison.OrdinalIgnoreCase);
+        return scope?.SupportsApproval == true;
     }
 
-    public static IList<(string ScopeName, string Name)> FindToolsThatCannotBeApproved(IEnumerable<McpServerTool> tools)
+    public static IList<(string ScopeName, string Name)> FindToolsThatCannotBeApproved(IEnumerable<McpServerTool> tools, IMcpScopeRegistry scopeRegistry)
     {
         return tools
             .Where(tool => tool.RequiresApproval())
@@ -98,7 +105,9 @@ public class McpCallToolFilter(
                 var scopes = tool.GetMcpScopes();
                 return scopes.Count == 0
                     ? [(ScopeName: null, tool.ProtocolTool.Name)]
-                    : scopes.Where(scopeName => !CanBeApprovedIn(scopeName)).Select(scopeName => (ScopeName: scopeName, tool.ProtocolTool.Name));
+                    : scopes
+                        .Where(scopeName => scopeName != McpScopes.Any && !CanBeApprovedIn(scopeRegistry.GetScope(scopeName)))
+                        .Select(scopeName => (ScopeName: scopeName, tool.ProtocolTool.Name));
             })
             .Distinct()
             .ToList();
@@ -116,18 +125,31 @@ public class McpCallToolFilter(
             audit.Outcome = McpAuditOutcome.Disabled;
             audit.ErrorMessage = $"Tool '{audit.ToolName}' is disabled by the administrator.";
 
-            return new CallToolResult
-            {
-                IsError = true,
-                Content = [new TextContentBlock { Text = audit.ErrorMessage + " Tell the user that this action is not available now." }],
-            };
+            return CreateErrorResult(audit.ErrorMessage + " Tell the user that this action is not available now.");
         }
-
-        ValidateRequiredArguments(context);
 
         var tool = context.MatchedPrimitive as McpServerTool;
 
-        if (tool != null && tool.RequiresApproval() && !IsDryRunCall(tool, context.Params?.Arguments))
+        if (tool != null && (!toolAuthorizationService.HasMcpPermissions(context.User, tool) ||
+            (tool.Metadata.OfType<McpApproverOnlyAttribute>().Any() && !await toolAuthorizationService.IsApproverAsync(context.User, scope))))
+        {
+            audit.Outcome = McpAuditOutcome.Forbidden;
+            audit.ErrorMessage = $"You are not allowed to run tool '{audit.ToolName}'.";
+
+            return CreateErrorResult(audit.ErrorMessage);
+        }
+
+        // An invalid argument is reported as a tool error, not as a protocol error, so the model can correct the call.
+        var missingArgument = FindMissingRequiredArgument(context);
+        if (missingArgument != null)
+        {
+            audit.Outcome = McpAuditOutcome.Error;
+            audit.ErrorMessage = $"Argument '{missingArgument}' is required.";
+
+            return CreateErrorResult(audit.ErrorMessage);
+        }
+
+        if (tool != null && tool.RequiresApproval(context.Params?.Arguments) && !IsDryRunCall(tool, context.Params?.Arguments))
         {
             return await HoldForApprovalAsync(next, context, scope, tool, audit, cancellationToken);
         }
@@ -147,17 +169,17 @@ public class McpCallToolFilter(
         McpAuditEntry audit,
         CancellationToken cancellationToken)
     {
-        if (!CanBeApprovedIn(scope.Name))
+        if (!CanBeApprovedIn(scope))
         {
             audit.Outcome = McpAuditOutcome.Error;
-            throw new McpException($"Tool '{audit.ToolName}' requires approval, which is available in the '{McpScopes.Admin}' scope only. The call was not executed.");
+            throw new McpException($"Tool '{audit.ToolName}' requires approval, which is not available in the '{scope.Name}' scope. The call was not executed.");
         }
 
         var change = await SubmitForApprovalAsync(next, context, scope, tool, cancellationToken);
         audit.Outcome = McpAuditOutcome.PendingApproval;
         audit.PendingChangeId = change.Id;
 
-        return CreatePendingApprovalResult(change);
+        return CreatePendingApprovalResult(change, scope);
     }
 
     private async Task<bool> IsForbiddenAsync(RequestContext<CallToolRequestParams> context)
@@ -237,14 +259,14 @@ public class McpCallToolFilter(
         }
     }
 
-    protected static CallToolResult CreatePendingApprovalResult(McpPendingChange change)
+    protected static CallToolResult CreatePendingApprovalResult(McpPendingChange change, McpScope scope)
     {
         var payload = new
         {
             status = "pending_approval",
             change_id = change.Id,
             expires_at = change.ExpirationDate,
-            message = "The change was not applied. It is waiting for approval by a user with the mcp:approve permission. " +
+            message = $"The change was not applied. It is waiting for approval by a user with the {scope.ApprovalPermission} permission. " +
                 "Tell the user the change id; an approver applies it with approve_pending_change. " +
                 "The requester can check it with get_pending_change and withdraw it with reject_pending_change.",
         };
@@ -255,19 +277,37 @@ public class McpCallToolFilter(
         };
     }
 
-    protected static void ValidateRequiredArguments(RequestContext<CallToolRequestParams> context)
+    protected static string FindMissingRequiredArgument(RequestContext<CallToolRequestParams> context)
     {
         if (context.MatchedPrimitive is not McpServerTool tool)
         {
-            return;
+            return null;
         }
 
         var arguments = context.Params?.Arguments;
-        var missingArgument = GetRequiredArgumentNames(tool).FirstOrDefault(name => !HasValue(arguments, name));
-        if (missingArgument != null)
+        return GetRequiredArgumentNames(tool).FirstOrDefault(name => !HasValue(arguments, name));
+    }
+
+    protected static CallToolResult CreateErrorResult(string message)
+    {
+        return new CallToolResult
         {
-            throw new McpProtocolException($"Argument '{missingArgument}' is required.", McpErrorCode.InvalidParams);
+            IsError = true,
+            Content = [new TextContentBlock { Text = message }],
+        };
+    }
+
+    // The trace id of a failed call lets support find the call in the logs and in the telemetry.
+    protected static CallToolResult AddTraceId(CallToolResult result)
+    {
+        var traceId = Activity.Current?.TraceId.ToString();
+        if (result?.IsError == true && !string.IsNullOrEmpty(traceId))
+        {
+            result.Meta ??= [];
+            result.Meta["trace_id"] = traceId;
         }
+
+        return result;
     }
 
     private static IEnumerable<string> GetRequiredArgumentNames(McpServerTool tool)

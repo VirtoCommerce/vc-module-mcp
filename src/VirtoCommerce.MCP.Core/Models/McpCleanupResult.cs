@@ -7,4 +7,6 @@ public class McpCleanupResult
     public int DeletedPendingChanges { get; set; }
 
     public int ExpiredPendingChanges { get; set; }
+
+    public int DeletedJobs { get; set; }
 }

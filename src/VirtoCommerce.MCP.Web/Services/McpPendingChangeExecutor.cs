@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 
 namespace VirtoCommerce.MCP.Web.Services;
@@ -44,6 +45,7 @@ public class McpPendingChangeExecutor(
                 User = requestContext.User,
                 MatchedPrimitive = tool,
             };
+            toolContext.SetExecutedPendingChange(change.Id, change.RequestedByUserId);
 
             result = await tool.InvokeAsync(toolContext, CancellationToken.None);
             audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;

@@ -16,6 +16,7 @@ public class McpScopeRegistry(
     private const string McpPathSegment = "mcp";
 
     private readonly Dictionary<string, McpScope> _scopes = GetEnabledScopes(scopes, options.Value);
+    private readonly McpOptions _options = options.Value;
 
     public IReadOnlyCollection<McpScope> Scopes => _scopes.Values;
 
@@ -30,6 +31,43 @@ public class McpScopeRegistry(
             string.Equals(lastSegment, McpPathSegment, StringComparison.OrdinalIgnoreCase)
             ? GetScope(scopeName)
             : null;
+    }
+
+    public McpScope FindScopeByHost(HostString host)
+    {
+        if (!host.HasValue)
+        {
+            return null;
+        }
+
+        return _scopes.Values.FirstOrDefault(scope =>
+            _options.Scopes.TryGetValue(scope.Name, out var scopeOptions) &&
+            scopeOptions.Hosts?.Any(x => IsSameHost(x, host)) == true);
+    }
+
+    public McpScope FindScope(HostString host, PathString path)
+    {
+        return IsHostEndpointPath(path)
+            ? FindScopeByHost(host)
+            : FindScopeByPath(path);
+    }
+
+    public static bool IsHostEndpointPath(PathString path)
+    {
+        return string.Equals(path.Value?.TrimEnd('/'), McpScope.HostEndpointPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSameHost(string configuredHost, HostString host)
+    {
+        if (string.IsNullOrWhiteSpace(configuredHost))
+        {
+            return false;
+        }
+
+        var configured = HostString.FromUriComponent(configuredHost.Trim());
+
+        return string.Equals(configured.Host, host.Host, StringComparison.OrdinalIgnoreCase) &&
+            (configured.Port == null || configured.Port == host.Port);
     }
 
     private static Dictionary<string, McpScope> GetEnabledScopes(IEnumerable<McpScope> scopes, McpOptions options)

@@ -2,7 +2,10 @@ using System.ComponentModel;
 using System.Linq;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
+using Microsoft.Extensions.Options;
 using VirtoCommerce.MCP.Core.Attributes;
+using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Data.Services;
 using VirtoCommerce.MCP.Web.Filters;
 using Xunit;
 
@@ -12,21 +15,21 @@ namespace VirtoCommerce.MCP.Tests.Filters;
 public class McpCallToolFilterTests
 {
     [Theory]
-    [InlineData("admin", true)]
-    [InlineData("Admin", true)]
-    [InlineData("vendor", false)]
+    [InlineData("mcp:approve", true)]
     [InlineData(null, false)]
-    public void CanBeApprovedIn_Should_AllowOnlyTheAdminScope(string scopeName, bool expected)
+    [InlineData("", false)]
+    public void CanBeApprovedIn_Should_AllowScopesWithAnApprovalPermission(string approvalPermission, bool expected)
     {
         // Act
-        var result = McpCallToolFilter.CanBeApprovedIn(scopeName);
+        var result = McpCallToolFilter.CanBeApprovedIn(new McpScope { Name = "any", ApprovalPermission = approvalPermission });
 
         // Assert
         Assert.Equal(expected, result);
+        Assert.False(McpCallToolFilter.CanBeApprovedIn(null));
     }
 
     [Fact]
-    public void FindToolsThatCannotBeApproved_Should_ReportApprovalToolsOutsideTheAdminScope()
+    public void FindToolsThatCannotBeApproved_Should_ReportApprovalToolsInScopesWithoutApproval()
     {
         // Arrange
         var tools = typeof(ApprovalTools).GetMethods()
@@ -34,8 +37,15 @@ public class McpCallToolFilterTests
             .Select(x => McpServerTool.Create(x))
             .ToList();
 
+        var registry = new McpScopeRegistry(
+            [
+                new McpScope { Name = McpScopes.Admin, ApprovalPermission = "mcp:approve" },
+                new McpScope { Name = McpScopes.Vendor },
+            ],
+            Options.Create(new McpOptions()));
+
         // Act
-        var result = McpCallToolFilter.FindToolsThatCannotBeApproved(tools);
+        var result = McpCallToolFilter.FindToolsThatCannotBeApproved(tools, registry);
 
         // Assert
         Assert.Equal(

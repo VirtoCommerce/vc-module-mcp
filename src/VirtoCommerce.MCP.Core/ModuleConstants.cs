@@ -157,5 +157,7 @@ public static class ModuleConstants
         public const string GetPendingChange = "get_pending_change";
         public const string ApprovePendingChange = "approve_pending_change";
         public const string RejectPendingChange = "reject_pending_change";
+        public const string GetJobStatus = "get_job_status";
+        public const string CancelJob = "cancel_job";
     }
 }

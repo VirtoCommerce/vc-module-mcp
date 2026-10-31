@@ -12,7 +12,11 @@ public interface IMcpRepository : IRepository
 
     IQueryable<McpAuditEntryEntity> AuditEntries { get; }
 
+    IQueryable<McpJobEntity> Jobs { get; }
+
     Task<IList<McpPendingChangeEntity>> GetPendingChangesByIdsAsync(IList<string> ids);
 
     Task<IList<McpAuditEntryEntity>> GetAuditEntriesByIdsAsync(IList<string> ids);
+
+    Task<IList<McpJobEntity>> GetJobsByIdsAsync(IList<string> ids);
 }

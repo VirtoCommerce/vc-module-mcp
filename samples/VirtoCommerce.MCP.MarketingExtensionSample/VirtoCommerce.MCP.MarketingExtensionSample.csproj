@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>1591;NU1608</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- A client project references the packages of the modules it extends; the sample references the projects. -->
+    <ProjectReference Include="..\VirtoCommerce.MCP.MarketingSample\VirtoCommerce.MCP.MarketingSample.csproj" />
+  </ItemGroup>
+</Project>

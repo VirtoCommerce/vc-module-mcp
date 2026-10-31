@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -20,6 +22,7 @@ using VirtoCommerce.MCP.Data.Services;
 using VirtoCommerce.MCP.Data.SqlServer;
 using VirtoCommerce.MCP.Web.Extensions;
 using VirtoCommerce.MCP.Web.Filters;
+using VirtoCommerce.MCP.Web.Jobs;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.MCP.Web.Tools;
 using VirtoCommerce.Platform.Core.Jobs;
@@ -64,6 +67,7 @@ public class Module : IModule, IHasConfiguration
             .Bind(Configuration.GetSection(ModuleConstants.ConfigurationSection))
             .Validate(x => IsValidOrigin(x.PublicOrigin), "MCP:PublicOrigin must be an absolute http or https origin without a path, for example https://admin.example.com.")
             .Validate(x => x.Scopes.Values.All(scope => IsValidOrigin(scope.PublicOrigin)), "MCP:Scopes:{scope}:PublicOrigin must be an absolute http or https origin without a path.")
+            .Validate(HasUniqueHosts, "MCP:Scopes:{scope}:Hosts: a host can serve one scope only.")
             .ValidateOnStart();
 
         serviceCollection.AddTransient<IMcpRepository, McpRepository>();
@@ -75,12 +79,16 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<IMcpAuditEntrySearchService, McpAuditEntrySearchService>();
         serviceCollection.AddTransient<IMcpApprovalService, McpApprovalService>();
         serviceCollection.AddTransient<IMcpCleanupService, McpCleanupService>();
+        serviceCollection.AddTransient<IMcpJobService, McpJobService>();
+        serviceCollection.AddTransient<IMcpJobDispatcher, McpJobDispatcher>();
 
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
         serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         serviceCollection.AddTransient<McpTokenValidator>();
+        serviceCollection.AddTransient<McpChallengeWriter>();
+        serviceCollection.AddTransient<IMcpSessionService, McpSessionService>();
         serviceCollection.AddTransient<McpToolAuthorizationService>();
         serviceCollection.AddTransient<McpAuditWriter>();
         serviceCollection.AddTransient<McpToolAvailabilityService>();
@@ -97,6 +105,7 @@ public class Module : IModule, IHasConfiguration
                 "and return its id. Such a change is applied only after another user with the mcp:approve permission approves it.",
             RequireAuthenticatedUser = true,
             Permissions = [ModuleConstants.Security.Permissions.Access],
+            ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
         });
 
         serviceCollection.AddMcpScope(new McpScope
@@ -113,8 +122,11 @@ public class Module : IModule, IHasConfiguration
             .FromSettings(ModuleConstants.Settings.Cleanup.Enabled, ModuleConstants.Settings.Cleanup.Cron)
             .WithMaxRetryAttempts(0));
 
+        serviceCollection.AddBackgroundJob<McpTrackedJobHandler, McpTrackedJobPayload>(triggerable: false);
+
         serviceCollection.AddScopedMcpServer();
         serviceCollection.AddMcpTools<McpApprovalTools>();
+        serviceCollection.AddMcpTools<McpJobTools>();
     }
 
     public void PostInitialize(IApplicationBuilder appBuilder)
@@ -142,12 +154,20 @@ public class Module : IModule, IHasConfiguration
         LogDuplicates(logger, "prompt", serviceProvider.GetServices<McpServerPrompt>());
         LogDuplicates(logger, "resource", serviceProvider.GetServices<McpServerResource>());
 
-        foreach (var (scopeName, name) in McpCallToolFilter.FindToolsThatCannotBeApproved(serviceProvider.GetServices<McpServerTool>()))
+        foreach (var tool in serviceProvider.GetServices<McpServerTool>().Where(x =>
+            !string.IsNullOrEmpty(x.Metadata.OfType<McpRequiresApprovalAttribute>().FirstOrDefault()?.Condition) && x.FindApprovalCondition() == null))
+        {
+            logger.LogError("MCP tool '{Name}' has an approval condition that is not a public static bool method of its class taking IReadOnlyDictionary<string, JsonElement>. Every call of the tool needs approval.",
+                tool.ProtocolTool.Name);
+        }
+
+        var scopeRegistry = serviceProvider.GetRequiredService<IMcpScopeRegistry>();
+        foreach (var (scopeName, name) in McpCallToolFilter.FindToolsThatCannotBeApproved(serviceProvider.GetServices<McpServerTool>(), scopeRegistry))
         {
             if (scopeName != null)
             {
-                logger.LogError("MCP tool '{Name}' requires approval, which is available in the '{AdminScope}' scope only. Its calls in scope '{ScopeName}' are refused.",
-                    name, McpScopes.Admin, scopeName);
+                logger.LogError("MCP tool '{Name}' requires approval, which scope '{ScopeName}' does not have (McpScope.ApprovalPermission). Its calls in that scope are refused.",
+                    name, scopeName);
             }
             else
             {
@@ -164,6 +184,20 @@ public class Module : IModule, IHasConfiguration
             logger.LogError("MCP {Kind} '{Name}' is registered more than once for {ScopeName}. Only the first registration is served.",
                 kind, name, scopeName != null ? $"scope '{scopeName}'" : "endpoints without a scope");
         }
+    }
+
+    private static bool HasUniqueHosts(McpOptions options)
+    {
+        var hosts = options.Scopes.Values
+            .Where(x => x.Enabled && x.Hosts != null)
+            .SelectMany(x => x.Hosts)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => HostString.FromUriComponent(x.Trim()))
+            .ToList();
+
+        return !hosts.Where((host, index) => hosts.Skip(index + 1).Any(other =>
+            string.Equals(host.Host, other.Host, StringComparison.OrdinalIgnoreCase) &&
+            (host.Port == null || other.Port == null || host.Port == other.Port))).Any();
     }
 
     private static bool IsValidOrigin(string origin)

@@ -26,9 +26,12 @@ public class McpAuditWriter(
 
     public static string GetFailureOutcome(Exception exception)
     {
-        return exception is McpException and not McpProtocolException
-            ? McpAuditOutcome.Failed
-            : McpAuditOutcome.Error;
+        return exception switch
+        {
+            McpForbiddenException => McpAuditOutcome.Forbidden,
+            McpException and not McpProtocolException => McpAuditOutcome.Failed,
+            _ => McpAuditOutcome.Error,
+        };
     }
 
     public virtual McpAuditEntry Create(string scopeName, string toolName, ClaimsPrincipal user)

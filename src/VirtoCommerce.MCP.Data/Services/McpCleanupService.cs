@@ -38,6 +38,7 @@ public class McpCleanupService(
             DeletedAuditEntries = await DeleteInBatchesAsync(repository => GetObsoleteAuditEntries(repository, auditThreshold), cancellationToken),
             DeletedPendingChanges = await DeleteInBatchesAsync(repository => GetObsoletePendingChanges(repository, changeThreshold), cancellationToken),
             ExpiredPendingChanges = await approvalService.ExpireOverdueAsync(cancellationToken),
+            DeletedJobs = await DeleteInBatchesAsync(repository => GetObsoleteJobs(repository, auditThreshold), cancellationToken),
         };
 
         if (result.DeletedAuditEntries > 0)
@@ -52,10 +53,15 @@ public class McpCleanupService(
             GenericSearchCachingRegion<McpPendingChange>.ExpireRegion();
         }
 
+        if (result.DeletedJobs > 0)
+        {
+            GenericCachingRegion<McpJob>.ExpireRegion();
+        }
+
         if (logger.IsEnabled(LogLevel.Information))
         {
-            logger.LogInformation("MCP cleanup deleted {AuditEntries} audit entries older than {AuditThreshold:u} and {PendingChanges} pending changes older than {ChangeThreshold:u}, and expired {ExpiredChanges} pending changes",
-                result.DeletedAuditEntries, auditThreshold, result.DeletedPendingChanges, changeThreshold, result.ExpiredPendingChanges);
+            logger.LogInformation("MCP cleanup deleted {AuditEntries} audit entries older than {AuditThreshold:u} and {PendingChanges} pending changes older than {ChangeThreshold:u}, expired {ExpiredChanges} pending changes, and deleted {Jobs} finished jobs",
+                result.DeletedAuditEntries, auditThreshold, result.DeletedPendingChanges, changeThreshold, result.ExpiredPendingChanges, result.DeletedJobs);
         }
 
         return result;
@@ -71,6 +77,12 @@ public class McpCleanupService(
         return repository.PendingChanges.Where(x =>
             (McpPendingChangeStatus.FinalStatuses.Contains(x.Status) && (x.ModifiedDate ?? x.CreatedDate) < threshold) ||
             (_expirableStatuses.Contains(x.Status) && x.ExpirationDate < threshold));
+    }
+
+    // A job is kept as long as the audit of the call that started it. A job that never finished is kept: it needs a person to look at it.
+    protected virtual IQueryable<McpJobEntity> GetObsoleteJobs(IMcpRepository repository, DateTime threshold)
+    {
+        return repository.Jobs.Where(x => McpJobStatus.FinalStatuses.Contains(x.Status) && x.CreatedDate < threshold);
     }
 
     protected virtual async Task<int> DeleteInBatchesAsync<TEntity>(Func<IMcpRepository, IQueryable<TEntity>> query, CancellationToken cancellationToken)

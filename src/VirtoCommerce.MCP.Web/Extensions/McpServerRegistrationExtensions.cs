@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core.Extensions;
+using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Data.Services;
 using VirtoCommerce.MCP.Web.Filters;
 using VirtoCommerce.MCP.Web.Middleware;
 
@@ -42,19 +44,21 @@ public static class McpServerRegistrationExtensions
                 branch.UseEndpoints(endpoints =>
                 {
                     endpoints.MapMcp("/{scopeName}/mcp");
+                    endpoints.MapMcp(McpScope.HostEndpointPath);
                 });
             });
     }
 
     private static bool TryResolveScope(HttpContext context, IMcpScopeRegistry scopeRegistry)
     {
-        var scope = scopeRegistry.FindScopeByPath(context.Request.Path);
+        var scope = scopeRegistry.FindScope(context.Request.Host, context.Request.Path);
         if (scope == null)
         {
             return false;
         }
 
         context.SetMcpScope(scope);
+        context.SetMcpEndpointPath(McpScopeRegistry.IsHostEndpointPath(context.Request.Path) ? McpScope.HostEndpointPath : scope.Path);
         return true;
     }
 }

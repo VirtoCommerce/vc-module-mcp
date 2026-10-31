@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Web.Services;
@@ -52,7 +53,7 @@ public static class McpScopeSessionConfigurator
             options.ServerInfo = new Implementation
             {
                 Name = scope.Title ?? scope.Name,
-                Version = _version,
+                Version = scope.Version ?? _version,
             };
             options.ServerInstructions = scope.Instructions;
         }
@@ -92,6 +93,11 @@ public static class McpScopeSessionConfigurator
 
     private static bool IsVisible(IMcpServerPrimitive primitive, McpScope scope)
     {
+        if (primitive.Metadata.OfType<McpApprovalToolAttribute>().Any() && scope?.SupportsApproval != true)
+        {
+            return false;
+        }
+
         return scope != null
             ? primitive.IsInMcpScope(scope.Name)
             : primitive.GetMcpScopes().Count == 0;

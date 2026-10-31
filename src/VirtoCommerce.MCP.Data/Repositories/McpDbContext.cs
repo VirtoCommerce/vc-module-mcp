@@ -31,6 +31,10 @@ public class McpDbContext : DbContextBase
         modelBuilder.Entity<McpAuditEntryEntity>().HasIndex(x => new { x.UserId, x.CreatedDate });
         modelBuilder.Entity<McpAuditEntryEntity>().HasIndex(x => x.PendingChangeId);
 
+        modelBuilder.Entity<McpJobEntity>().ToAuditableEntityTable("McpJob");
+        modelBuilder.Entity<McpJobEntity>().HasIndex(x => x.CreatedDate);
+        modelBuilder.Entity<McpJobEntity>().HasIndex(x => x.UserId);
+
         switch (Database.ProviderName)
         {
             case "Pomelo.EntityFrameworkCore.MySql":

@@ -1,12 +1,15 @@
 using System;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Net.Http.Headers;
-using VirtoCommerce.MCP.Core;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -24,16 +27,22 @@ public class McpScopeAuthenticationMiddleware(
         HttpContext context,
         IMcpPublicOriginResolver originResolver,
         McpTokenValidator tokenValidator,
+        McpChallengeWriter challengeWriter,
         IAuthorizationPolicyProvider policyProvider,
         IAuthorizationService authorizationService)
     {
         var scope = context.GetMcpScope();
-        var origin = originResolver.GetOrigin(context, scope);
+        var challenge = new McpChallenge
+        {
+            Scope = scope,
+            Origin = await originResolver.GetOriginAsync(context, scope),
+            EndpointPath = context.GetMcpEndpointPath(),
+        };
 
         string tokenError = null;
         if (HasBearerHeader(context.Request))
         {
-            tokenError = await GetTokenErrorAsync(context.User, origin + scope.Path, tokenValidator, context.RequestAborted);
+            tokenError = await GetTokenErrorAsync(context.User, challenge.Resource, tokenValidator, context.RequestAborted);
         }
         else
         {
@@ -42,15 +51,30 @@ public class McpScopeAuthenticationMiddleware(
 
         if (tokenError != null)
         {
-            await WriteChallengeAsync(context, scope, origin, "invalid_token", tokenError);
+            challenge.Error = "invalid_token";
+            challenge.ErrorDescription = tokenError;
+            await challengeWriter.WriteChallengeAsync(context, challenge);
             return;
         }
 
         var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
         if (!isAuthenticated && scope.RequireAuthenticatedUser)
         {
-            await WriteChallengeAsync(context, scope, origin, error: null, "Sign in to use this MCP server.");
+            challenge.ErrorDescription = "Sign in to use this MCP server.";
+            await challengeWriter.WriteChallengeAsync(context, challenge);
             return;
+        }
+
+        if (!isAuthenticated)
+        {
+            var toolName = await FindToolThatRequiresUserAsync(context, scope);
+            if (toolName != null)
+            {
+                challenge.ToolName = toolName;
+                challenge.ErrorDescription = $"Sign in to use tool '{toolName}'.";
+                await challengeWriter.WriteChallengeAsync(context, challenge);
+                return;
+            }
         }
 
         var missingPermission = isAuthenticated
@@ -58,11 +82,37 @@ public class McpScopeAuthenticationMiddleware(
             : null;
         if (missingPermission != null)
         {
-            await WriteForbiddenAsync(context, $"The '{missingPermission}' permission is required to use this MCP server.");
+            await challengeWriter.WriteForbiddenAsync(context, scope, $"The '{missingPermission}' permission is required to use this MCP server.");
             return;
         }
 
         await next(context);
+    }
+
+    // In a scope open to anonymous users, a call to a tool that needs a user is answered with a challenge instead of
+    // an error, so the MCP client signs the user in and repeats the call.
+    private static async Task<string> FindToolThatRequiresUserAsync(HttpContext context, McpScope scope)
+    {
+        var (method, toolName) = await McpJsonRpcRequestReader.ReadAsync(context.Request);
+        if (method != RequestMethods.ToolsCall || string.IsNullOrEmpty(toolName))
+        {
+            return null;
+        }
+
+        var tool = context.RequestServices.GetServices<McpServerTool>()
+            .FirstOrDefault(x => x.IsInMcpScope(scope.Name) && string.Equals(x.ProtocolTool.Name, toolName, StringComparison.Ordinal));
+
+        return tool != null && RequiresUser(tool) ? toolName : null;
+    }
+
+    public static bool RequiresUser(IMcpServerPrimitive primitive)
+    {
+        if (primitive.Metadata.OfType<McpRequiresUserAttribute>().Any() || primitive.Metadata.OfType<McpPermissionAttribute>().Any())
+        {
+            return true;
+        }
+
+        return !primitive.Metadata.OfType<IAllowAnonymous>().Any() && primitive.Metadata.OfType<IAuthorizeData>().Any();
     }
 
     private static async Task<string> GetTokenErrorAsync(
@@ -129,33 +179,5 @@ public class McpScopeAuthenticationMiddleware(
         return authorization.Count == 1 &&
             authorization[0].StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase) &&
             authorization[0].Length > BearerPrefix.Length;
-    }
-
-    private static async Task WriteChallengeAsync(HttpContext context, McpScope scope, string origin, string error, string message)
-    {
-        var challenge = $"Bearer realm=\"{Escape(origin)}\", resource_metadata=\"{Escape(origin + scope.ProtectedResourceMetadataPath)}\", scope=\"{string.Join(' ', ModuleConstants.Security.OAuthScopes)}\"";
-        if (!string.IsNullOrEmpty(error))
-        {
-            challenge += $", error=\"{Escape(error)}\", error_description=\"{Escape(message)}\"";
-        }
-
-        context.Response.Clear();
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.Headers.WWWAuthenticate = challenge;
-        context.Response.Headers[HeaderNames.CacheControl] = "no-store";
-        await context.Response.WriteAsJsonAsync(new { error = error ?? "unauthorized", error_description = message }, context.RequestAborted);
-    }
-
-    private static async Task WriteForbiddenAsync(HttpContext context, string message)
-    {
-        context.Response.Clear();
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        context.Response.Headers[HeaderNames.CacheControl] = "no-store";
-        await context.Response.WriteAsJsonAsync(new { error = "forbidden", error_description = message }, context.RequestAborted);
-    }
-
-    private static string Escape(string value)
-    {
-        return value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
     }
 }

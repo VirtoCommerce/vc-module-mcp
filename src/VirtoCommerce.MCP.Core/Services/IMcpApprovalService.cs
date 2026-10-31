@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using VirtoCommerce.MCP.Core.Models;
@@ -15,4 +16,8 @@ public interface IMcpApprovalService
     Task<McpPendingChange> RejectAsync(string changeId, string reviewerUserId, string reviewerUserName, string reason);
 
     Task<int> ExpireOverdueAsync(CancellationToken cancellationToken = default);
+
+    // Whether an approver of the change's scope may review this change. True by default; a module narrows it, for
+    // example to changes requested by users of the approver's own seller in the vendor scope.
+    Task<bool> CanReviewAsync(ClaimsPrincipal reviewer, McpPendingChange change);
 }

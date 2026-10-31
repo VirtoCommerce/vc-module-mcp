@@ -103,6 +103,11 @@ public class McpApprovalService(
         });
     }
 
+    public virtual Task<bool> CanReviewAsync(System.Security.Claims.ClaimsPrincipal reviewer, McpPendingChange change)
+    {
+        return Task.FromResult(true);
+    }
+
     public virtual async Task<int> ExpireOverdueAsync(CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;

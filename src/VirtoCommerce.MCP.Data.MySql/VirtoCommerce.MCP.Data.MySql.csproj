@@ -12,6 +12,8 @@
       <IncludeAssets>runtime; build; native; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="VirtoCommerce.Platform.Data.MySql" Version="3.1085.0" />
+    <!-- Transitive override: VirtoCommerce.Platform.Data.MySql 3.1085.0 pulls MySqlConnector 2.5.0 (GHSA-473q-m89c-ghf8, fixed in 2.6.1). -->
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VirtoCommerce.MCP.Data\VirtoCommerce.MCP.Data.csproj" />
