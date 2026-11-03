@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -29,7 +30,8 @@ public class McpScopeAuthenticationMiddleware(
         McpTokenValidator tokenValidator,
         McpChallengeWriter challengeWriter,
         IAuthorizationPolicyProvider policyProvider,
-        IAuthorizationService authorizationService)
+        IAuthorizationService authorizationService,
+        IHostEnvironment environment)
     {
         var scope = context.GetMcpScope();
         var challenge = new McpChallenge
@@ -42,7 +44,13 @@ public class McpScopeAuthenticationMiddleware(
         string tokenError = null;
         if (HasBearerHeader(context.Request))
         {
-            tokenError = await GetTokenErrorAsync(context.User, challenge.Resource, tokenValidator, context.RequestAborted);
+            context.User = await tokenValidator.AuthenticateAsync(context) ?? new ClaimsPrincipal(new ClaimsIdentity());
+
+            // The audience a token must have is this server's address. Taken from the request's Host and forwarded
+            // headers, it would be whatever host the client was allowed to get a token for.
+            tokenError = originResolver.IsOriginConfigured(context, scope) || environment.IsDevelopment()
+                ? await GetTokenErrorAsync(context.User, challenge.Resource, tokenValidator, context.RequestAborted)
+                : "This MCP server has no public origin configured (MCP:PublicOrigin), so it cannot check that a token was issued for it. Ask the administrator to set it.";
         }
         else
         {

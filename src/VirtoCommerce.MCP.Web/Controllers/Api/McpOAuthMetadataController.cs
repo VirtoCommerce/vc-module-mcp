@@ -10,8 +10,10 @@ using VirtoCommerce.MCP.Web.Models;
 
 namespace VirtoCommerce.MCP.Web.Controllers.Api;
 
+// Not cached: without a configured origin the metadata follows the request's host.
 [ApiController]
 [AllowAnonymous]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class McpOAuthMetadataController(
     IMcpScopeRegistry scopeRegistry,
     IMcpPublicOriginResolver originResolver)

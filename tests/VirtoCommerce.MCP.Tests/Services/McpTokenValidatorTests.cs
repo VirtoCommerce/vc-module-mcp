@@ -1,4 +1,9 @@
 using System.Security.Claims;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
+using Moq;
+using OpenIddict.Abstractions;
+using OpenIddict.Server;
 using VirtoCommerce.MCP.Web.Services;
 using Xunit;
 
@@ -64,5 +69,40 @@ public class McpTokenValidatorTests
     private static ClaimsPrincipal Principal(params Claim[] claims)
     {
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task IsActiveAsync_Should_RefuseATokenWithoutAnId_Unless_TheServerStoresNoTokens(bool disableTokenStorage, bool expected)
+    {
+        // Arrange
+        var serverOptions = Options.Create(new OpenIddictServerOptions { DisableTokenStorage = disableTokenStorage });
+        var validator = new McpTokenValidator(Mock.Of<IOpenIddictTokenManager>(), serverOptions);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "user-1")], "Bearer"));
+
+        // Act
+        var active = await validator.IsActiveAsync(principal, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(expected, active);
+    }
+
+    [Theory]
+    [InlineData("user-1", "client_id", "agent-app", false)]
+    [InlineData("agent-app", "client_id", "agent-app", true)]
+    [InlineData("agent-app", "azp", "agent-app", true)]
+    [InlineData("agent-app", "oi_prst", "agent-app", true)]
+    [InlineData("", "client_id", "agent-app", true)]
+    public void IsClientIdentity_Should_BeTrue_When_TheTokenHasNoUserBehindIt(string subject, string clientClaimType, string clientId, bool expected)
+    {
+        // Arrange
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", subject), new Claim(clientClaimType, clientId)], "Bearer"));
+
+        // Act
+        var isClient = McpTokenValidator.IsClientIdentity(principal);
+
+        // Assert
+        Assert.Equal(expected, isClient);
     }
 }

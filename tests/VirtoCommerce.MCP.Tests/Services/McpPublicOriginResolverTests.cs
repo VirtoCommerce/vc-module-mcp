@@ -30,6 +30,25 @@ public class McpPublicOriginResolverTests
         Assert.Equal(expected, origin);
     }
 
+    [Theory]
+    [InlineData(null, null, "/vendor/mcp", false)]
+    [InlineData("https://admin.example.com", null, "/vendor/mcp", true)]
+    [InlineData(null, "https://vendor.example.com", "/vendor/mcp", true)]
+    [InlineData(null, null, McpScope.HostEndpointPath, true)]
+    public void IsOriginConfigured_Should_BeFalse_Only_When_TheOriginWouldComeFromTheRequest(string publicOrigin, string scopeOrigin, string endpointPath, bool expected)
+    {
+        // Arrange
+        var options = new McpOptions { PublicOrigin = publicOrigin };
+        options.Scopes[_scope.Name] = new McpScopeOptions { PublicOrigin = scopeOrigin };
+        var resolver = CreateResolver(options);
+
+        // Act
+        var configured = resolver.IsOriginConfigured(CreateContext("vendor.example.com", endpointPath), _scope);
+
+        // Assert
+        Assert.Equal(expected, configured);
+    }
+
     [Fact]
     public async Task GetOriginAsync_Should_KeepTheConfiguredOrigin_At_TheMcpPathOfItsOwnHost()
     {

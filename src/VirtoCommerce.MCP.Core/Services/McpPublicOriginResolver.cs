@@ -28,6 +28,11 @@ public class McpPublicOriginResolver(
             : GetRequestOrigin(context));
     }
 
+    public virtual bool IsOriginConfigured(HttpContext context, McpScope scope)
+    {
+        return context.GetMcpEndpointPath() == McpScope.HostEndpointPath || !string.IsNullOrEmpty(GetConfiguredOrigin(scope));
+    }
+
     protected virtual string GetConfiguredOrigin(McpScope scope)
     {
         return scope != null && options.Value.Scopes.TryGetValue(scope.Name, out var scopeOptions) && !string.IsNullOrEmpty(scopeOptions.PublicOrigin)

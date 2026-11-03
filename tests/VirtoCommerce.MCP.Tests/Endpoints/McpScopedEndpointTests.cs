@@ -1332,7 +1332,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             }
         });
 
-        services.Configure<McpOptions>(options => options.Scopes[ShopScope] = new McpScopeOptions { Hosts = [ShopHost] });
+        services.Configure<McpOptions>(options =>
+        {
+            options.PublicOrigin = Origin;
+            options.Scopes[ShopScope] = new McpScopeOptions { Hosts = [ShopHost] };
+        });
         services.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         services.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
         services.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
@@ -1768,6 +1772,12 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         public override Task<bool> IsActiveAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
         {
             return Task.FromResult(true);
+        }
+
+        public override async Task<ClaimsPrincipal> AuthenticateAsync(HttpContext context)
+        {
+            var result = await context.AuthenticateAsync(TestAuthenticationHandler.SchemeName);
+            return result.Succeeded ? result.Principal : null;
         }
     }
 

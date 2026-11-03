@@ -4,14 +4,30 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
+using OpenIddict.Server;
+using OpenIddict.Validation.AspNetCore;
 using VirtoCommerce.Platform.Security.Model.OpenIddict;
 
 namespace VirtoCommerce.MCP.Web.Services;
 
 public class McpTokenValidator(
-    IOpenIddictTokenManager tokenManager)
+    IOpenIddictTokenManager tokenManager,
+    IOptions<OpenIddictServerOptions> serverOptions = null)
 {
+    // The bearer token as the platform's OpenIddict validation reads it, not whatever the default authentication scheme
+    // produced: a cookie, an API key or Basic credentials never stand in for an MCP access token. OpenIddict caches
+    // the result for the request, so the token is not validated twice. Null when the token is not valid.
+    public virtual async Task<ClaimsPrincipal> AuthenticateAsync(HttpContext context)
+    {
+        var result = await context.AuthenticateAsync(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+
+        return result.Succeeded ? result.Principal : null;
+    }
+
     private const string AudienceClaimType = "aud";
 
     private static readonly string[] _subjectClaimTypes = [OpenIddictConstants.Claims.Subject, ClaimTypes.NameIdentifier];
@@ -45,9 +61,9 @@ public class McpTokenValidator(
         var tokenId = principal.GetTokenId();
         if (string.IsNullOrEmpty(tokenId))
         {
-            // The platform issues tokens without an id when its token storage is disabled. Such a token is not in the store,
-            // so it cannot be revoked there and stays valid until it expires; refusing it would lock MCP out of such deployments.
-            return true;
+            // Only a server without token storage issues tokens without an id; such a token cannot be revoked and stays
+            // valid until it expires. With token storage, which the platform keeps on, a token without an id is refused.
+            return serverOptions?.Value.DisableTokenStorage == true;
         }
 
         return await IsValidInTokenStoreAsync(tokenId, cancellationToken);

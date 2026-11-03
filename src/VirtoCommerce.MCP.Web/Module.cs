@@ -7,7 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
@@ -142,10 +144,38 @@ public class Module : IModule, IHasConfiguration
         permissionsRegistrar.RegisterPermissions(ModuleInfo.Id, "MCP", ModuleConstants.Security.Permissions.AllPermissions);
 
         ValidateMcpPrimitives(serviceProvider);
+        LogScopesWithoutPublicOrigin(serviceProvider);
 
         using var serviceScope = serviceProvider.CreateScope();
         using var dbContext = serviceScope.ServiceProvider.GetRequiredService<McpDbContext>();
         dbContext.Database.Migrate();
+    }
+
+    // Outside Development, a scope without a configured origin refuses bearer tokens at /{scope}/mcp: the audience
+    // a token must have would otherwise come from the request's Host header.
+    private static void LogScopesWithoutPublicOrigin(IServiceProvider serviceProvider)
+    {
+        if (serviceProvider.GetRequiredService<IHostEnvironment>().IsDevelopment())
+        {
+            return;
+        }
+
+        var options = serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value;
+        if (!string.IsNullOrEmpty(options.PublicOrigin))
+        {
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Module>>();
+        foreach (var scope in serviceProvider.GetRequiredService<IMcpScopeRegistry>().Scopes)
+        {
+            options.Scopes.TryGetValue(scope.Name, out var scopeOptions);
+            if (scopeOptions?.Enabled != false && string.IsNullOrEmpty(scopeOptions?.PublicOrigin))
+            {
+                logger.LogError("MCP scope '{ScopeName}' has no public origin: neither MCP:PublicOrigin nor MCP:Scopes:{ScopeName}:PublicOrigin is set. " +
+                    "Its endpoint {Path} refuses access tokens until one is set.", scope.Name, scope.Name, scope.Path);
+            }
+        }
     }
 
     private static void ValidateMcpPrimitives(IServiceProvider serviceProvider)
