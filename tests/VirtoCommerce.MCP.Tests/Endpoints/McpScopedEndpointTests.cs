@@ -62,8 +62,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string GatedScope = "gated";
     private const string ConfirmScope = "confirm";
 
-    private static readonly string[] _readerTools = ["canceled_tool", "read_tool", "static_tool"];
-    private static readonly string[] _writerTools = ["canceled_tool", "conditional_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
+    private static readonly string[] _readerTools = ["canceled_tool", "interrupted_tool", "read_tool", "static_tool"];
+    private static readonly string[] _writerTools = ["canceled_tool", "conditional_tool", "interrupted_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
     private static readonly string[] _policyPermissions = [McpPermissions.Approve, WritePermission, CategoryApprovePermission];
 
     private readonly ConcurrentBag<McpAuditEntry> _auditEntries = [];
@@ -623,15 +623,108 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ListPendingChanges_Should_ReturnNoChanges_When_TheUserHasNoId()
+    public async Task Request_Should_BeRefused_When_TheTokenHasNoUser()
     {
         // Act
-        var result = await CallAsync(Token(user: ""), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+        var response = await PostAsync(Token(user: ""), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("error=\"invalid_token\"", response.Headers.WwwAuthenticate.ToString());
+        Assert.Empty(_searchCriteria);
+    }
+
+    [Theory]
+    [InlineData("client_id")]
+    [InlineData("azp")]
+    [InlineData("oi_prst")]
+    public async Task Request_Should_BeRefused_When_TheTokenIdentifiesTheClientInsteadOfAUser(string clientClaimType)
+    {
+        // Act: a client-credentials token, whose subject is the client itself
+        var response = await PostAsync(ClientToken("agent-app", clientClaimType, McpPermissions.Approve), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("identifies the MCP client", response.Headers.WwwAuthenticate.ToString());
+        Assert.Empty(_searchCriteria);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeRefusedWith413_When_TheBodyIsLargerThanTheLimit()
+    {
+        // Act: an anonymous request, so nothing else stops it before the body is read
+        var response = await PostAsync(token: null, ToolsCall("search_products", new { query = new string('x', 1024 * 1024) }), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_ChallengeAnAnonymousUser_When_TheToolNameIsWrittenInAnotherCase()
+    {
+        // Arrange: the MCP server reads the parameters ignoring case
+        var parameters = new Dictionary<string, object> { ["Name"] = "get_my_orders", ["Arguments"] = new { } };
+
+        // Act
+        var response = await PostAsync(token: null, Request("tools/call", parameters), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditTheCallAsCanceled_When_ItIsCanceledWhileRunning()
+    {
+        // Act
+        await Record.ExceptionAsync(() => PostAsync(Token(), ToolsCall("interrupted_tool", new { })));
+
+        // Assert
+        var entry = Assert.Single(_auditEntries, x => x.ToolName == "interrupted_tool");
+        Assert.Equal(McpAuditOutcome.Canceled, entry.Outcome);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PromptsAndResources_Should_BeListed_Only_To_UsersWithTheirPermission(bool hasPermission)
+    {
+        // Arrange
+        var token = hasPermission ? Token(permissions: WritePermission) : Token();
+
+        // Act
+        var prompts = await CallAsync(token, Request("prompts/list", new { }));
+        var resources = await CallAsync(token, Request("resources/list", new { }));
+
+        // Assert
+        var promptNames = prompts["result"]!["prompts"]!.AsArray().Select(x => x!["name"]!.GetValue<string>()).ToArray();
+        var resourceUris = resources["result"]!["resources"]!.AsArray().Select(x => x!["uri"]!.GetValue<string>()).ToArray();
+        Assert.Equal(hasPermission, promptNames.Contains("pricing_review"));
+        Assert.Equal(hasPermission, resourceUris.Contains("test://pricing"));
+        Assert.Contains("open_review", promptNames);
+    }
+
+    [Fact]
+    public async Task PromptsAndResources_Should_BeRefused_To_AUserWithoutTheirPermission()
+    {
+        // Act
+        var prompt = await CallAsync(Token(), Request("prompts/get", new { name = "pricing_review" }));
+        var resource = await CallAsync(Token(), Request("resources/read", new { uri = "test://pricing" }));
+        var permittedPrompt = await CallAsync(Token(permissions: WritePermission), Request("prompts/get", new { name = "pricing_review" }));
+
+        // Assert
+        Assert.NotNull(prompt["error"]);
+        Assert.NotNull(resource["error"]);
+        Assert.Null(permittedPrompt["error"]);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeServed_When_TheTokenNamesAClientAndAUser()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: McpPermissions.Approve) + "#client_id=agent-app", ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
 
         // Assert
         Assert.False(IsError(result), Text(result));
-        Assert.Empty(_searchCriteria);
-        Assert.Contains("\"total_count\":0", Text(result));
     }
 
     [Fact]
@@ -1243,6 +1336,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddMcpTools<TestTools>();
         services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools), typeof(UndeclaredTools)]);
         services.AddMcpTools<CanceledTools>();
+        services.AddMcpPrompts([typeof(PermissionPrompts)]);
+        services.AddMcpResources([typeof(PermissionResources)]);
         services.AddMcpTools([typeof(ConfirmTools)]);
         services.AddMcpTools([typeof(ScopedPermissionTools)]);
         services.AddMcpTools<McpApprovalTools>();
@@ -1508,6 +1603,12 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         return $"{user}|{audience}|{string.Join(';', permissions)}";
     }
 
+    // A client-credentials token: the client id is the subject, and the claim of the given type names the client too.
+    private static string ClientToken(string clientId, string clientClaimType, params string[] permissions)
+    {
+        return Token(user: clientId, permissions: permissions) + $"#{clientClaimType}={clientId}";
+    }
+
     private static string[] AuthorTools =>
         [ModuleConstants.ToolNames.CancelJob, ModuleConstants.ToolNames.GetJobStatus, ModuleConstants.ToolNames.GetPendingChange, ModuleConstants.ToolNames.ListPendingChanges, ModuleConstants.ToolNames.RejectPendingChange];
 
@@ -1533,7 +1634,9 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
                 return Task.FromResult(AuthenticateResult.NoResult());
             }
 
-            var parts = header["Bearer ".Length..].Split('|', 3);
+            // user|audience|permission;permission[#claimType=value]
+            var token = header["Bearer ".Length..].Split('#', 2);
+            var parts = token[0].Split('|', 3);
             var claims = new List<Claim>
             {
                 new(ClaimTypes.NameIdentifier, parts[0]),
@@ -1541,6 +1644,10 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
                 new("aud", parts[1]),
             };
             claims.AddRange(parts[2].Split(';', StringSplitOptions.RemoveEmptyEntries).Select(x => new Claim("permission", x)));
+            if (token.Length > 1 && token[1].Split('=', 2) is [var claimType, var claimValue])
+            {
+                claims.Add(new Claim(claimType, claimValue));
+            }
 
             var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));
@@ -1645,6 +1752,9 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [McpServerTool(Name = "canceled_tool"), Description("Gets canceled while it runs.")]
         [McpRequiresApproval]
         public static string CanceledTool() => throw new OperationCanceledException();
+
+        [McpServerTool(Name = "interrupted_tool"), Description("Gets canceled while it runs, without approval.")]
+        public static string InterruptedTool() => throw new OperationCanceledException();
     }
 
     [McpServerToolType]
@@ -1779,6 +1889,27 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [McpServerTool(Name = "get_my_prices"), Description("Needs a permission.")]
         [Authorize(WritePermission)]
         public static string GetMyPrices() => "prices";
+    }
+
+    [McpServerPromptType]
+    [McpScope(McpScopes.Admin)]
+    public static class PermissionPrompts
+    {
+        [McpServerPrompt(Name = "pricing_review"), Description("Needs a permission.")]
+        [McpPermission(WritePermission)]
+        public static string PricingReview() => "Review the prices.";
+
+        [McpServerPrompt(Name = "open_review"), Description("Open to every user of the scope.")]
+        public static string OpenReview() => "Review the week.";
+    }
+
+    [McpServerResourceType]
+    [McpScope(McpScopes.Admin)]
+    public static class PermissionResources
+    {
+        [McpServerResource(UriTemplate = "test://pricing", Name = "pricing"), Description("Needs a permission.")]
+        [McpPermission(WritePermission)]
+        public static string Pricing() => "prices";
     }
 
     [McpServerToolType]

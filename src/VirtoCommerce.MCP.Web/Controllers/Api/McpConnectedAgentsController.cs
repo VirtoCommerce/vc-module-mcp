@@ -28,6 +28,12 @@ public class McpConnectedAgentsController(
         if (!await CanManageAsync())
         {
             criteria.UserId = User.GetUserId();
+
+            // Without a user id the search would not be limited to the user's own agents.
+            if (string.IsNullOrEmpty(criteria.UserId))
+            {
+                return Ok(new McpConnectedAgentSearchResult());
+            }
         }
 
         return Ok(await connectedAgentService.SearchAsync(criteria));

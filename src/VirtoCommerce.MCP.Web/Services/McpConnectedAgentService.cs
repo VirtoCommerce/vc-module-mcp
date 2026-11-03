@@ -74,7 +74,8 @@ public class McpConnectedAgentService(
         }
 
         var subject = await authorizationManager.GetSubjectAsync(authorization);
-        if (!canRevokeAny && !string.Equals(subject, user?.GetUserId(), StringComparison.OrdinalIgnoreCase))
+        var userId = user?.GetUserId();
+        if (!canRevokeAny && (string.IsNullOrEmpty(userId) || !string.Equals(subject, userId, StringComparison.OrdinalIgnoreCase)))
         {
             return McpConnectedAgentRevokeResult.Forbidden;
         }

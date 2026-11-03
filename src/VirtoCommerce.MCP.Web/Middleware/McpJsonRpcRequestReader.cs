@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -38,14 +39,29 @@ public static class McpJsonRpcRequestReader
         }
     }
 
-    // params.name of a tools/call request
+    // params.name of a tools/call request. Matched ignoring case, as the MCP server reads the parameters.
     private static string GetToolName(JsonElement root)
     {
-        if (!root.TryGetProperty("params", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
+        if (!TryGetPropertyIgnoreCase(root, "params", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        return parameters.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : null;
+        return TryGetPropertyIgnoreCase(parameters, "name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : null;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 }

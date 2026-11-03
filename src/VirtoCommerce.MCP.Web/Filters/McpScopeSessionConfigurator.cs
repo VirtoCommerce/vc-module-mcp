@@ -30,12 +30,16 @@ public static class McpScopeSessionConfigurator
             tools = tools.Where(tool => !McpToolAvailabilityService.IsDisabled(disabledToolNames, tool.ProtocolTool.Name));
         }
 
+        // Prompts and resources have no call filter of their own, so the ones whose [McpPermission] the user does not have
+        // are left out of the request's collections: not listed, and not readable.
+        var authorizationService = services.GetRequiredService<McpToolAuthorizationService>();
+
         ApplyScope(
             options,
             scope,
             tools,
-            services.GetServices<McpServerPrompt>(),
-            services.GetServices<McpServerResource>());
+            services.GetServices<McpServerPrompt>().Where(x => authorizationService.HasMcpPermissions(context.User, x)),
+            services.GetServices<McpServerResource>().Where(x => authorizationService.HasMcpPermissions(context.User, x)));
     }
 
     public static void ApplyScope(

@@ -138,6 +138,36 @@ public class McpApprovalServiceTests : McpTestsBase
     }
 
     [Fact]
+    public async Task ApproveAsync_Should_Refuse_When_TheChangeHasNoRequester()
+    {
+        // Arrange: the approver cannot be shown to be another user
+        var change = PendingChange("change-1");
+        change.RequestedByUserId = null;
+        await SeedAsync(change);
+
+        // Act
+        var exception = await Assert.ThrowsAsync<McpException>(() => _service.ApproveAsync("change-1", ApproverId, "approver", null));
+
+        // Assert
+        Assert.Contains("no recorded requester", exception.Message);
+        Assert.Equal(McpPendingChangeStatus.Pending, (await GetPendingChangeAsync("change-1")).Status);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_Should_Refuse_When_TheApproverHasNoId()
+    {
+        // Arrange
+        await SeedAsync(PendingChange("change-1"));
+        SetSetting(ModuleConstants.Settings.Approval.AllowSelfApproval, true);
+
+        // Act
+        var exception = await Assert.ThrowsAsync<McpException>(() => _service.ApproveAsync("change-1", reviewerUserId: null, "approver", null));
+
+        // Assert
+        Assert.Contains("signed-in user", exception.Message);
+    }
+
+    [Fact]
     public async Task ApproveAsync_Should_AllowTheRequester_When_SelfApprovalIsEnabled()
     {
         // Arrange

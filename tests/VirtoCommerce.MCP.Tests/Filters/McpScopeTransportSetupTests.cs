@@ -17,6 +17,7 @@ public class McpScopeTransportSetupTests
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddScopedMcpServer();
         var otherHandlerCalled = false;
         services.Configure<HttpServerTransportOptions>(options => options.ConfigureSessionOptions = (_, _, _) =>

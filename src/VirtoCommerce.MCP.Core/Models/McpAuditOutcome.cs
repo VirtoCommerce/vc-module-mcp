@@ -16,4 +16,7 @@ public static class McpAuditOutcome
 
     // The user did not confirm a call of a tool with [McpRequiresConfirmation], so it did not run.
     public const string Declined = "Declined";
+
+    // The call was canceled while it ran: a timeout, or the client went away. It may have changed data partly.
+    public const string Canceled = "Canceled";
 }

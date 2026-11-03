@@ -19,6 +19,7 @@ using VirtoCommerce.MCP.Core.Diagnostics;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Web.Middleware;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.Security;
@@ -65,6 +66,13 @@ public class McpCallToolFilter(
             // The call waits for the user's answer: the client asks the user and repeats the call, which is audited.
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            // A timeout or a client that went away may leave a partial change behind, so the call is still audited.
+            audit.Outcome = McpAuditOutcome.Canceled;
+            audit.ErrorMessage = "The call was canceled before it finished.";
+            throw;
+        }
         catch (McpProtocolException ex)
         {
             audit.Outcome ??= McpAuditWriter.GetFailureOutcome(ex);
@@ -80,7 +88,7 @@ public class McpCallToolFilter(
 
             return AddTraceId(CreateErrorResult(ex.Message));
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             logger.LogError(ex, "MCP tool {ToolName} failed in scope {ScopeName}", audit.ToolName, scope.Name);
             audit.Outcome = McpAuditOutcome.Error;
@@ -184,6 +192,16 @@ public class McpCallToolFilter(
             audit.ErrorMessage = $"Tool '{audit.ToolName}' is disabled by the administrator.";
 
             return CreateErrorResult(audit.ErrorMessage + " Tell the user that this action is not available now.");
+        }
+
+        // The scope's middleware challenges such a call before it gets here; this holds when the request named the tool
+        // in a way that middleware did not read.
+        if (tool != null && context.User?.Identity?.IsAuthenticated != true && McpScopeAuthenticationMiddleware.RequiresUser(tool))
+        {
+            audit.Outcome = McpAuditOutcome.Forbidden;
+            audit.ErrorMessage = $"Sign in to use tool '{audit.ToolName}'.";
+
+            return CreateErrorResult(audit.ErrorMessage);
         }
 
         if (tool != null && !await MayRunAsync(context, scope, tool))

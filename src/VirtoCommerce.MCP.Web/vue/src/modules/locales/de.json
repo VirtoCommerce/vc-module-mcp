@@ -106,6 +106,7 @@
       "Forbidden": "Verboten",
       "PendingApproval": "Wartet auf Genehmigung",
       "Declined": "Vom Benutzer abgelehnt",
+      "Canceled": "Vor dem Abschluss abgebrochen",
       "Disabled": "Ausgeschaltet"
     },
     "TOOLBAR": {

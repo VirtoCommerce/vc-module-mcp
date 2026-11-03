@@ -1,6 +1,6 @@
 // Statuses of pending changes (McpPendingChangeStatus) and outcomes of tool calls (McpAuditOutcome)
 export const CHANGE_STATUSES = ["Pending", "Approved", "Applied", "Failed", "Rejected", "Expired"];
-export const OUTCOMES = ["Succeeded", "Failed", "Error", "Forbidden", "PendingApproval", "Declined", "Disabled"];
+export const OUTCOMES = ["Succeeded", "Failed", "Error", "Forbidden", "PendingApproval", "Declined", "Canceled", "Disabled"];
 
 type Variant = "success" | "warning" | "danger" | "info" | "primary";
 
@@ -30,6 +30,7 @@ export function outcomeVariant(outcome?: string): Variant {
       return "danger";
     case "Forbidden":
     case "Declined":
+    case "Canceled":
     case "Disabled":
       return "primary";
     default:

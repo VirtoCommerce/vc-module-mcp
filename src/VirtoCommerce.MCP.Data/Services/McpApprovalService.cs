@@ -58,10 +58,23 @@ public class McpApprovalService(
     {
         var change = await GetPendingAsync(changeId);
 
-        if (!await IsSelfApprovalAllowedAsync() && !string.IsNullOrEmpty(change.RequestedByUserId) &&
-            string.Equals(change.RequestedByUserId, reviewerUserId, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(reviewerUserId))
         {
-            throw new McpException($"Pending change '{changeId}' was requested by you and must be approved by another user.");
+            throw new McpException($"Pending change '{changeId}' can be approved only by a signed-in user.");
+        }
+
+        if (!await IsSelfApprovalAllowedAsync())
+        {
+            // Without a requester the change cannot be told apart from the approver's own, so it is refused.
+            if (string.IsNullOrEmpty(change.RequestedByUserId))
+            {
+                throw new McpException($"Pending change '{changeId}' has no recorded requester, so another user's approval cannot be verified.");
+            }
+
+            if (string.Equals(change.RequestedByUserId, reviewerUserId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new McpException($"Pending change '{changeId}' was requested by you and must be approved by another user.");
+            }
         }
 
         return await TransitionAsync(change, x =>

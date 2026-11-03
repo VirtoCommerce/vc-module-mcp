@@ -106,6 +106,7 @@
       "Forbidden": "禁止",
       "PendingApproval": "等待批准",
       "Declined": "用户已拒绝",
+      "Canceled": "在完成前已取消",
       "Disabled": "已停用"
     },
     "TOOLBAR": {

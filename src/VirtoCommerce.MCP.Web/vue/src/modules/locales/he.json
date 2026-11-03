@@ -106,6 +106,7 @@
       "Forbidden": "אסור",
       "PendingApproval": "ממתין לאישור",
       "Declined": "נדחה על ידי המשתמש",
+      "Canceled": "בוטל לפני שהסתיים",
       "Disabled": "כבוי"
     },
     "TOOLBAR": {

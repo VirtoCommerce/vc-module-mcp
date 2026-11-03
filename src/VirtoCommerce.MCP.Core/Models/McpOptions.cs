@@ -7,6 +7,10 @@ public class McpOptions
 {
     public string PublicOrigin { get; set; }
 
+    // The largest MCP request body in bytes; a larger request is answered with 413 before it is read. Tool arguments are
+    // small JSON, while the platform itself sets no limit.
+    public long MaxRequestBodySize { get; set; } = 1024 * 1024;
+
     public Dictionary<string, McpScopeOptions> Scopes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

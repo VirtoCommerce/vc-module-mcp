@@ -106,6 +106,7 @@
       "Forbidden": "Interdit",
       "PendingApproval": "En attente d'approbation",
       "Declined": "Refusé par l'utilisateur",
+      "Canceled": "Annulé avant la fin",
       "Disabled": "Désactivé"
     },
     "TOOLBAR": {

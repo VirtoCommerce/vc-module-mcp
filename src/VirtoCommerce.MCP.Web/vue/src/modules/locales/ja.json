@@ -106,6 +106,7 @@
       "Forbidden": "禁止",
       "PendingApproval": "承認待ち",
       "Declined": "ユーザーが拒否",
+      "Canceled": "完了前にキャンセル",
       "Disabled": "オフ"
     },
     "TOOLBAR": {

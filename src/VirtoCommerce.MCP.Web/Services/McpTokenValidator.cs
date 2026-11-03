@@ -14,6 +14,22 @@ public class McpTokenValidator(
 {
     private const string AudienceClaimType = "aud";
 
+    private static readonly string[] _subjectClaimTypes = [OpenIddictConstants.Claims.Subject, ClaimTypes.NameIdentifier];
+    private static readonly string[] _clientClaimTypes = [OpenIddictConstants.Claims.ClientId, OpenIddictConstants.Claims.AuthorizedParty, "oi_prst"];
+
+    // A client-credentials token: the client acts for itself, with no user behind it. The platform issues it with the
+    // client id as the subject and the Administrator role, so it must not reach tools that act as the signed-in user.
+    public static bool IsClientIdentity(ClaimsPrincipal principal)
+    {
+        var subject = principal?.Claims.FirstOrDefault(claim => _subjectClaimTypes.Contains(claim.Type))?.Value;
+        if (string.IsNullOrEmpty(subject))
+        {
+            return true;
+        }
+
+        return principal.Claims.Any(claim => _clientClaimTypes.Contains(claim.Type) && string.Equals(claim.Value, subject, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static bool HasExpectedAudience(ClaimsPrincipal principal, string expectedResource)
     {
         if (!Uri.TryCreate(expectedResource, UriKind.Absolute, out var expected))

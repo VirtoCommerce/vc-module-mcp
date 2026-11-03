@@ -131,6 +131,11 @@ public class McpScopeAuthenticationMiddleware(
             return "The access token was not issued for this MCP resource.";
         }
 
+        if (McpTokenValidator.IsClientIdentity(user))
+        {
+            return "The access token identifies the MCP client, not a user. Connect the client with a user's sign-in.";
+        }
+
         return await tokenValidator.IsActiveAsync(user, cancellationToken)
             ? null
             : "The OAuth session has ended. Sign in again to continue.";

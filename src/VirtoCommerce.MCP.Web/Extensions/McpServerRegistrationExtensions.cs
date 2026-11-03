@@ -11,6 +11,7 @@ using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Data.Services;
 using VirtoCommerce.MCP.Web.Filters;
 using VirtoCommerce.MCP.Web.Middleware;
+using VirtoCommerce.MCP.Web.Services;
 
 namespace VirtoCommerce.MCP.Web.Extensions;
 
@@ -23,6 +24,9 @@ public static class McpServerRegistrationExtensions
             .AddAuthorizationFilters()
             .WithMessageFilters(filters => filters.AddIncomingFilter(McpActivityStatusFilter.Create()));
 
+        // The scope of a request leaves out the prompts and resources whose permissions the user does not have.
+        services.AddAuthorizationCore();
+        services.TryAddTransient<McpToolAuthorizationService>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<HttpServerTransportOptions>, McpScopeTransportSetup>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<McpServerOptions>, McpCallToolFilterSetup>());
 
@@ -37,6 +41,7 @@ public static class McpServerRegistrationExtensions
             context => TryResolveScope(context, scopeRegistry),
             branch =>
             {
+                branch.UseMiddleware<McpRequestSizeLimitMiddleware>();
                 branch.UseMiddleware<McpProbeCompatibilityMiddleware>();
                 branch.UseRouting();
                 branch.UseAuthentication();

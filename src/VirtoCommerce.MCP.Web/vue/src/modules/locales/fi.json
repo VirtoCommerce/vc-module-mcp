@@ -106,6 +106,7 @@
       "Forbidden": "Kielletty",
       "PendingApproval": "Odottaa hyväksyntää",
       "Declined": "Käyttäjä hylkäsi",
+      "Canceled": "Peruttu ennen valmistumista",
       "Disabled": "Kytketty pois päältä"
     },
     "TOOLBAR": {
