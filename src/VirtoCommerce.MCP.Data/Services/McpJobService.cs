@@ -27,10 +27,15 @@ public class McpJobService(
         return ((IMcpRepository)repository).GetJobsByIdsAsync(ids);
     }
 
-    public virtual async Task<bool> TryChangeStatusAsync(McpJob job, string expectedStatus)
+    public virtual Task<bool> TryChangeStatusAsync(McpJob job, string expectedStatus)
     {
         ArgumentNullException.ThrowIfNull(job);
 
+        return TryChangeStatusInternalAsync(job, expectedStatus);
+    }
+
+    protected virtual async Task<bool> TryChangeStatusInternalAsync(McpJob job, string expectedStatus)
+    {
         int affected;
         using (var repository = repositoryFactory())
         {

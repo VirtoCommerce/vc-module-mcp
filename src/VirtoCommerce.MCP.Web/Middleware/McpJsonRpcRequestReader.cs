@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -52,13 +53,10 @@ public static class McpJsonRpcRequestReader
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
     {
-        foreach (var property in element.EnumerateObject())
+        foreach (var property in element.EnumerateObject().Where(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
-            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
-            {
-                value = property.Value;
-                return true;
-            }
+            value = property.Value;
+            return true;
         }
 
         value = default;

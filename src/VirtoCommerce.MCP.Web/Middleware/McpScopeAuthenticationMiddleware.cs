@@ -41,22 +41,7 @@ public class McpScopeAuthenticationMiddleware(
             EndpointPath = context.GetMcpEndpointPath(),
         };
 
-        string tokenError = null;
-        if (HasBearerHeader(context.Request))
-        {
-            context.User = await tokenValidator.AuthenticateAsync(context) ?? new ClaimsPrincipal(new ClaimsIdentity());
-
-            // The audience a token must have is this server's address. Taken from the request's Host and forwarded
-            // headers, it would be whatever host the client was allowed to get a token for.
-            tokenError = originResolver.IsOriginConfigured(context, scope) || environment.IsDevelopment()
-                ? await GetTokenErrorAsync(context.User, challenge.Resource, tokenValidator, context.RequestAborted)
-                : "This MCP server has no public origin configured (MCP:PublicOrigin), so it cannot check that a token was issued for it. Ask the administrator to set it.";
-        }
-        else
-        {
-            context.User = new ClaimsPrincipal(new ClaimsIdentity());
-        }
-
+        var tokenError = await AuthenticateAsync(context, challenge, originResolver, tokenValidator, environment);
         if (tokenError != null)
         {
             challenge.Error = "invalid_token";
@@ -95,6 +80,32 @@ public class McpScopeAuthenticationMiddleware(
         }
 
         await next(context);
+    }
+
+    // Sets the request's user from its bearer token, or an anonymous user without one. Returns why the token is refused.
+    private static async Task<string> AuthenticateAsync(
+        HttpContext context,
+        McpChallenge challenge,
+        IMcpPublicOriginResolver originResolver,
+        McpTokenValidator tokenValidator,
+        IHostEnvironment environment)
+    {
+        if (!HasBearerHeader(context.Request))
+        {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity());
+            return null;
+        }
+
+        context.User = await tokenValidator.AuthenticateAsync(context) ?? new ClaimsPrincipal(new ClaimsIdentity());
+
+        // The audience a token must have is this server's address. Taken from the request's Host and forwarded
+        // headers, it would be whatever host the client was allowed to get a token for.
+        if (!originResolver.IsOriginConfigured(context, challenge.Scope) && !environment.IsDevelopment())
+        {
+            return "This MCP server has no public origin configured (MCP:PublicOrigin), so it cannot check that a token was issued for it. Ask the administrator to set it.";
+        }
+
+        return await GetTokenErrorAsync(context.User, challenge.Resource, tokenValidator, context.RequestAborted);
     }
 
     // In a scope open to anonymous users, a call to a tool that needs a user is answered with a challenge instead of

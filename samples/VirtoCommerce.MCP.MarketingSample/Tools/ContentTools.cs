@@ -632,7 +632,7 @@ public class ContentTools(
     }
 
     // The stores the permission covers for the user
-    private IReadOnlyList<DemoStore> GetStores(ClaimsPrincipal user, string permission)
+    private List<DemoStore> GetStores(ClaimsPrincipal user, string permission)
     {
         var grant = user.GetMcpPermissionGrant(permission);
 

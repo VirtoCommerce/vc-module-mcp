@@ -37,7 +37,12 @@ public class McpTokenValidator(
     // client id as the subject and the Administrator role, so it must not reach tools that act as the signed-in user.
     public static bool IsClientIdentity(ClaimsPrincipal principal)
     {
-        var subject = principal?.Claims.FirstOrDefault(claim => _subjectClaimTypes.Contains(claim.Type))?.Value;
+        if (principal == null)
+        {
+            return true;
+        }
+
+        var subject = principal.Claims.FirstOrDefault(claim => _subjectClaimTypes.Contains(claim.Type))?.Value;
         if (string.IsNullOrEmpty(subject))
         {
             return true;
