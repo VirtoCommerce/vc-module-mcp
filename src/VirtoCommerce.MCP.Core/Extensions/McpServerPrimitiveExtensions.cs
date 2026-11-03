@@ -38,6 +38,32 @@ public static class McpServerPrimitiveExtensions
         return primitive.Metadata.OfType<McpRequiresConfirmationAttribute>().FirstOrDefault();
     }
 
+    private static readonly string[] _dryRunParameterNames = ["dryRun", "dry_run"];
+
+    // The name of the tool's dry-run parameter (dryRun or dry_run), or null when it has none.
+    public static string FindDryRunParameter(this McpServerTool tool)
+    {
+        var schema = tool.ProtocolTool.InputSchema;
+        if (schema.ValueKind != JsonValueKind.Object || !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return _dryRunParameterNames.FirstOrDefault(name => properties.TryGetProperty(name, out _));
+    }
+
+    // The tools that require approval but cannot be previewed: their calls are refused, because the preview is what
+    // the approver reviews and what checks the change against the requester's access.
+    public static IList<string> FindApprovalToolsWithoutDryRun(IEnumerable<McpServerTool> tools)
+    {
+        return tools
+            .Where(tool => tool.RequiresApproval() && tool.FindDryRunParameter() == null)
+            .Select(tool => tool.ProtocolTool.Name)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
     public static bool RequiresApproval(this IMcpServerPrimitive primitive)
     {
         return primitive.Metadata.OfType<McpRequiresApprovalAttribute>().Any();

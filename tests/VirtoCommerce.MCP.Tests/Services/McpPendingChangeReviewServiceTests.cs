@@ -128,7 +128,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
     {
         // Arrange
         var failing = McpServerTool.Create(
-            new Func<string, string>(promotion_id => throw new ModelContextProtocol.McpException($"Promotion '{promotion_id}' has ended.")),
+            (Func<string, bool, string>)ActivateEndedPromotion,
             new McpServerToolCreateOptions { Name = ToolName, Metadata = [new McpScopeAttribute(McpScopes.Admin)] });
 
         // Act
@@ -138,6 +138,23 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
         Assert.False(_completed!.Value.Succeeded);
         Assert.Equal(McpPendingChangeStatus.Failed, details.Status);
         Assert.Contains("has ended", details.ResultJson);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_Should_Refuse_When_TheDryRunFailsForTheRequester()
+    {
+        // Arrange: the change is outside what the requester may change, which the tool's dry run reports
+        var outOfReach = McpServerTool.Create(
+            (Func<string, bool, string>)ActivateOutOfReachPromotion,
+            new McpServerToolCreateOptions { Name = ToolName, Metadata = [new McpScopeAttribute(McpScopes.Admin)] });
+
+        // Act
+        var exception = await Assert.ThrowsAsync<ModelContextProtocol.McpException>(
+            () => CreateService().ApproveAsync(User(ApproverId), ChangeId, null, Services(outOfReach)));
+
+        // Assert
+        Assert.Contains("You may not change promotion 'black-friday'", exception.Message);
+        Assert.Null(_completed);
     }
 
     [Fact]
@@ -265,15 +282,35 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
     private static McpServerTool ActivateTool()
     {
         return McpServerTool.Create(
-            (string promotion_id) => $"Activated {promotion_id}",
+            (Func<string, bool, string>)ActivatePromotion,
             new McpServerToolCreateOptions { Name = ToolName, Metadata = [new McpScopeAttribute(McpScopes.Admin)] });
+    }
+
+    private static string ActivatePromotion(string promotion_id, bool dryRun = false)
+    {
+        return dryRun ? $"Would activate {promotion_id}" : $"Activated {promotion_id}";
+    }
+
+    private static string ActivateEndedPromotion(string promotion_id, bool dryRun = false)
+    {
+        return dryRun ? $"Would activate {promotion_id}" : throw new ModelContextProtocol.McpException($"Promotion '{promotion_id}' has ended.");
+    }
+
+    private static string ActivateOutOfReachPromotion(string promotion_id, bool dryRun = false)
+    {
+        return dryRun ? throw new ModelContextProtocol.McpException($"You may not change promotion '{promotion_id}'.") : $"Activated {promotion_id}";
     }
 
     private ServiceProvider Services(McpServerTool tool)
     {
+        var requesterFactory = new Mock<McpUserPrincipalFactory>(null, null);
+        requesterFactory.Setup(x => x.CreateAsync(RequesterId)).ReturnsAsync(User(RequesterId));
+
         return new ServiceCollection()
             .AddSingleton(tool)
             .AddSingleton<IHttpContextAccessor>(_httpContextAccessor)
+            .AddSingleton(requesterFactory.Object)
+            .AddSingleton(_toolAuthorizationService.Object)
             .BuildServiceProvider();
     }
 

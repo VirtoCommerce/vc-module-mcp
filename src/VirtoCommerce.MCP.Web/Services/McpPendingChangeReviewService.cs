@@ -68,6 +68,12 @@ public class McpPendingChangeReviewService(
 
         using var activity = McpDiagnostics.StartReview(scope.Name, change.ToolName, "approve", change.Id, BackOfficeClientId);
 
+        var refusal = await pendingChangeExecutor.FindRequesterRefusalAsync(services, scope, tool, change);
+        if (refusal != null)
+        {
+            throw new McpException($"Pending change '{changeId}' cannot be applied: {refusal}. Reject it, or ask the requester to submit it again.");
+        }
+
         change = await approvalService.ApproveAsync(change.Id, user.GetUserId(), user.GetUserName(), comment);
 
         var result = await pendingChangeExecutor.ExecuteAsync(services, user, scope, tool, change, BackOfficeClientId);

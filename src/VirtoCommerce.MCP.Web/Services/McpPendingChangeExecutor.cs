@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
@@ -53,6 +54,66 @@ public class McpPendingChangeExecutor(
         return await ExecuteAsync(server, new RequestId(change.Id), services, user, tool, change, clientId);
     }
 
+    // Why the change cannot be applied for its requester, or null when it can. The change runs as the approver, whose
+    // access may be wider, so the tool's dry run is repeated as the requester first: a requester who lost the tool's
+    // permission, or a change outside the stores or sellers the requester may work with, is refused.
+    public virtual Task<string> FindRequesterRefusalAsync(
+        RequestContext<CallToolRequestParams> requestContext,
+        McpServerTool tool,
+        McpPendingChange change)
+    {
+        return FindRequesterRefusalAsync(requestContext.Server, requestContext.Services, tool, change);
+    }
+
+    // The same check for a change approved outside an MCP session, for example in the back office.
+    public virtual async Task<string> FindRequesterRefusalAsync(IServiceProvider services, McpScope scope, McpServerTool tool, McpPendingChange change)
+    {
+        var httpContext = services.GetService<IHttpContextAccessor>()?.HttpContext;
+        if (httpContext != null && httpContext.GetMcpScope() == null)
+        {
+            httpContext.SetMcpScope(scope);
+        }
+
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null, loggerFactory: loggerFactory);
+        await using var server = McpServer.Create(transport, new McpServerOptions(), loggerFactory, services);
+
+        return await FindRequesterRefusalAsync(server, services, tool, change);
+    }
+
+    protected virtual async Task<string> FindRequesterRefusalAsync(McpServer server, IServiceProvider services, McpServerTool tool, McpPendingChange change)
+    {
+        var dryRunParameter = tool.FindDryRunParameter();
+        if (dryRunParameter == null)
+        {
+            return $"tool '{change.ToolName}' has no dry run to check the change against its requester's access";
+        }
+
+        var requester = await services.GetRequiredService<McpUserPrincipalFactory>().CreateAsync(change.RequestedByUserId);
+        if (requester == null)
+        {
+            return "the account of its requester no longer exists or is locked";
+        }
+
+        if (!await services.GetRequiredService<McpToolAuthorizationService>().IsAuthorizedAsync(requester, tool))
+        {
+            return $"its requester is no longer allowed to run tool '{change.ToolName}'";
+        }
+
+        var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(change.Arguments ?? "{}", McpJsonUtilities.DefaultOptions);
+        arguments[dryRunParameter] = JsonSerializer.SerializeToElement(true);
+
+        try
+        {
+            var result = await tool.InvokeAsync(CreateToolContext(server, new RequestId(change.Id), services, requester, tool, change.ToolName, arguments), CancellationToken.None);
+
+            return result.IsError == true ? $"its dry run as the requester failed: {GetText(result)}" : null;
+        }
+        catch (McpException ex)
+        {
+            return $"its dry run as the requester failed: {ex.Message}";
+        }
+    }
+
     // The audit entry of a review decision made outside an agent's tool call, for example in the back office.
     public virtual Task WriteReviewAuditAsync(ClaimsPrincipal user, McpPendingChange change, string toolName, string clientId)
     {
@@ -85,20 +146,7 @@ public class McpPendingChangeExecutor(
         try
         {
             arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(change.Arguments ?? "{}", McpJsonUtilities.DefaultOptions);
-            var parameters = new CallToolRequestParams { Name = change.ToolName, Arguments = arguments };
-            var jsonRpcRequest = new JsonRpcRequest
-            {
-                Id = requestId,
-                Method = RequestMethods.ToolsCall,
-                Params = JsonSerializer.SerializeToNode(parameters, McpJsonUtilities.DefaultOptions),
-            };
-
-            var toolContext = new RequestContext<CallToolRequestParams>(server, jsonRpcRequest, parameters)
-            {
-                Services = services,
-                User = user,
-                MatchedPrimitive = tool,
-            };
+            var toolContext = CreateToolContext(server, requestId, services, user, tool, change.ToolName, arguments);
             toolContext.SetExecutedPendingChange(change.Id, change.RequestedByUserId);
 
             result = await tool.InvokeAsync(toolContext, CancellationToken.None);
@@ -120,5 +168,35 @@ public class McpPendingChangeExecutor(
         await auditWriter.WriteAsync(audit, arguments, change.SensitiveArgumentPaths);
 
         return result;
+    }
+
+    private static RequestContext<CallToolRequestParams> CreateToolContext(
+        McpServer server,
+        RequestId requestId,
+        IServiceProvider services,
+        ClaimsPrincipal user,
+        McpServerTool tool,
+        string toolName,
+        Dictionary<string, JsonElement> arguments)
+    {
+        var parameters = new CallToolRequestParams { Name = toolName, Arguments = arguments };
+        var jsonRpcRequest = new JsonRpcRequest
+        {
+            Id = requestId,
+            Method = RequestMethods.ToolsCall,
+            Params = JsonSerializer.SerializeToNode(parameters, McpJsonUtilities.DefaultOptions),
+        };
+
+        return new RequestContext<CallToolRequestParams>(server, jsonRpcRequest, parameters)
+        {
+            Services = services,
+            User = user,
+            MatchedPrimitive = tool,
+        };
+    }
+
+    private static string GetText(CallToolResult result)
+    {
+        return string.Join(Environment.NewLine, result.Content.OfType<TextContentBlock>().Select(x => x.Text));
     }
 }

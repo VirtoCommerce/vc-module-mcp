@@ -137,6 +137,12 @@ public class McpApprovalTools(
             throw new McpException($"You are not allowed to run tool '{change.ToolName}', so you cannot approve its changes.");
         }
 
+        var refusal = await pendingChangeExecutor.FindRequesterRefusalAsync(requestContext, tool, change);
+        if (refusal != null)
+        {
+            throw new McpException($"Pending change '{change_id}' cannot be applied: {refusal}. Reject it, or ask the requester to submit it again.");
+        }
+
         change = await approvalService.ApproveAsync(change_id, user.GetUserId(), user.GetUserName(), comment);
 
         var result = await pendingChangeExecutor.ExecuteAsync(requestContext, tool, change);

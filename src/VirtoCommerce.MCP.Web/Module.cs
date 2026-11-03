@@ -93,6 +93,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpAuditWriter>();
         serviceCollection.AddTransient<McpToolAvailabilityService>();
         serviceCollection.AddTransient<McpPendingChangeExecutor>();
+        serviceCollection.AddTransient<McpUserPrincipalFactory>();
         serviceCollection.AddTransient<McpPendingChangeReviewService>();
         serviceCollection.AddTransient<McpConnectedAgentService>();
         serviceCollection.AddScoped<McpCallToolFilter>();
@@ -168,6 +169,12 @@ public class Module : IModule, IHasConfiguration
             logger.LogWarning("MCP tool '{Name}' declares no permission, so scope '{ScopeName}', which requires a signed-in user, does not serve it. " +
                 "Mark it with [Authorize], [McpPermission], or [McpAnyUser] when every signed-in user may call it.",
                 name, scopeName);
+        }
+
+        foreach (var name in McpServerPrimitiveExtensions.FindApprovalToolsWithoutDryRun(serviceProvider.GetServices<McpServerTool>()))
+        {
+            logger.LogError("MCP tool '{Name}' requires approval but has no dryRun parameter, so its change cannot be previewed. Its calls are refused.",
+                name);
         }
 
         foreach (var (scopeName, name) in McpCallToolFilter.FindToolsThatCannotBeApproved(serviceProvider.GetServices<McpServerTool>(), scopeRegistry))

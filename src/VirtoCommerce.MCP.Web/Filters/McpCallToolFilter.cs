@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -41,8 +42,6 @@ public class McpCallToolFilter(
     private const int MaxConfirmationValueLength = 120;
 
     private static readonly Regex _placeholder = new(@"\{(\w+)\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-
-    private static readonly string[] _dryRunParameterNames = ["dryRun", "dry_run"];
 
     public virtual async ValueTask<CallToolResult> InvokeAsync(
         McpRequestHandler<CallToolRequestParams, CallToolResult> next,
@@ -162,13 +161,10 @@ public class McpCallToolFilter(
             return refusal;
         }
 
-        if (tool?.GetConfirmation() != null && !IsDryRunCall(tool, context.Params?.Arguments))
+        var declined = await ConfirmAsync(context, tool, audit);
+        if (declined != null)
         {
-            var declined = ConfirmOrAsk(context, tool, audit);
-            if (declined != null)
-            {
-                return declined;
-            }
+            return declined;
         }
 
         if (tool != null && tool.RequiresApproval(context.Params?.Arguments) && !IsDryRunCall(tool, context.Params?.Arguments))
@@ -248,6 +244,12 @@ public class McpCallToolFilter(
         {
             audit.Outcome = McpAuditOutcome.Error;
             throw new McpException($"Tool '{audit.ToolName}' requires approval, which is not available in the '{scope.Name}' scope. The call was not executed.");
+        }
+
+        if (FindDryRunParameter(tool) == null)
+        {
+            audit.Outcome = McpAuditOutcome.Error;
+            throw new McpException($"Tool '{audit.ToolName}' requires approval but has no dry run, so its change cannot be previewed for the approver. The call was not executed.");
         }
 
         var change = await SubmitForApprovalAsync(next, context, scope, tool, cancellationToken);
@@ -363,10 +365,43 @@ public class McpCallToolFilter(
         return GetRequiredArgumentNames(tool).FirstOrDefault(name => !HasValue(arguments, name));
     }
 
+    // The confirmation of a tool with [McpRequiresConfirmation], except for its dry runs, which change nothing.
+    private async Task<CallToolResult> ConfirmAsync(RequestContext<CallToolRequestParams> context, McpServerTool tool, McpAuditEntry audit)
+    {
+        if (tool?.GetConfirmation() == null || IsDryRunCall(tool, context.Params?.Arguments) || !CanAskUser(context.Server))
+        {
+            return null;
+        }
+
+        return ConfirmOrAsk(context, tool, audit, await GetConfirmationDetailsAsync(context, tool));
+    }
+
+    // What the user confirms besides the call itself: for approve_pending_change, the change it applies, since the
+    // change id alone tells the user nothing.
+    protected virtual async Task<string> GetConfirmationDetailsAsync(RequestContext<CallToolRequestParams> context, McpServerTool tool)
+    {
+        if (tool.ProtocolTool.Name != ModuleConstants.ToolNames.ApprovePendingChange ||
+            context.Params?.Arguments?.TryGetValue("change_id", out var changeId) != true || changeId.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var change = await context.Services.GetRequiredService<IMcpPendingChangeService>().GetByIdAsync(changeId.GetString());
+        if (change == null)
+        {
+            return null;
+        }
+
+        var lines = new List<string> { $"Tool: {change.ToolName}", $"Requested by: {change.RequestedByUserName}" };
+        lines.AddRange(ToShortTexts(change.GetMaskedArguments()).Take(MaxConfirmationArguments).Select(x => $"{x.Key}: {x.Value}"));
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     // [McpRequiresConfirmation]: null when the user confirmed the call, or when the client cannot ask the user, so the
     // call runs; the error result when the user declined. Otherwise the user is asked: the call ends with an
     // input-required result, and the client repeats it with the user's answer and the state of the question.
-    protected virtual CallToolResult ConfirmOrAsk(RequestContext<CallToolRequestParams> context, McpServerTool tool, McpAuditEntry audit)
+    protected virtual CallToolResult ConfirmOrAsk(RequestContext<CallToolRequestParams> context, McpServerTool tool, McpAuditEntry audit, string details = null)
     {
         if (!CanAskUser(context.Server))
         {
@@ -391,7 +426,7 @@ public class McpCallToolFilter(
         }
 
         throw new InputRequiredException(
-            new Dictionary<string, InputRequest> { [ConfirmationKey] = InputRequest.ForElicitation(CreateConfirmationRequest(tool, arguments)) },
+            new Dictionary<string, InputRequest> { [ConfirmationKey] = InputRequest.ForElicitation(CreateConfirmationRequest(tool, arguments, details)) },
             state);
     }
 
@@ -402,13 +437,18 @@ public class McpCallToolFilter(
         return server is { IsMrtrSupported: true } && server.ClientCapabilities?.Elicitation?.Form != null;
     }
 
-    protected virtual ElicitRequestParams CreateConfirmationRequest(McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    protected virtual ElicitRequestParams CreateConfirmationRequest(McpServerTool tool, IDictionary<string, JsonElement> arguments, string details = null)
     {
         var values = GetMaskedArguments(tool, arguments);
         var template = tool.GetConfirmation()?.Message;
         var message = string.IsNullOrEmpty(template)
             ? DescribeCall(tool, values)
             : _placeholder.Replace(template, match => values.TryGetValue(match.Groups[1].Value, out var value) ? value : match.Value);
+
+        if (!string.IsNullOrEmpty(details))
+        {
+            message += Environment.NewLine + details;
+        }
 
         return new ElicitRequestParams
         {
@@ -460,14 +500,16 @@ public class McpCallToolFilter(
     // The arguments as short texts, with [McpSensitive] values masked
     private static Dictionary<string, string> GetMaskedArguments(McpServerTool tool, IDictionary<string, JsonElement> arguments)
     {
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (arguments is not { Count: > 0 })
-        {
-            return result;
-        }
+        return arguments is { Count: > 0 }
+            ? ToShortTexts(McpSensitiveArguments.Mask(JsonSerializer.Serialize(arguments), tool.GetSensitiveArgumentPaths()))
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+    }
 
-        var masked = McpSensitiveArguments.Mask(JsonSerializer.Serialize(arguments), tool.GetSensitiveArgumentPaths());
-        if (JsonNode.Parse(masked) is not JsonObject values)
+    // The values of a JSON object of arguments as short texts
+    private static Dictionary<string, string> ToShortTexts(string argumentsJson)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrEmpty(argumentsJson) || JsonNode.Parse(argumentsJson) is not JsonObject values)
         {
             return result;
         }
@@ -528,14 +570,7 @@ public class McpCallToolFilter(
 
     protected static string FindDryRunParameter(McpServerTool tool)
     {
-        var schema = tool.ProtocolTool.InputSchema;
-        if (schema.ValueKind != JsonValueKind.Object || !schema.TryGetProperty("properties", out var properties) ||
-            properties.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        return _dryRunParameterNames.FirstOrDefault(name => properties.TryGetProperty(name, out _));
+        return tool.FindDryRunParameter();
     }
 
     protected static string GetText(CallToolResult result)

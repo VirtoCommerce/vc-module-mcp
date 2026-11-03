@@ -67,6 +67,10 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private static readonly string[] _policyPermissions = [McpPermissions.Approve, WritePermission, CategoryApprovePermission];
 
     private readonly ConcurrentBag<McpAuditEntry> _auditEntries = [];
+
+    private readonly List<string> _requesterPermissions = [WritePermission];
+
+    private bool _requesterExists = true;
     private readonly ConcurrentBag<McpPendingChange> _submittedChanges = [];
     private readonly ConcurrentBag<(McpPendingChange Change, string Result, bool Succeeded)> _completedChanges = [];
     private readonly Mock<IMcpApprovalService> _approvalService = new();
@@ -437,7 +441,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Assert
         Assert.False(IsError(result), Text(result));
         Assert.Equal(1, TestTools.Executions);
-        Assert.Equal(0, TestTools.DryRuns);
+        Assert.Equal(1, TestTools.DryRuns); // the requester's access is checked again with a dry run before the change runs
 
         var completed = Assert.Single(_completedChanges);
         Assert.True(completed.Succeeded);
@@ -1153,6 +1157,74 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheRequesterMayNoLongerRunTheTool()
+    {
+        // Arrange: the approver may run the tool, the requester no longer may
+        _requesterPermissions.Clear();
+
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("no longer allowed to run tool 'submit_tool'", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheRequesterNoLongerExists()
+    {
+        // Arrange
+        _requesterExists = false;
+
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("no longer exists or is locked", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_Refuse_AToolThatRequiresApproval_But_HasNoDryRun()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{CategoryScope}/mcp"), ToolsCall("publish_category_now", new { categoryId = "c1" }), $"/{CategoryScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("has no dry run", Text(result));
+        Assert.Empty(_submittedChanges);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_ShowTheChange_In_TheConfirmation()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(McpScopes.Admin, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "decline" });
+        }, Token(permissions: [McpPermissions.Approve, WritePermission]));
+
+        // Act
+        await client.CallToolAsync(ModuleConstants.ToolNames.ApprovePendingChange, new Dictionary<string, object> { ["change_id"] = StoredChange.Id },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("Tool: submit_tool", question);
+        Assert.Contains("promotionId: p2", question);
+        Assert.Equal(0, TestTools.Executions);
+    }
+
+    [Fact]
     public async Task ApprovePendingChange_Should_Refuse_AnApproverOfAnotherScope()
     {
         // Act: an admin approver calls the approve tool in the category scope, where approvers need category:approve
@@ -1270,6 +1342,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddTransient<McpAuditWriter>();
         services.AddTransient<McpToolAvailabilityService>();
         services.AddTransient<McpPendingChangeExecutor>();
+        services.AddTransient<McpUserPrincipalFactory>(_ => new TestUserPrincipalFactory(CreateUserPrincipal));
         services.AddScoped<McpCallToolFilter>();
         services.AddSingleton(Mock.Of<IOpenIddictTokenManager>());
         services.AddSingleton(_settingsManager.Object);
@@ -1500,6 +1573,20 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         return change;
     }
 
+    // The requester of a stored change as the platform would sign them in: with the permissions the test leaves them.
+    private ClaimsPrincipal CreateUserPrincipal(string userId)
+    {
+        if (!_requesterExists || string.IsNullOrEmpty(userId))
+        {
+            return null;
+        }
+
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, userId), new("sub", userId) };
+        claims.AddRange(_requesterPermissions.Select(x => new Claim("permission", x)));
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Identity.Application"));
+    }
+
     private static McpPendingChange CreateStoredChange(string id, string toolName, string arguments)
     {
         return new McpPendingChange
@@ -1555,14 +1642,14 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     // An MCP client of the 2026-07-28 revision, which asks the user with the given handler
-    private async Task<McpClient> ConnectAsync(string scope, Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>> elicitation)
+    private async Task<McpClient> ConnectAsync(string scope, Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>> elicitation, string token = null)
     {
         var transport = new HttpClientTransport(
             new HttpClientTransportOptions
             {
                 Endpoint = new Uri($"{Origin}/{scope}/mcp"),
                 TransportMode = HttpTransportMode.StreamableHttp,
-                AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + Token(audience: $"{Origin}/{scope}/mcp") },
+                AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + (token ?? Token(audience: $"{Origin}/{scope}/mcp")) },
             },
             _client,
             ownsHttpClient: false);
@@ -1615,6 +1702,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private static class McpPermissions
     {
         public const string Approve = ModuleConstants.Security.Permissions.Approve;
+    }
+
+    private sealed class TestUserPrincipalFactory(Func<string, ClaimsPrincipal> create) : McpUserPrincipalFactory(null, null)
+    {
+        public override Task<ClaimsPrincipal> CreateAsync(string userId) => Task.FromResult(create(userId));
     }
 
     private sealed class TestAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
@@ -1699,13 +1791,19 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [McpServerTool(Name = "submit_contact_tool"), Description("Changes the email of a contact after approval.")]
         [Authorize(WritePermission)]
         [McpRequiresApproval]
-        public static string SubmitContactTool(string contactId, [McpSensitive] string email) => $"updated {contactId}";
+        public static string SubmitContactTool(string contactId, [McpSensitive] string email, bool dryRun = false) =>
+            dryRun ? $"would update {contactId}" : $"updated {contactId}";
 
         [McpServerTool(Name = "conditional_tool"), Description("Generates coupons; more than 100 need approval.")]
         [Authorize(WritePermission)]
         [McpRequiresApproval(Condition = nameof(NeedsApproval))]
-        public static string ConditionalTool(int count)
+        public static string ConditionalTool(int count, bool dryRun = false)
         {
+            if (dryRun)
+            {
+                return $"would generate {count}";
+            }
+
             Interlocked.Increment(ref _executions);
             return $"generated {count}";
         }
@@ -1751,7 +1849,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         [McpServerTool(Name = "canceled_tool"), Description("Gets canceled while it runs.")]
         [McpRequiresApproval]
-        public static string CanceledTool() => throw new OperationCanceledException();
+        public static string CanceledTool(bool dryRun = false) => dryRun ? "would run" : throw new OperationCanceledException();
 
         [McpServerTool(Name = "interrupted_tool"), Description("Gets canceled while it runs, without approval.")]
         public static string InterruptedTool() => throw new OperationCanceledException();
@@ -1829,8 +1927,13 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
         [McpServerTool(Name = "partner_submit_tool"), Description("Requires approval in a scope without the approval tools.")]
         [McpRequiresApproval]
-        public static string PartnerSubmitTool()
+        public static string PartnerSubmitTool(bool dryRun = false)
         {
+            if (dryRun)
+            {
+                return "would submit";
+            }
+
             Interlocked.Increment(ref _executions);
             return "submitted";
         }
@@ -1872,7 +1975,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         [McpServerTool(Name = "publish_category"), Description("Publishes a category after approval.")]
         [McpRequiresApproval]
-        public static string PublishCategory(string categoryId) => $"published {categoryId}";
+        public static string PublishCategory(string categoryId, bool dryRun = false) => dryRun ? $"would publish {categoryId}" : $"published {categoryId}";
+
+        [McpServerTool(Name = "publish_category_now"), Description("Requires approval but has no dry run.")]
+        [McpRequiresApproval]
+        public static string PublishCategoryNow(string categoryId) => $"published {categoryId}";
     }
 
     [McpServerToolType]
