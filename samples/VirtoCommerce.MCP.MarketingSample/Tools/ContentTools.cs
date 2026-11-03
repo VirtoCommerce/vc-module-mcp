@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ModelContextProtocol;
@@ -11,6 +12,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
+using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.MarketingSample.Data;
@@ -21,6 +23,8 @@ namespace VirtoCommerce.MCP.MarketingSample.Tools;
 
 // The marketing content toolset: what the storefront shows in each placeholder, the gaps, why a customer sees a
 // banner, and publishing. Publishing that goes live today needs approval; scheduling for later does not.
+// [McpPermission] only says that the user has the permission somewhere: each tool narrows it to the stores the
+// permission covers, as MarketingAccess does for promotions.
 [McpServerToolType]
 [McpScope(McpScopes.Admin)]
 public class ContentTools(
@@ -39,10 +43,11 @@ public class ContentTools(
     [McpPermission(MarketingSampleConstants.ContentReadPermission)]
     [Description("Every placeholder of a store on a date: what is published into it, for whom, what comes next, and the empty slots.")]
     public object GetPlacementMap(
+        RequestContext<CallToolRequestParams> context,
         [Description("Store id.")] string store_id,
         [Description("Date, yyyy-MM-dd. Defaults to today.")] DateTime? date = null)
     {
-        var store = GetStore(store_id);
+        var store = GetStore(context.User, MarketingSampleConstants.ContentReadPermission, store_id);
         var day = date ?? content.Now;
         var publications = content.GetPublications(store.Id);
 
@@ -70,9 +75,9 @@ public class ContentTools(
     [McpServerTool(Name = "list_content_placeholders", ReadOnly = true, Destructive = false, Idempotent = true)]
     [McpPermission(MarketingSampleConstants.ContentReadPermission)]
     [Description("The placeholders of a store: name, page and what they are for.")]
-    public object ListContentPlaceholders([Description("Store id.")] string store_id)
+    public object ListContentPlaceholders(RequestContext<CallToolRequestParams> context, [Description("Store id.")] string store_id)
     {
-        var store = GetStore(store_id);
+        var store = GetStore(context.User, MarketingSampleConstants.ContentReadPermission, store_id);
 
         return new
         {
@@ -85,6 +90,7 @@ public class ContentTools(
     [McpPermission(MarketingSampleConstants.ContentReadPermission)]
     [Description("Find content items (banners, HTML blocks, product carousels) by words, folder or type, with where they are published.")]
     public async Task<object> SearchContentItems(
+        RequestContext<CallToolRequestParams> context,
         IMcpPageSizeResolver pageSizeResolver,
         [Description("Words in the name or the headline.")] string keyword = null,
         [Description("Folder, for example 'Banners/Black Friday'.")] string folder = null,
@@ -98,7 +104,8 @@ public class ContentTools(
             .Where(x => words.All(w => x.Name.Contains(w, StringComparison.OrdinalIgnoreCase) || x.Headline?.Contains(w, StringComparison.OrdinalIgnoreCase) == true))
             .OrderBy(x => x.Folder).ThenBy(x => x.Name)
             .ToList();
-        var publications = content.GetPublications();
+        var readableStoreIds = GetStores(context.User, MarketingSampleConstants.ContentReadPermission).Select(x => x.Id).ToHashSet();
+        var publications = content.GetPublications().Where(x => readableStoreIds.Contains(x.StoreId)).ToList();
         var pageSize = await pageSizeResolver.GetPageSizeAsync(take);
 
         return new
@@ -124,12 +131,15 @@ public class ContentTools(
         "end without a successor, publications whose audience can never match (a deleted segment), and banners of a promotion " +
         "that is not live while the banner is.")]
     public object FindContentGaps(
-        [Description("Store id. Omit it for every store.")] string store_id = null,
+        RequestContext<CallToolRequestParams> context,
+        [Description("Store id. Omit it for every store you may read.")] string store_id = null,
         [Description("Number of days ahead to check. Defaults to 30.")] int days = 30)
     {
         var today = content.Now.Date;
         var to = today.AddDays(Math.Clamp(days, 1, 120));
-        var stores = string.IsNullOrEmpty(store_id) ? marketing.GetStores() : [GetStore(store_id)];
+        var stores = string.IsNullOrEmpty(store_id)
+            ? GetStores(context.User, MarketingSampleConstants.ContentReadPermission)
+            : [GetStore(context.User, MarketingSampleConstants.ContentReadPermission, store_id)];
         var findings = new List<object>();
 
         foreach (var storeId in stores.Select(store => store.Id))
@@ -153,12 +163,13 @@ public class ContentTools(
     [Description("Which publication the storefront renders in a placeholder for a customer of a segment on a date, and why the others are not shown. " +
         "Use it to prove targeting before approving a publication.")]
     public object ExplainContentResolution(
+        RequestContext<CallToolRequestParams> context,
         [Description("Store id.")] string store_id,
         [Description("Placeholder name.")] string placeholder,
         [Description("Segment of the customer, for example vip. Omit it for a customer without a segment.")] string segment_id = null,
         [Description("Date, yyyy-MM-dd. Defaults to today.")] DateTime? date = null)
     {
-        var store = GetStore(store_id);
+        var store = GetStore(context.User, MarketingSampleConstants.ContentReadPermission, store_id);
         var slot = content.GetPlaceholder(store.Id, placeholder) ?? throw new McpException($"Store {store.Id} has no placeholder '{placeholder}'. Use list_content_placeholders.");
         var day = date ?? content.Now;
 
@@ -240,6 +251,7 @@ public class ContentTools(
         "The proposal is stored as a pending change with the old and the new text side by side; it is applied only when an " +
         "approver approves it with approve_pending_change. Tell the user the change id.")]
     public object ProposeContentCopy(
+        RequestContext<CallToolRequestParams> context,
         [Description("Content item id.")] string item_id,
         [Description("Language of the text, for example de-DE.")] string language,
         [Description("New headline.")] string headline,
@@ -248,6 +260,13 @@ public class ContentTools(
         bool dryRun = false)
     {
         var item = content.GetItem(item_id) ?? throw new McpException($"Content item '{item_id}' was not found. Use search_content_items.");
+
+        // New text shows wherever the item is published, so the permission must cover each of those stores.
+        foreach (var storeId in content.GetPublications().Where(x => x.ItemId == item.Id).Select(x => x.StoreId).Distinct())
+        {
+            MarketingAccess.EnsureAllowed(context.User, MarketingSampleConstants.ContentUpdatePermission, storeId);
+        }
+
         if (string.IsNullOrWhiteSpace(headline))
         {
             throw new McpException("headline must not be empty.");
@@ -284,6 +303,7 @@ public class ContentTools(
         "for a later day applies at once; a window that includes today goes live immediately and is submitted for approval.")]
     [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = FlatArgumentsJustification)]
     public object PublishContent(
+        RequestContext<CallToolRequestParams> context,
         [Description("Content item id, from search_content_items.")] string item_id,
         [Description("Store id.")] string store_id,
         [Description("Placeholder name, from list_content_placeholders.")] string placeholder,
@@ -293,7 +313,7 @@ public class ContentTools(
         [Description("Higher wins when publications overlap. Defaults to 10.")] int priority = 10,
         bool dryRun = false)
     {
-        var store = GetStore(store_id);
+        var store = GetStore(context.User, MarketingSampleConstants.ContentUpdatePermission, store_id);
         var item = content.GetItem(item_id) ?? throw new McpException($"Content item '{item_id}' was not found. Use search_content_items.");
         var slot = content.GetPlaceholder(store.Id, placeholder) ?? throw new McpException($"Store {store.Id} has no placeholder '{placeholder}'. Use list_content_placeholders.");
 
@@ -325,12 +345,13 @@ public class ContentTools(
     [McpRequiresApproval(Condition = nameof(GoesLiveToday))]
     [Description("Change the dates of a publication. A window that starts today or earlier is submitted for approval.")]
     public object ReschedulePublication(
+        RequestContext<CallToolRequestParams> context,
         [Description("Publication id.")] string publication_id,
         [Description("New first day, yyyy-MM-dd.")] DateTime start_date,
         [Description("New last day, yyyy-MM-dd.")] DateTime end_date,
         bool dryRun = false)
     {
-        var publication = content.GetPublication(publication_id) ?? throw new McpException($"Publication '{publication_id}' was not found.");
+        var publication = GetPublication(context.User, publication_id);
         var target = publication.Clone();
         target.StartDate = MarketingFormat.StartOfDay(start_date).Value;
         target.EndDate = MarketingFormat.EndOfDay(end_date).Value;
@@ -353,10 +374,11 @@ public class ContentTools(
     [McpPermission(MarketingSampleConstants.ContentUpdatePermission)]
     [Description("Take a publication down at once, for example a banner of a paused promotion. It needs no approval.")]
     public object UnpublishContent(
+        RequestContext<CallToolRequestParams> context,
         [Description("Publication id.")] string publication_id,
         bool dryRun = false)
     {
-        var publication = content.GetPublication(publication_id) ?? throw new McpException($"Publication '{publication_id}' was not found.");
+        var publication = GetPublication(context.User, publication_id);
         var preview = new McpChangePreview { Action = "unpublish", ObjectType = "publication", ObjectId = publication.Id, ObjectName = content.GetItem(publication.ItemId)?.Name, DryRun = dryRun }
             .AddChange("placeholder", $"{publication.StoreId}/{publication.Placeholder}", null);
 
@@ -379,9 +401,9 @@ public class ContentTools(
         [Description("Days to move the dates by. Defaults to 0.")] int shift_days = 0,
         bool dryRun = false)
     {
-        var target = GetStore(target_store_id);
+        var target = GetStore(context.User, MarketingSampleConstants.ContentUpdatePermission, target_store_id);
         var plan = (publication_ids ?? [])
-            .Select(id => content.GetPublication(id) ?? throw new McpException($"Publication '{id}' was not found."))
+            .Select(id => GetReadablePublication(context.User, id))
             .Select(x => new
             {
                 publication_id = x.Id,
@@ -598,6 +620,41 @@ public class ContentTools(
     private DemoStore GetStore(string storeId)
     {
         return marketing.GetStore(storeId) ?? throw new McpException($"Store '{storeId}' was not found. Stores: {string.Join(", ", marketing.GetStores().Select(x => x.Id))}.");
+    }
+
+    // A store the permission covers for the user
+    private DemoStore GetStore(ClaimsPrincipal user, string permission, string storeId)
+    {
+        var store = GetStore(storeId);
+        MarketingAccess.EnsureAllowed(user, permission, store.Id);
+
+        return store;
+    }
+
+    // The stores the permission covers for the user
+    private IReadOnlyList<DemoStore> GetStores(ClaimsPrincipal user, string permission)
+    {
+        var grant = user.GetMcpPermissionGrant(permission);
+
+        return grant == null ? [] : marketing.GetStores().Where(x => grant.Allows(MarketingSampleConstants.StoreScopeType, x.Id)).ToList();
+    }
+
+    // A publication of a store the user may change content in
+    private DemoPublication GetPublication(ClaimsPrincipal user, string publicationId)
+    {
+        var publication = content.GetPublication(publicationId) ?? throw new McpException($"Publication '{publicationId}' was not found.");
+        MarketingAccess.EnsureAllowed(user, MarketingSampleConstants.ContentUpdatePermission, publication.StoreId);
+
+        return publication;
+    }
+
+    // A publication of a store the user may read content in
+    private DemoPublication GetReadablePublication(ClaimsPrincipal user, string publicationId)
+    {
+        var publication = content.GetPublication(publicationId) ?? throw new McpException($"Publication '{publicationId}' was not found.");
+        MarketingAccess.EnsureAllowed(user, MarketingSampleConstants.ContentReadPermission, publication.StoreId);
+
+        return publication;
     }
 
     private bool SegmentExists(string storeId, string segmentId)

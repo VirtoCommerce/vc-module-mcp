@@ -11,10 +11,10 @@ An agent works as the signed-in user: it sees only the tools that user may use, 
 ## Key Features
 
 * **Scopes**: one MCP endpoint per kind of agent (`admin`, `vendor`, a buyer scope, your own), at `/{scope}/mcp` or at `/mcp` of a host of its own
-* **Platform sign-in**: OAuth 2.1 with PKCE and a token bound to one endpoint (RFC 8707); anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request
+* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The rest of the platform does not check the token's audience yet: see [What the token protects today](#what-the-token-protects-today)
 * **Permissions**: `[Authorize]` for platform permissions, `[McpPermission]` for permissions limited to stores or sellers; tools the user may not use are not listed
 * **Confirmation in the chat**: `[McpRequiresConfirmation]` asks the user to confirm a risky call in the agent's chat before it runs (MCP elicitation), with clients that support it
-* **Approval with a diff**: `[McpRequiresApproval]` holds a call as a pending change with a dry-run preview until a second person approves it, always or only when a condition on the arguments says so
+* **Approval with a diff**: `[McpRequiresApproval]` holds a call as a pending change with a dry-run preview until a second person approves it, always or only when a condition on the arguments says so; the requester's access is checked again when it is approved
 * **Audit**: every call with user, client, arguments, outcome, duration and trace id; `[McpSensitive]` masks personal data
 * **Bulk jobs**: a bulk tool hands its work to a platform background job; the agent follows and cancels it
 * **Kill switch**: switch a tool, or a whole scope, off without a release
@@ -128,7 +128,7 @@ An administrator does this once per platform, and registers one OAuth client per
 * `clientType: public`: the agent holds no secret, only the user's token.
 * `requirements: ft:pkce`: the sign-in is protected by PKCE, as the MCP specification requires.
 * `consentType: explicit`: the user sees which agent they let act as them, once per user and agent.
-* `permissions: rsrc:…`: the token is issued for this endpoint only (RFC 8707); it must match the URL the agent uses exactly, scheme and port included.
+* `permissions: rsrc:…`: the resources the client may ask a token for (RFC 8707); it must match the URL the agent uses exactly, scheme and port included. It limits what a client may request, not what it receives: a token request that names no resource gets a token for the whole platform API (`resource_server`). MCP clients name the MCP endpoint, so their tokens are for that endpoint only; see [What the token protects today](#what-the-token-protects-today).
 * `POST /api/platform/oauthapps` also adds default permissions to every client (`client_credentials`, `email`, `profile`, end session). They give a public client no access, since it holds no secret.
 
 </details>
@@ -160,7 +160,7 @@ The global search of the back office (**Ctrl+K**) finds them too: **Agent tools*
 
 ### Approve or reject a change
 
-A tool marked as risky does not change anything when an agent calls it: the agent submits the change with a dry run and gives the user the change id. An approver opens it in **Agent approvals**, reads what will change and the warnings of the dry run, and approves or rejects it with a comment. **Approve** runs the tool right away, as the approver. By default nobody approves their own change, and a change that nobody reviews expires after 72 hours; [Approval](#approval) has all the rules.
+A tool marked as risky does not change anything when an agent calls it: the agent submits the change with a dry run and gives the user the change id. An approver opens it in **Agent approvals**, reads what will change and the warnings of the dry run, and approves or rejects it with a comment. **Approve** first checks that the requester may still make the change (the tool's dry run is repeated as the requester), then runs the tool right away, as the approver. By default nobody approves their own change, and a change that nobody reviews expires after 72 hours; [Approval](#approval) has all the rules.
 
 ### Find a call in the audit log
 
@@ -192,6 +192,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 ```json
 "MCP": {
   "PublicOrigin": "https://admin.example.com",
+  "MaxRequestBodySize": 1048576,
   "Scopes": {
     "vendor": { "Enabled": false },
     "ucp": { "Hosts": [ "store.example.com" ] }
@@ -201,7 +202,8 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 
 | Key | Description |
 | --- | --- |
-| `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. Defaults to the origin of the request. |
+| `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. **Required outside Development**: without it, or the scope's own origin, `/{scope}/mcp` refuses access tokens and the module logs an error at startup, because the origin would otherwise come from the request's `Host` and forwarded headers. In Development it defaults to the origin of the request. |
+| `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413` before it is read. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
 | `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
@@ -289,14 +291,14 @@ The module does not limit the request rate and does not add CORS headers: both b
 ### Tool call flow
 
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
-1. The module resolves the scope from the path or the host, and checks that the token was issued for this endpoint and is still valid in the platform token store.
+1. The module resolves the scope from the path or the host, reads the token with the platform's OpenIddict validation, and checks that it was issued for this endpoint, to a user (not to the client itself), and is still valid in the platform token store.
 1. The scope's permission, if it has one, and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
 1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
 1. A tool marked `[McpRequiresConfirmation]` asks the user in the chat first, when the client can ask (see [Confirmation in the chat](#confirmation-in-the-chat)); a call the user declines does not run.
-1. A tool marked `[McpRequiresApproval]` does not run: if it has a `dryRun` (or `dry_run`) parameter it runs once as a dry run, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. With a `Condition`, only the calls the condition selects are held.
+1. A tool marked `[McpRequiresApproval]` does not run: it runs once with its `dryRun` (or `dry_run`) parameter set, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. A tool that requires approval but has no dry-run parameter is refused, and reported as an error at startup. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
 1. The call is audited (user, OAuth client, tool, arguments, outcome, duration, trace id), logged and traced.
-1. An approver reviews the pending change in the back office or with the review tools; approving runs the tool with the stored arguments, as the approver.
+1. An approver reviews the pending change in the back office or with the review tools. Approving repeats the dry run as the requester, and then runs the tool with the stored arguments, as the approver.
 
 A tool refuses a request with `McpException` (audited as `Failed`) or `McpForbiddenException` (audited as `Forbidden`): the agent gets the message as it is, as the tool's error. A call that returns a tool error carries the trace id in `_meta.trace_id`; protocol errors, such as an unknown tool, are JSON-RPC errors without it.
 
@@ -316,7 +318,7 @@ A scope can also be served at `/mcp` on hosts of its own, for example the storef
 
 ### Authentication
 
-MCP endpoints accept only bearer tokens issued by the platform for the exact MCP resource (RFC 8707 audience). Cookies, API keys and basic authentication are ignored on them. An anonymous request to a scope that requires a user gets an HTTP 401 challenge pointing to the scope's protected resource metadata (RFC 9728), which starts the platform OAuth flow in the MCP client:
+MCP endpoints accept only bearer tokens issued by the platform for the exact MCP resource (RFC 8707 audience), read with the platform's OpenIddict validation. Cookies, API keys and basic authentication are ignored on them. A token issued to the client itself (client credentials, whose subject is the client) is refused: every call acts as a signed-in user. An anonymous request to a scope that requires a user gets an HTTP 401 challenge pointing to the scope's protected resource metadata (RFC 9728), which starts the platform OAuth flow in the MCP client:
 
 ```
 GET /.well-known/oauth-protected-resource/{scope}/mcp
@@ -325,13 +327,22 @@ GET /.well-known/oauth-protected-resource/mcp        (the /mcp endpoint of a sco
 
 On every request the token is also looked up in the platform token store, so a revoked token or sign-in session stops working on all replicas right away. A tool that signs the user out, such as a buyer's `logout`, calls `IMcpSessionService.SignOutAsync(user)`.
 
-> [!NOTE]
-> A token without an id, issued while the platform token storage is disabled, cannot be looked up, so its revocation is not checked: it works until it expires. Keep the token storage enabled on deployments with MCP scopes.
+A token without a token id is refused while the platform stores tokens, which it does by default.
+
+#### What the token protects today
+
+The MCP endpoints check that a token was issued for them. The rest of the platform does not check token audiences yet, so an access token issued for `/admin/mcp` is also accepted by the platform's REST API and GraphQL, with the permissions of its user. Until the platform checks audiences per endpoint:
+
+- The tool switch, `[McpRequiresApproval]`, `[McpRequiresConfirmation]` and the MCP audit apply to calls made through MCP. They guard the user against an agent's mistakes; they are not a boundary against whoever holds the token, who can call the REST API the tools wrap directly.
+- **Disconnect** stops the agent's token on MCP at once. On the REST API it works until it expires, unless the platform checks tokens in its store on every request: set `Authorization:EnablePersistentStorageTokenValidation` to `true` on deployments with MCP scopes.
+- A client registered with `rsrc:` permissions that asks for a token without naming a resource gets a token for the whole platform API (`resource_server`).
 
 ### Approval
 
 - By default a change cannot be approved by the user who requested it (`MCP.Approval.AllowSelfApproval`).
 - The approver must also be allowed to run the tool, and a tool switched off cannot be approved.
+- The requester must still be able to make the change: before it runs as the approver, the tool's dry run is repeated as the requester. A requester whose account is gone or locked, who lost the tool's permission, or whose stores or sellers do not cover the change is refused, and the change stays pending for the approver to reject. A tool that requires approval therefore needs a dry run.
+- The change runs as the approver, whose access may be wider. A tool held for approval should store the scope of the change explicitly in its arguments (for example the store ids), not "every store I may use", which differs between the requester and the approver.
 - A change expires after `MCP.Approval.PendingChangeLifetimeHours` and can no longer be approved.
 - A change is executed at most once, even if two approvers, or two replicas, approve it at the same time.
 - A call with `dryRun: true` changes nothing, so it runs right away instead of being submitted.
@@ -344,14 +355,14 @@ Changes are reviewed in the back office or with the first four tools below, pres
 | --- | --- | --- |
 | `list_pending_changes` | Compact list of submitted changes, by status | approvers: all changes; others: their own |
 | `get_pending_change` | Arguments, dry-run preview, reviewer and result of one change | approvers: any change; others: their own |
-| `approve_pending_change` | Approves the change and runs the tool with the stored arguments, as the approver | approvers only |
+| `approve_pending_change` | Approves the change and runs the tool with the stored arguments, as the approver, after the requester's dry run passes; its confirmation in the chat shows the tool, the requester and the masked arguments of the change | approvers only |
 | `reject_pending_change` | Rejects the change; the requester uses it to withdraw their own change | approvers: any change; others: their own |
 | `get_job_status` | Status and progress of a background job started by a bulk tool | the user who started it, the requester of the change that started it, approvers |
 | `cancel_job` | Cancels a queued or running background job | as `get_job_status` |
 
 ### Audit and cleanup
 
-Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Declined` (the user did not confirm it in the chat), `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, a tool that needs approval in a scope without it, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
+Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Declined` (the user did not confirm it in the chat), `Canceled` (the call was canceled while it ran, by a timeout or a client that went away; it may have changed data partly), `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, a tool that needs approval in a scope without it, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
 
 The recurring job `MCP.Cleanup` deletes audit entries, finished jobs, and applied, failed, rejected and expired changes older than the retention settings. An approved change that never completed is kept: it needs a person to look at it. The job also marks overdue pending changes as expired, which removes their sensitive arguments.
 
@@ -399,7 +410,7 @@ serviceCollection.AddMcpTools<PromotionTools>();
 - `AddMcpPrompts<T>()` and `AddMcpResources<T>()` register prompts and resources the same way. A static class is registered with `AddMcpTools([typeof(MyTools)])`; every class of an assembly with `AddMcpToolsFromAssembly(assembly)`.
 - A primitive without `[McpScope]` is not exposed on any registered scope. Names must be unique within a scope; a duplicate is reported as an error in the log at startup.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission, before the tool runs.
-- In a scope that requires a signed-in user, every tool must say who may use it: `[Authorize]`, `[McpPermission]`, `[AllowAnonymous]`, or `[McpAnyUser]` for a tool every signed-in user may call because it checks access to its data itself. A tool that says none of them is not served in that scope, and a warning at startup names it, so a forgotten permission hides the tool instead of opening it to every user. Prompts and resources are not covered by this rule; protect them with `[Authorize]` when they return data.
+- In a scope that requires a signed-in user, every tool must say who may use it: `[Authorize]`, `[McpPermission]`, `[AllowAnonymous]`, or `[McpAnyUser]` for a tool every signed-in user may call because it checks access to its data itself. A tool that says none of them is not served in that scope, and a warning at startup names it, so a forgotten permission hides the tool instead of opening it to every user. Prompts and resources are not covered by this rule; protect them with `[Authorize]` or `[McpPermission]` when they return data. A prompt or resource whose `[McpPermission]` the user does not have is neither listed nor readable; prompts and resources are not audited and have no switch.
 - Tool methods can take any registered service as a parameter, as well as `RequestContext<CallToolRequestParams>` and `CancellationToken`. `HttpContext.GetMcpScope()` returns the scope of the current request.
 - In a scope open to anonymous users (`RequireAuthenticatedUser = false`), mark a tool that needs a signed-in user with `[McpRequiresUser]`: it is listed to anonymous users, and an anonymous call to it is answered with an OAuth challenge, so the client signs the user in and repeats the call. A tool with `[Authorize]` or `[McpPermission]` is answered the same way, but is not listed to anonymous users.
 - A tool that returns a list takes an optional `take` and passes it through `IMcpPageSizeResolver.GetPageSizeAsync(take)`, so an agent cannot load thousands of rows into its context with one call.
@@ -467,6 +478,7 @@ public object SearchPromotions(RequestContext<CallToolRequestParams> context, st
 - `GetMcpPermissionGrant` reads the scopes as type and value, so the tool does not depend on the scope classes of the module that defines them. A scoped claim that cannot be read grants no scope, never the global permission.
 - `McpForbiddenException` returns the message to the agent as the tool's error, and the call is audited as `Forbidden`.
 - `[McpPermission]` and `[Authorize]` can be combined; the user needs both.
+- `[McpPermission]` only says that the permission is granted somewhere. A tool must narrow the data itself, for every argument that names a store or a seller and for every object it loads by id, as the marketing sample's `MarketingAccess` and `ContentTools` do. A tool that skips it lets a user limited to one store work on all of them.
 
 > [!NOTE]
 > The platform role manager keeps permission scopes only when a role is updated: a role created with scoped permissions in one call is saved with global permissions. Save the role once more after creating it, until this is fixed in the platform.
@@ -524,7 +536,7 @@ public object PausePromotion(string promotion_id, string reason, bool dryRun = f
 - The answer is tied to the tool and its arguments: if the agent repeats the call with other arguments, the user is asked again.
 - The module's own `approve_pending_change` asks the approver before it applies a change; the marketing sample's `pause_promotion` asks before it pauses a promotion.
 
-**Clients.** The question uses MCP elicitation (form mode). The MCP endpoints are stateless, so a server can't send a client a request of its own in the middle of a call; it answers the call with an input-required result instead, and the client asks the user and repeats the call with the answer: multi round-trip requests (MRTR), from the 2026-07-28 protocol revision. Clients that speak that revision and declare elicitation ask the user. With other clients the call runs as without the attribute; most of them ask the user to allow each tool call with their own prompt.
+**Clients.** The question uses MCP elicitation (form mode). The MCP endpoints are stateless, so a server can't send a client a request of its own in the middle of a call; it answers the call with an input-required result instead, and the client asks the user and repeats the call with the answer: multi round-trip requests (MRTR), from the 2026-07-28 protocol revision. Clients that speak that revision and declare elicitation ask the user. With other clients, today most of them, the call runs as without the attribute; most of them ask the user to allow each tool call with their own prompt.
 
 **Not a security control.** The client reports the user's answer, so confirmation guards the user against an agent's mistake, not against a client that answers by itself. For a change that a second person must check, use [approval](#approval).
 
@@ -542,7 +554,7 @@ return await jobDispatcher.EnqueueAsync<GenerateCouponsJob>(requestContext, payl
 ```
 
 - The handler is an ordinary `IBackgroundJobHandler<TPayload>`, registered with `AddBackgroundJob`. Its progress reports become the progress of the job, shown in the admin UI and returned by `get_job_status`.
-- The result is an `McpJobHandle`: `job_id`, `status`, `title`, `total_count`, `message` and the preview. A queued job is canceled at once by `cancel_job`; a running one stops when the job engine supports cancellation.
+- The result is an `McpJobHandle`: `job_id`, `status`, `title`, `total_count`, `message` and the preview. A queued job is canceled at once by `cancel_job`; a running one stops when the job engine supports cancellation. A queued job of a tool switched off with `MCP.Tools.Disabled` does not start.
 - A job is visible to the user who ran the tool and, when an approved change started it, to the user who requested the change; approvers of a scope see every job of that scope.
 
 ### Sensitive arguments
@@ -559,7 +571,7 @@ public class ContactInput
 }
 ```
 
-Their values are replaced with `***` in the audit log, in `get_pending_change` and in the REST API. A change waiting for approval keeps the values, because the tool needs them when the change is approved; they are replaced as soon as the change is applied, fails, is rejected or expires. The dry-run preview and the result of a tool are stored as the tool returns them, so a tool should not return sensitive values in either.
+Their values are replaced with `***` in the audit log, in `get_pending_change` and in the REST API. A property is found under the name the serializer gives it (`[JsonPropertyName]`), and a property of the values of a dictionary with string keys is found under every key. A change waiting for approval keeps the values, because the tool needs them when the change is approved; they are replaced in the store as soon as the change is approved, and the approved change runs from the values in memory. The dry-run preview and the result of a tool are stored and shown as the tool returns them, so a tool must not return sensitive values in either.
 
 ### Where to put the MCP code of a module
 
