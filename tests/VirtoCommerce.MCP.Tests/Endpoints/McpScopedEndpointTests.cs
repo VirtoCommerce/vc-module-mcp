@@ -1509,6 +1509,18 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             .Callback<IList<McpJob>>(jobs => jobs.ToList().ForEach(job => _jobs[job.Id] = job))
             .Returns(Task.CompletedTask);
         service
+            .Setup(x => x.TryChangeStatusAsync(It.IsAny<McpJob>(), It.IsAny<string>()))
+            .ReturnsAsync((McpJob job, string expectedStatus) =>
+            {
+                if (_jobs[job.Id].Status != expectedStatus)
+                {
+                    return false;
+                }
+
+                _jobs[job.Id] = job;
+                return true;
+            });
+        service
             .Setup(x => x.GetAsync(It.IsAny<IList<string>>(), It.IsAny<string>(), It.IsAny<bool>()))
             .ReturnsAsync((IList<string> ids, string _, bool _) => ids
                 .Where(_jobs.ContainsKey)

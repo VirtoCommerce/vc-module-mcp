@@ -76,9 +76,17 @@ public class McpJobTools(
             job.Status = McpJobStatus.Canceled;
             job.Message = "Canceled before it started.";
             job.FinishedDate = timeProvider.GetUtcNow().UtcDateTime;
-            await jobService.SaveChangesAsync([job]);
+            if (await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued))
+            {
+                return new { job_id = job.Id, status = job.Status, message = job.Message };
+            }
 
-            return new { job_id = job.Id, status = job.Status, message = job.Message };
+            // The job started in the meantime: stop it as a running job.
+            job = await GetVisibleJobAsync(requestContext.User, job_id);
+            if (job.IsFinal())
+            {
+                throw new McpException($"Job '{job_id}' is already {job.Status}.");
+            }
         }
 
         var backgroundJob = serviceProvider.GetService<IBackgroundJob>();

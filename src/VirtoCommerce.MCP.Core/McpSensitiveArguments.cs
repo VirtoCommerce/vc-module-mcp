@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using VirtoCommerce.MCP.Core.Attributes;
 
 namespace VirtoCommerce.MCP.Core;
@@ -16,6 +17,7 @@ public static class McpSensitiveArguments
 
     private const int MaxDepth = 5;
     private const string CollectionSuffix = "[]";
+    private const string AnyKey = "*";
 
     private static readonly string[] _frameworkNamespaces = ["System", "Microsoft", "ModelContextProtocol"];
     private static readonly ConcurrentDictionary<MethodInfo, IReadOnlyList<string>> _pathsByMethod = new();
@@ -57,7 +59,14 @@ public static class McpSensitiveArguments
 
     private static IEnumerable<string> GetPaths(Type type, string path, int depth)
     {
-        var elementType = GetElementType(type);
+        var dictionaryValueType = GetDictionaryValueType(type);
+        if (dictionaryValueType != null)
+        {
+            type = dictionaryValueType;
+            path += "." + AnyKey;
+        }
+
+        var elementType = dictionaryValueType == null ? GetElementType(type) : null;
         if (elementType != null)
         {
             type = elementType;
@@ -69,10 +78,31 @@ public static class McpSensitiveArguments
             return [];
         }
 
+        // A property is found in the arguments by the name the serializer gives it, which [JsonPropertyName] may change.
         return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .SelectMany(property => property.IsDefined(typeof(McpSensitiveAttribute), inherit: true)
-                ? [$"{path}.{property.Name}"]
-                : GetPaths(property.PropertyType, $"{path}.{property.Name}", depth + 1));
+            .Where(property => !property.IsDefined(typeof(JsonIgnoreAttribute), inherit: true))
+            .SelectMany(property =>
+            {
+                var propertyPath = $"{path}.{GetJsonName(property)}";
+                return property.IsDefined(typeof(McpSensitiveAttribute), inherit: true)
+                    ? [propertyPath]
+                    : GetPaths(property.PropertyType, propertyPath, depth + 1);
+            });
+    }
+
+    private static string GetJsonName(PropertyInfo property)
+    {
+        return property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? property.Name;
+    }
+
+    // The value type of a dictionary with string keys, whose values are found under any key
+    private static Type GetDictionaryValueType(Type type)
+    {
+        var dictionary = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IDictionary<,>)
+            ? type
+            : type.GetInterfaces().FirstOrDefault(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IDictionary<,>));
+
+        return dictionary?.GetGenericArguments() is [var keyType, var valueType] && keyType == typeof(string) ? valueType : null;
     }
 
     private static Type GetElementType(Type type)
@@ -107,6 +137,23 @@ public static class McpSensitiveArguments
 
         if (node is not JsonObject value)
         {
+            return;
+        }
+
+        if (segments[index] == AnyKey)
+        {
+            foreach (var anyKey in value.Select(x => x.Key).ToList())
+            {
+                if (index == segments.Length - 1)
+                {
+                    value[anyKey] = MaskedValue;
+                }
+                else
+                {
+                    MaskPath(value[anyKey], segments, index + 1);
+                }
+            }
+
             return;
         }
 

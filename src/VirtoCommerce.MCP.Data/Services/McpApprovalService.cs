@@ -180,8 +180,13 @@ public class McpApprovalService(
         apply(updated);
         updated.ModifiedDate = timeProvider.GetUtcNow().UtcDateTime;
 
-        if (updated.IsFinal())
+        // Sensitive values are kept only until the change is approved: an approved change runs from the arguments in
+        // memory, so the stored ones are masked already, and stay masked if the platform stops before it completes.
+        var keepsArgumentsForExecution = updated.Status == McpPendingChangeStatus.Approved;
+        var executable = updated;
+        if (updated.IsFinal() || keepsArgumentsForExecution)
         {
+            updated = (McpPendingChange)updated.Clone();
             updated.Arguments = updated.GetMaskedArguments();
         }
 
@@ -214,7 +219,7 @@ public class McpApprovalService(
         await eventPublisher.Publish(new McpPendingChangeChangedEvent(changedEntries));
         McpDiagnostics.RecordApprovalDecision(updated.ScopeName, updated.ToolName, updated.Status.ToLowerInvariant());
 
-        return updated;
+        return keepsArgumentsForExecution ? executable : updated;
     }
 
     private async Task<bool> TryExpireAsync(string changeId, DateTime now)

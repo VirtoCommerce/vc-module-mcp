@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Jobs;
+using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core.Jobs;
 using Xunit;
 
@@ -21,6 +22,38 @@ public class McpTrackedJobHandlerTests
     private readonly Dictionary<string, McpJob> _jobs = [];
     private readonly List<string> _savedStatuses = [];
     private readonly Mock<IJobProgress> _progress = new();
+    private bool _storedStatusChanged;
+
+    [Fact]
+    public async Task Execute_Should_NotStartTheJob_When_ItWasCanceledAfterItWasRead()
+    {
+        // Arrange: a cancel saved Canceled between reading the job and starting it
+        var handler = CreateHandler();
+        _storedStatusChanged = true;
+
+        // Act
+        await handler.Execute(CreatePayload(new CountPayload { Count = 3 }), CreateContext(), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(0, CountingJob.Executions);
+    }
+
+    [Fact]
+    public async Task Execute_Should_NotStartTheJob_When_ItsToolIsSwitchedOff()
+    {
+        // Arrange
+        var availability = new Mock<McpToolAvailabilityService>(Mock.Of<VirtoCommerce.Platform.Core.Settings.ISettingsManager>());
+        availability.Setup(x => x.IsDisabledAsync("admin", "count")).ReturnsAsync(true);
+        var handler = CreateHandler(availability.Object);
+
+        // Act
+        await handler.Execute(CreatePayload(new CountPayload { Count = 3 }), CreateContext(), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(0, CountingJob.Executions);
+        Assert.Equal(McpJobStatus.Canceled, _jobs["job-1"].Status);
+        Assert.Contains("switched off", _jobs["job-1"].Message);
+    }
 
     [Fact]
     public async Task Execute_Should_RunTheModuleHandler_And_RecordItsProgressAndSuccess()
@@ -108,7 +141,7 @@ public class McpTrackedJobHandlerTests
         Assert.Equal(0, CountingJob.Executions);
     }
 
-    private McpTrackedJobHandler CreateHandler()
+    private McpTrackedJobHandler CreateHandler(McpToolAvailabilityService toolAvailabilityService = null)
     {
         CountingJob.Executions = 0;
         _jobs["job-1"] = new McpJob { Id = "job-1", ScopeName = "admin", ToolName = "count", Status = McpJobStatus.Queued };
@@ -121,10 +154,22 @@ public class McpTrackedJobHandlerTests
             .Setup(x => x.SaveChangesAsync(It.IsAny<IList<McpJob>>()))
             .Callback<IList<McpJob>>(jobs => _savedStatuses.AddRange(jobs.Select(x => x.Status)))
             .Returns(Task.CompletedTask);
+        jobService
+            .Setup(x => x.TryChangeStatusAsync(It.IsAny<McpJob>(), It.IsAny<string>()))
+            .ReturnsAsync((McpJob job, string expectedStatus) =>
+            {
+                if (_storedStatusChanged)
+                {
+                    return false;
+                }
+
+                _savedStatuses.Add(job.Status);
+                return true;
+            });
 
         var services = new ServiceCollection().AddTransient<CountingJob>().BuildServiceProvider();
 
-        return new McpTrackedJobHandler(services, jobService.Object, new TestTimeProvider(), NullLogger<McpTrackedJobHandler>.Instance);
+        return new McpTrackedJobHandler(services, jobService.Object, new TestTimeProvider(), NullLogger<McpTrackedJobHandler>.Instance, toolAvailabilityService);
     }
 
     private IJobExecutionContext CreateContext()

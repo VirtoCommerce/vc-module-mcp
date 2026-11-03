@@ -89,18 +89,30 @@ public class McpApprovalServiceTests : McpTestsBase
     }
 
     [Fact]
-    public async Task CompleteAsync_Should_ScrubTheSensitiveArguments_That_TheApprovalKept()
+    public async Task ApproveAsync_Should_StoreTheSensitiveArgumentsMasked_And_ReturnThemForTheExecution()
+    {
+        // Arrange
+        await SeedAsync(SensitiveChange("change-1"));
+
+        // Act
+        var approved = await _service.ApproveAsync("change-1", ApproverId, "approver", null);
+
+        // Assert: if the platform stops before the change completes, the stored values are already masked
+        Assert.Equal(SensitiveArguments, approved.Arguments);
+        Assert.Equal(MaskedArguments, (await GetPendingChangeAsync("change-1")).Arguments);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_Should_KeepTheSensitiveArgumentsMasked()
     {
         // Arrange
         await SeedAsync(SensitiveChange("change-1"));
         var approved = await _service.ApproveAsync("change-1", ApproverId, "approver", null);
-        var argumentsAfterApproval = (await GetPendingChangeAsync("change-1")).Arguments;
 
         // Act
         await _service.CompleteAsync(approved, "{}", succeeded: true);
 
         // Assert
-        Assert.Equal(SensitiveArguments, argumentsAfterApproval);
         Assert.Equal(MaskedArguments, (await GetPendingChangeAsync("change-1")).Arguments);
     }
 

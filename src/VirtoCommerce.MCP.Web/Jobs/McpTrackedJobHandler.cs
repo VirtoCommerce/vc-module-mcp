@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using VirtoCommerce.MCP.Core.Diagnostics;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.Jobs;
 
@@ -19,7 +20,8 @@ public class McpTrackedJobHandler(
     IServiceProvider serviceProvider,
     IMcpJobService jobService,
     TimeProvider timeProvider,
-    ILogger<McpTrackedJobHandler> logger)
+    ILogger<McpTrackedJobHandler> logger,
+    McpToolAvailabilityService toolAvailabilityService = null)
     : IBackgroundJobHandler<McpTrackedJobPayload>
 {
     private const int MaxMessageLength = 2048;
@@ -34,15 +36,30 @@ public class McpTrackedJobHandler(
         }
 
         // A job canceled while it waited in the queue does not start.
-        if (job.Status == McpJobStatus.Canceled)
+        if (job.Status != McpJobStatus.Queued)
         {
+            return;
+        }
+
+        // Switching the tool off stops its queued jobs too, not only its new calls.
+        if (toolAvailabilityService != null && await toolAvailabilityService.IsDisabledAsync(job.ScopeName, job.ToolName))
+        {
+            job.Status = McpJobStatus.Canceled;
+            job.Message = $"Not started: tool '{job.ToolName}' was switched off by the administrator.";
+            job.FinishedDate = timeProvider.GetUtcNow().UtcDateTime;
+            await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued);
             return;
         }
 
         job.Status = McpJobStatus.Running;
         job.EngineJobId = context.JobId;
         job.StartedDate = timeProvider.GetUtcNow().UtcDateTime;
-        await jobService.SaveChangesAsync([job]);
+
+        // A cancel that saved Canceled after the job was read wins: the job does not start.
+        if (!await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued))
+        {
+            return;
+        }
 
         try
         {
