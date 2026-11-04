@@ -11,7 +11,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
-using OpenIddict.Validation;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
@@ -47,6 +46,25 @@ public class Module : IModule, IHasConfiguration
 
     public void Initialize(IServiceCollection serviceCollection)
     {
+        AddDatabase(serviceCollection);
+        AddOptions(serviceCollection);
+        AddServices(serviceCollection);
+        AddScopes(serviceCollection);
+
+        serviceCollection.AddRecurringJob<McpCleanupJob, McpCleanupJobPayload>(schedule => schedule
+            .WithId(ModuleConstants.Jobs.CleanupJobId)
+            .FromSettings(ModuleConstants.Settings.Cleanup.Enabled, ModuleConstants.Settings.Cleanup.Cron)
+            .WithMaxRetryAttempts(0));
+
+        serviceCollection.AddBackgroundJob<McpTrackedJobHandler, McpTrackedJobPayload>(triggerable: false);
+
+        serviceCollection.AddScopedMcpServer();
+        serviceCollection.AddMcpTools<McpApprovalTools>();
+        serviceCollection.AddMcpTools<McpJobTools>();
+    }
+
+    private void AddDatabase(IServiceCollection serviceCollection)
+    {
         serviceCollection.AddDbContext<McpDbContext>(options =>
         {
             var databaseProvider = Configuration.GetValue("DatabaseProvider", "SqlServer");
@@ -65,27 +83,20 @@ public class Module : IModule, IHasConfiguration
                     break;
             }
         });
+    }
 
+    private void AddOptions(IServiceCollection serviceCollection)
+    {
         serviceCollection.AddOptions<McpOptions>()
             .Bind(Configuration.GetSection(ModuleConstants.ConfigurationSection))
             .Validate(x => IsValidOrigin(x.PublicOrigin), "MCP:PublicOrigin must be an absolute http or https origin without a path, for example https://admin.example.com.")
             .Validate(x => x.Scopes.Values.All(scope => IsValidOrigin(scope.PublicOrigin)), "MCP:Scopes:{scope}:PublicOrigin must be an absolute http or https origin without a path.")
             .Validate(HasUniqueHosts, "MCP:Scopes:{scope}:Hosts: a host can serve one scope only.")
             .ValidateOnStart();
+    }
 
-        // An MCP agent's token is a platform access token, so it also reaches the REST API and GraphQL. Checking every
-        // token against the token store makes "Disconnect agent" end that access at once rather than when the token
-        // expires. It is the platform's Authorization:EnablePersistentStorageTokenValidation, turned on for every
-        // request with a bearer token; MCP:EnablePersistentStorageTokenValidation = false leaves the platform's choice.
-        if (Configuration.GetValue($"{ModuleConstants.ConfigurationSection}:{nameof(McpOptions.EnablePersistentStorageTokenValidation)}", true))
-        {
-            serviceCollection.Configure<OpenIddictValidationOptions>(options =>
-            {
-                options.EnableAuthorizationEntryValidation = true;
-                options.EnableTokenEntryValidation = true;
-            });
-        }
-
+    private static void AddServices(IServiceCollection serviceCollection)
+    {
         serviceCollection.AddTransient<IMcpRepository, McpRepository>();
         serviceCollection.AddTransient<Func<IMcpRepository>>(provider => () => provider.CreateScope().ServiceProvider.GetRequiredService<IMcpRepository>());
 
@@ -115,7 +126,10 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
         serviceCollection.AddMemoryCache();
+    }
 
+    private static void AddScopes(IServiceCollection serviceCollection)
+    {
         serviceCollection.AddMcpScope(new McpScope
         {
             Name = McpScopes.Admin,
@@ -135,17 +149,6 @@ public class Module : IModule, IHasConfiguration
             RequireAuthenticatedUser = true,
             Permissions = [VendorPortalAccessPermission],
         });
-
-        serviceCollection.AddRecurringJob<McpCleanupJob, McpCleanupJobPayload>(schedule => schedule
-            .WithId(ModuleConstants.Jobs.CleanupJobId)
-            .FromSettings(ModuleConstants.Settings.Cleanup.Enabled, ModuleConstants.Settings.Cleanup.Cron)
-            .WithMaxRetryAttempts(0));
-
-        serviceCollection.AddBackgroundJob<McpTrackedJobHandler, McpTrackedJobPayload>(triggerable: false);
-
-        serviceCollection.AddScopedMcpServer();
-        serviceCollection.AddMcpTools<McpApprovalTools>();
-        serviceCollection.AddMcpTools<McpJobTools>();
     }
 
     public void PostInitialize(IApplicationBuilder appBuilder)

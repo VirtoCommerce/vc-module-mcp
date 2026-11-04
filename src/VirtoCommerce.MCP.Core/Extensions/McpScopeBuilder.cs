@@ -5,15 +5,19 @@ using VirtoCommerce.MCP.Core.Services;
 
 namespace VirtoCommerce.MCP.Core.Extensions;
 
-// Declares what a module's scope does differently from the MCP module, for the requests of that scope only:
-//
-//   services.AddMcpScope(new McpScope { Name = "ucp", ... }, scope => scope
-//       .WithChallengeWriter<UcpMcpChallengeWriter>()
-//       .WithPublicOriginResolver<UcpMcpPublicOriginResolver>()
-//       .WithCallToolFilter<UcpMcpCallToolFilter>());
-//
-// The services are registered under the scope's key; other scopes keep the MCP module's ones, so an implementation
-// never has to check which scope it serves.
+/// <summary>
+/// Declares what a module's scope does differently from the MCP module, for the requests of that scope only. The
+/// services are registered under the scope's key; other scopes keep the MCP module's ones, so an implementation never
+/// has to check which scope it serves.
+/// </summary>
+/// <example>
+/// <code>
+/// services.AddMcpScope(new McpScope { Name = "ucp" }, scope => scope
+///     .WithChallengeWriter&lt;UcpMcpChallengeWriter&gt;()
+///     .WithPublicOriginResolver&lt;UcpMcpPublicOriginResolver&gt;()
+///     .WithCallToolFilter&lt;UcpMcpCallToolFilter&gt;());
+/// </code>
+/// </example>
 public class McpScopeBuilder
 {
     private const string ServiceKeyPrefix = "VirtoCommerce.MCP.Scope:";

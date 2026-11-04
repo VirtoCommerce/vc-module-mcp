@@ -61,6 +61,16 @@ public class McpTokenValidator(
         return GetAudiences(principal).Any(value => IsExpectedAudience(value, expected));
     }
 
+    // Whether the token was issued for an MCP endpoint: one of its audiences is an address with one of the paths.
+    public static bool IsIssuedForMcp(ClaimsPrincipal principal, IEnumerable<string> endpointPaths)
+    {
+        var paths = endpointPaths.Select(x => x.TrimEnd('/')).ToList();
+
+        return GetAudiences(principal).Any(value =>
+            Uri.TryCreate(value, UriKind.Absolute, out var audience) &&
+            paths.Contains(audience.AbsolutePath.TrimEnd('/'), StringComparer.OrdinalIgnoreCase));
+    }
+
     public virtual async Task<bool> IsActiveAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
         var tokenId = principal.GetTokenId();

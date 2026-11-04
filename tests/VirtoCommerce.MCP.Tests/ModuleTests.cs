@@ -4,7 +4,6 @@ using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using OpenIddict.Validation;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -90,29 +89,6 @@ public class ModuleTests
 
         // Act & Assert
         Assert.Throws<OptionsValidationException>(() => serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value);
-    }
-
-    [Theory]
-    [InlineData(null, true)]
-    [InlineData("true", true)]
-    [InlineData("false", false)]
-    public void Initialize_Should_ValidateTokensInTheTokenStore_UnlessTurnedOff(string setting, bool expected)
-    {
-        // Arrange
-        var configuration = new Dictionary<string, string>();
-        if (setting != null)
-        {
-            configuration["MCP:EnablePersistentStorageTokenValidation"] = setting;
-        }
-
-        using var serviceProvider = Initialize(configuration).BuildServiceProvider();
-
-        // Act
-        var options = serviceProvider.GetRequiredService<IOptions<OpenIddictValidationOptions>>().Value;
-
-        // Assert
-        Assert.Equal(expected, options.EnableTokenEntryValidation);
-        Assert.Equal(expected, options.EnableAuthorizationEntryValidation);
     }
 
     private static Dictionary<string, string> Configuration(string publicOrigin, string scopeOrigin)

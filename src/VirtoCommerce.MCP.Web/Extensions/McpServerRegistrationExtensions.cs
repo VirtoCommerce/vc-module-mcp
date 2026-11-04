@@ -23,7 +23,8 @@ namespace VirtoCommerce.MCP.Web.Extensions;
 //   UseRouting                    - matches the MCP endpoint of the scope
 //   UseMcpScopeRequests           - body size limit, probe compatibility    (IPlatformStartup.ConfigureAfterRouting)
 //   UseAuthentication
-//   UseMcpScopeAuthentication     - the scope's token rules and challenges  (IPlatformStartup.ConfigureAfterAuthentication)
+//   UseMcpScopeAuthentication     - the scope's token rules and challenges; agents' tokens checked in the token store
+//                                   on the other endpoints                    (IPlatformStartup.ConfigureAfterAuthentication)
 //   UseAuthorization
 //   UseEndpoints(MapMcpScopes)    - the MCP server                          (IModule.PostInitialize)
 public static class McpServerRegistrationExtensions
@@ -54,11 +55,14 @@ public static class McpServerRegistrationExtensions
         });
     }
 
-    // After authentication: the request's user comes from its MCP access token only, and is challenged as the MCP
-    // authorization flow expects.
+    // After authentication: on an MCP endpoint, the request's user comes from its MCP access token only, and is
+    // challenged as the MCP authorization flow expects; on the other endpoints, an agent's token is checked in the token
+    // store, so a disconnected agent loses them too.
     public static IApplicationBuilder UseMcpScopeAuthentication(this IApplicationBuilder app)
     {
-        return app.UseWhen(IsMcpRequest, branch => branch.UseMiddleware<McpScopeAuthenticationMiddleware>());
+        return app
+            .UseWhen(IsMcpRequest, branch => branch.UseMiddleware<McpScopeAuthenticationMiddleware>())
+            .UseWhen(context => !IsMcpRequest(context), branch => branch.UseMiddleware<McpAgentTokenMiddleware>());
     }
 
     // One endpoint per scope rather than a "/{scopeName}/mcp" template: the route is the request's name in traces and

@@ -13,9 +13,10 @@ public class McpOptions
     // small JSON, while the platform itself sets no limit.
     public long MaxRequestBodySize { get; set; } = DefaultMaxRequestBodySize;
 
-    // Checks every bearer token of the platform against the token store, so a disconnected agent loses the REST API and
-    // GraphQL at once, not only MCP. Costs a token store lookup per request with a bearer token. Read at startup.
-    public bool EnablePersistentStorageTokenValidation { get; set; } = true;
+    // On every endpoint, a token issued for an MCP endpoint is checked in the platform token store, so a disconnected
+    // agent loses the REST API and GraphQL at once, not only MCP. Costs a token store lookup per request with such a
+    // token; other tokens are not looked up.
+    public bool ValidateAgentTokensOnAllEndpoints { get; set; } = true;
 
     public Dictionary<string, McpScopeOptions> Scopes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

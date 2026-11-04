@@ -193,7 +193,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 "MCP": {
   "PublicOrigin": "https://admin.example.com",
   "MaxRequestBodySize": 1048576,
-  "EnablePersistentStorageTokenValidation": true,
+  "ValidateAgentTokensOnAllEndpoints": true,
   "Scopes": {
     "vendor": { "Enabled": false },
     "ucp": { "Hosts": [ "store.example.com" ] }
@@ -205,7 +205,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 | --- | --- |
 | `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. **Required outside Development**: without it, or the scope's own origin, `/{scope}/mcp` refuses access tokens and the module logs an error at startup, because the origin would otherwise come from the request's `Host` and forwarded headers. In Development it defaults to the origin of the request. |
 | `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413` before it is read. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
-| `MCP:EnablePersistentStorageTokenValidation` | `true` by default: the platform checks every bearer token in its token store, on every endpoint, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP. It is the platform's `Authorization:EnablePersistentStorageTokenValidation`, which the module turns on; it costs one token store lookup per request with a bearer token. `false` leaves the platform's own setting. Read at startup. |
+| `MCP:ValidateAgentTokensOnAllEndpoints` | `true` by default: on every endpoint of the platform, a token issued for an MCP endpoint is looked up in the token store, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP: a request with a revoked agent token gets `401 invalid_token`. Other tokens, cookies and API keys are not looked up, so the rest of the platform behaves as before. It costs one token store lookup per request with an agent's token. |
 | `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
@@ -297,10 +297,10 @@ The MCP endpoints are endpoints of the platform's request pipeline, like its con
 | Where | Hook | What runs |
 | --- | --- | --- |
 | After routing, before authentication | `IPlatformStartup.ConfigureAfterRouting` | The body size limit (`413` before anything reads the body), then the compatibility of JSON-only `tools/list` probes |
-| After authentication, before authorization | `IPlatformStartup.ConfigureAfterAuthentication` | The scope's token rules: the user comes from the MCP access token only; the `401` challenge and `403` of the MCP authorization flow |
+| After authentication, before authorization | `IPlatformStartup.ConfigureAfterAuthentication` | The scope's token rules: the user comes from the MCP access token only; the `401` challenge and `403` of the MCP authorization flow. On the other endpoints, an agent's token is looked up in the token store (`MCP:ValidateAgentTokensOnAllEndpoints`) |
 | With the platform's endpoints | `IModule.PostInitialize` | `UseEndpoints(e => e.MapMcpScopes())`: `/{scope}/mcp` of every scope, and `/mcp` of a scope's hosts (`RequireHost`) |
 
-Both steps run only for a request whose endpoint is an MCP endpoint; other requests pass them untouched. A module that adds a step for its own scope, such as UCP's store of the request, registers it in the same hooks and finds the scope with `HttpContext.GetMcpScope()`.
+The MCP steps run only for a request whose endpoint is an MCP endpoint; other requests pass them untouched, except for the token store lookup of an agent's token. A module that adds a step for its own scope, such as UCP's store of the request, registers it in the same hooks and finds the scope with `HttpContext.GetMcpScope()`.
 
 ### Tool call flow
 
@@ -348,7 +348,7 @@ A token without a token id is refused while the platform stores tokens, which it
 The MCP endpoints check that a token was issued for them. The rest of the platform does not check token audiences yet, so an access token issued for `/admin/mcp` is also accepted by the platform's REST API and GraphQL, with the permissions of its user. Until the platform checks audiences per endpoint:
 
 - The tool switch, `[McpRequiresApproval]`, `[McpRequiresConfirmation]` and the MCP audit apply to calls made through MCP. They guard the user against an agent's mistakes; they are not a boundary against whoever holds the token, who can call the REST API the tools wrap directly.
-- **Disconnect** stops the agent's token at once on MCP and, with `MCP:EnablePersistentStorageTokenValidation` (on by default), on the REST API and GraphQL as well. With it off, the token works on the REST API until it expires.
+- **Disconnect** stops the agent's token at once on MCP and, with `MCP:ValidateAgentTokensOnAllEndpoints` (on by default), on the REST API and GraphQL as well. With it off, the token works on the REST API until it expires. The platform's own `Authorization:EnablePersistentStorageTokenValidation` checks every token instead, which also ends a token as soon as its user's password or roles change.
 - A client registered with `rsrc:` permissions that asks for a token without naming a resource gets a token for the whole platform API (`resource_server`).
 
 ### Approval
