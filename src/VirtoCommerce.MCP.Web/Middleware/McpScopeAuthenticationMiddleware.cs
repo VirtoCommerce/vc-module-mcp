@@ -26,14 +26,14 @@ public class McpScopeAuthenticationMiddleware(
 
     public async Task InvokeAsync(
         HttpContext context,
-        IMcpPublicOriginResolver originResolver,
         McpTokenValidator tokenValidator,
-        McpChallengeWriter challengeWriter,
         IAuthorizationPolicyProvider policyProvider,
         IAuthorizationService authorizationService,
         IHostEnvironment environment)
     {
         var scope = context.GetMcpScope();
+        var originResolver = context.RequestServices.GetMcpScopeService<IMcpPublicOriginResolver>(scope);
+        var challengeWriter = context.RequestServices.GetMcpScopeService<McpChallengeWriter>(scope);
         var challenge = new McpChallenge
         {
             Scope = scope,

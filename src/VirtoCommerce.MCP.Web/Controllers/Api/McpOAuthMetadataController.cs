@@ -15,8 +15,7 @@ namespace VirtoCommerce.MCP.Web.Controllers.Api;
 [AllowAnonymous]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class McpOAuthMetadataController(
-    IMcpScopeRegistry scopeRegistry,
-    IMcpPublicOriginResolver originResolver)
+    IMcpScopeRegistry scopeRegistry)
     : ControllerBase
 {
     /// <summary>
@@ -54,7 +53,7 @@ public class McpOAuthMetadataController(
             return NotFound();
         }
 
-        var origin = await originResolver.GetOriginAsync(HttpContext, scope);
+        var origin = await HttpContext.RequestServices.GetMcpScopeService<IMcpPublicOriginResolver>(scope).GetOriginAsync(HttpContext, scope);
 
         return Ok(new McpProtectedResourceMetadata
         {

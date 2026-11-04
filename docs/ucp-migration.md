@@ -8,11 +8,11 @@ This page lists what moves, what stays, and the order of the work. File referenc
 
 Done in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`), on platform 3.1091.0. UCP builds against `VirtoCommerce.MCP.Core` 3.1000.0-alpha.15-vcst-6155-core-mcp-module and depends on the `VirtoCommerce.MCP` module of the same version. The branch:
 
-- deletes the UCP copies of the MCP plumbing (about 1,000 lines of source) and registers the `ucp` scope, a `UcpMcpChallengeWriter` and a `UcpMcpPublicOriginResolver`;
-- runs its call filter inside the MCP module's pipeline with `AddMcpCallToolFilter`;
+- deletes the UCP copies of the MCP plumbing (about 1,000 lines of source) and registers the `ucp` scope together with what the scope does differently: `UcpMcpChallengeWriter`, `UcpMcpPublicOriginResolver` and `UcpMcpCallToolFilter`, declared with the scope (`AddMcpScope(scope, s => s.WithChallengeWriter<…>()…)`), so they apply to `/ucp/mcp` only and never check which scope they serve;
+- runs its call filter inside the MCP module's pipeline;
 - merges VirtoCommerce/vc-module-ucp#12: storefront carts, `track_order` with `placed_after`, store-managed addresses, and a sign-in from the first request when the store's catalog is closed to anonymous buyers;
-- switches UCP off with the MCP module's `MCP:Scopes:ucp:Enabled` instead of a `UCP.Enabled` setting. UCP's gate answers 404 on its REST, discovery and GraphQL paths when the scope is off. The gate and the sign-in rule run from an `IStartupFilter`, ahead of the MCP module's `/ucp/mcp` branch, which a module startup cannot precede;
-- resolves the store of each request from its host (the store's URL domain or `VirtoCommerce:Stores:Domains`, then `Origin`/`Referer`, `VirtoCommerce:Stores:DefaultStore` and the only open store) and takes the currency, language, links and public origin from it; `MCP:Scopes:ucp:PublicOrigin` sets a fixed origin;
+- switches UCP off with the MCP module's `MCP:Scopes:ucp:Enabled` instead of a `UCP.Enabled` setting. UCP's gate answers 404 on its REST and discovery paths when the scope is off. The gate, the store of the request and the sign-in rule of a closed catalog run in the platform pipeline through UCP's `IPlatformStartup.ConfigureAfterRouting`, after the MCP module's own step and before authentication; the MCP endpoints are endpoints of the platform pipeline (see [Request pipeline](../README.md#request-pipeline));
+- resolves the store of each request from its host with the Experience API's `IStoreDomainResolverService` (`VirtoCommerce:Stores:Domains`, then the store's URL domain), then `VirtoCommerce:Stores:DefaultStore` and the only open store; `Origin` and `Referer` are not read, since the caller sets them and takes the currency, language, links and public origin from it; `MCP:Scopes:ucp:PublicOrigin` sets a fixed origin;
 - moves the business switches to store settings: `UCP.StoreManagedAddresses`, `UCP.CheckoutLinkLifetimeMinutes`, `UCP.CheckoutUrlTemplate`. The single-store `UCP:*` keys stay as fallbacks and log a startup warning.
 
 The 370 UCP tests pass, and CI passes on SQL Server, MySQL and PostgreSQL.
@@ -35,7 +35,7 @@ Every row is already available in the MCP module, so the UCP code can be deleted
 
 | UCP today | MCP module | Note |
 | --- | --- | --- |
-| `UcpMcpStartup` and its `startupType` in `module.manifest`: the `/ucp/mcp` branch with routing, authentication and authorization | `UseMcpScopes()`, served at `/{scope}/mcp` | Register the `ucp` scope; delete the startup class. |
+| `UcpMcpStartup` and its `startupType` in `module.manifest`: the `/ucp/mcp` branch with routing, authentication and authorization | `MapMcpScopes()` in the platform pipeline, served at `/{scope}/mcp` | Register the `ucp` scope; UCP's startup keeps only its own steps (gate, store, sign-in rule). |
 | Inline probe middleware in `UcpMcpStartup` (`tools/list` with `Accept: application/json` only) | `McpProbeCompatibilityMiddleware` | The MCP module also joins multi-line event data. |
 | `AddMcpServer().WithHttpTransport(Stateless = true)` in `Module.cs` | `AddScopedMcpServer()` | Register the tools with `AddMcpToolsFromAssembly(assembly, UcpMcpSerialization.Options)`. |
 | Server name and version | `McpScope.Title` and `McpScope.Version` | Set `Version = ModuleConstants.UcpVersion`. |
@@ -44,16 +44,16 @@ Every row is already available in the MCP module, so the UCP code can be deleted
 | Bearer audience check in `UcpMcpBuyerAuthenticationMiddleware` | `McpScopeAuthenticationMiddleware`, `McpTokenValidator` | |
 | `UcpMcpSessionService.IsActive` | `IMcpSessionService.IsActiveAsync` | Same token store query. |
 | `UcpMcpSessionService.Logout` | `IMcpSessionService.SignOutAsync` | For `logout_buyer`. |
-| 401 challenge with `resource_metadata` | `McpChallengeWriter` | UCP replaces `GetChallengeBody` and `GetForbiddenBody` to keep its `messages[]` body (`identity_required`). |
+| 401 challenge with `resource_metadata` | `McpChallengeWriter` | UCP declares `UcpMcpChallengeWriter` for its scope (`WithChallengeWriter`) to keep its `messages[]` body (`identity_required`). |
 | Challenge on `tools/call link_buyer_identity` only, anonymous access otherwise | `[McpRequiresUser]` on `link_buyer_identity`, scope with `RequireAuthenticatedUser = false` | Any tool with `[McpRequiresUser]` or `[Authorize]` is challenged for an anonymous caller. |
 | Required argument validation in `UcpMcpCallToolFilter` | `McpCallToolFilter` | Returned as a tool error with `isError`, as UCP does. |
 | Catch-all for unexpected exceptions | `McpCallToolFilter` | Logged and audited as `Error`. |
 | Trace id of a failed call | `_meta.trace_id` of failed calls | |
 | `UcpMcpActivityStatusFilter`: the error text of a UCP tool kept out of the SDK span status | `McpActivityStatusFilter`, for every tool | |
 | `UcpApplicationInsightsActivityBridge` and `UCP:Observability:EnableApplicationInsightsCompatibilityBridge` | The OpenTelemetry module, `OpenTelemetry:AzureMonitor:ConnectionString` | Removed from UCP, with the optional dependency on the Application Insights module. |
-| Scope check and order of the SDK request filters | `AddMcpCallToolFilter<TFilter>(scope)` | |
+| Scope check and order of the SDK request filters | `WithCallToolFilter<TFilter>()` of the scope | |
 | Error logging of tool calls | Audit log with user, client, arguments, outcome, duration; `[McpSensitive]` masking | New for UCP: mark buyer personal data (addresses, emails, phone numbers) with `[McpSensitive]`. |
-| `UcpPublicOriginResolver` (now `MCP:Scopes:ucp:PublicOrigin`, then the store of the request) | `IMcpPublicOriginResolver.GetOriginAsync` | UCP replaces the resolver for the `ucp` scope with its store lookup, and keeps using it for `/.well-known/ucp`. |
+| `UcpPublicOriginResolver` (now `MCP:Scopes:ucp:PublicOrigin`, then the store of the request) | `IMcpPublicOriginResolver.GetOriginAsync` | UCP declares its store lookup as the resolver of the `ucp` scope (`WithPublicOriginResolver`), and keeps using it for `/.well-known/ucp`. |
 | Store host routing | `MCP:Scopes:ucp:Hosts` | Optional: serve the buyer scope at `https://store.example.com/mcp`. |
 
 Not in either module, by design: rate limits and CORS. They belong to the API gateway or the load balancer in front of the platform.
@@ -65,7 +65,7 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
 - Error mapping: `UcpMcpErrorResultFactory`, the Experience API envelope passthrough, `UcpException` codes.
 - The `store_id` checks and UCP telemetry (`UcpOperationTelemetry`, `UcpDiagnostics`) in a slimmer `UcpMcpCallToolFilter`, an `IMcpCallToolFilter` of the `ucp` scope. Its `UCP {operation}` spans are children of the MCP module's `MCP tool {tool}` span.
 - The scope name, `ModuleConstants.McpScopeName` (`ucp`).
-- The Experience API integration: `XApiInProcessExecutor`, the `ucp` GraphQL schema, the handoff session stores.
+- The Experience API integration: `XApiInProcessExecutor`, the handoff session stores. The empty `ucp` GraphQL schema is gone.
 - The UCP REST protocol: the `Ucp*Controller` classes except the OAuth metadata one, `/.well-known/ucp` discovery, the MVC filters and the Swagger filters.
 
 ## Steps
@@ -82,23 +82,24 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
         Version = ModuleConstants.UcpVersion,
         Instructions = ModuleConstants.McpInstructions,
         RequireAuthenticatedUser = false,
-    });
+    }, scope => scope
+        .WithChallengeWriter<UcpMcpChallengeWriter>()
+        .WithPublicOriginResolver<UcpMcpPublicOriginResolver>()
+        .WithCallToolFilter<UcpMcpCallToolFilter>());
     serviceCollection.AddMcpToolsFromAssembly(typeof(UcpMcpCommerceTools).Assembly, UcpMcpSerialization.Options);
-    serviceCollection.AddTransient<McpChallengeWriter, UcpMcpChallengeWriter>();
-    serviceCollection.AddMcpCallToolFilter<UcpMcpCallToolFilter>(ModuleConstants.McpScopeName);
     ```
 
 4. **Mark the tools** with `[McpScope(ModuleConstants.McpScopeName)]`, `link_buyer_identity` with `[McpRequiresUser]`, and buyer personal data with `[McpSensitive]`.
-5. **Delete** `UcpMcpStartup`, `UcpOAuthMetadataController`, `UcpProtectedResourceMetadata`, the generic parts of `UcpMcpBuyerAuthenticationMiddleware`, `UcpMcpSessionService.IsActive`, and the generic half of `UcpMcpCallToolFilter`. Move what is left of the call filter (store checks, telemetry, error mapping) into an `IMcpCallToolFilter`, registered with `AddMcpCallToolFilter` for the `ucp` scope. Delete the Application Insights bridge and the span status filter.
-6. **Replace the origin resolver** with one that keeps the UCP store lookup:
+5. **Delete** `UcpMcpStartup`, `UcpOAuthMetadataController`, `UcpProtectedResourceMetadata`, the generic parts of `UcpMcpBuyerAuthenticationMiddleware`, `UcpMcpSessionService.IsActive`, and the generic half of `UcpMcpCallToolFilter`. Move what is left of the call filter (store checks, telemetry, error mapping) into an `IMcpCallToolFilter`, declared with the `ucp` scope. Delete the Application Insights bridge and the span status filter.
+6. **Declare the origin resolver** of the scope, one that keeps the UCP store lookup. It serves the `ucp` scope only, so it does not check the scope:
 
     ```csharp
-    public class UcpMcpPublicOriginResolver(IOptions<McpOptions> options, UcpPublicOriginResolver ucpResolver)
+    public class UcpMcpPublicOriginResolver(IOptions<McpOptions> options, IUcpPublicOriginResolver ucpResolver)
         : McpPublicOriginResolver(options)
     {
-        public override async Task<string> GetOriginAsync(HttpContext context, McpScope scope)
+        public override Task<string> GetOriginAsync(HttpContext context, McpScope scope)
         {
-            return scope?.Name == ModuleConstants.McpScopeName ? await ucpResolver.ResolveAsync(context) : await base.GetOriginAsync(context, scope);
+            return ucpResolver.GetOriginAsync();
         }
     }
     ```

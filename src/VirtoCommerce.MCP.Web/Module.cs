@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
+using OpenIddict.Validation;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
@@ -72,6 +73,19 @@ public class Module : IModule, IHasConfiguration
             .Validate(HasUniqueHosts, "MCP:Scopes:{scope}:Hosts: a host can serve one scope only.")
             .ValidateOnStart();
 
+        // An MCP agent's token is a platform access token, so it also reaches the REST API and GraphQL. Checking every
+        // token against the token store makes "Disconnect agent" end that access at once rather than when the token
+        // expires. It is the platform's Authorization:EnablePersistentStorageTokenValidation, turned on for every
+        // request with a bearer token; MCP:EnablePersistentStorageTokenValidation = false leaves the platform's choice.
+        if (Configuration.GetValue($"{ModuleConstants.ConfigurationSection}:{nameof(McpOptions.EnablePersistentStorageTokenValidation)}", true))
+        {
+            serviceCollection.Configure<OpenIddictValidationOptions>(options =>
+            {
+                options.EnableAuthorizationEntryValidation = true;
+                options.EnableTokenEntryValidation = true;
+            });
+        }
+
         serviceCollection.AddTransient<IMcpRepository, McpRepository>();
         serviceCollection.AddTransient<Func<IMcpRepository>>(provider => () => provider.CreateScope().ServiceProvider.GetRequiredService<IMcpRepository>());
 
@@ -100,6 +114,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpConnectedAgentService>();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
+        serviceCollection.AddMemoryCache();
 
         serviceCollection.AddMcpScope(new McpScope
         {
@@ -145,6 +160,9 @@ public class Module : IModule, IHasConfiguration
 
         ValidateMcpPrimitives(serviceProvider);
         LogScopesWithoutPublicOrigin(serviceProvider);
+
+        // The MCP endpoints join the platform's endpoints, after its authentication and authorization (see McpStartup).
+        appBuilder.UseEndpoints(endpoints => endpoints.MapMcpScopes());
 
         using var serviceScope = serviceProvider.CreateScope();
         using var dbContext = serviceScope.ServiceProvider.GetRequiredService<McpDbContext>();

@@ -18,6 +18,18 @@ public static class McpServiceCollectionExtensions
         return services;
     }
 
+    // Adds the scope with the services it replaces for its own requests (see McpScopeBuilder).
+    public static IServiceCollection AddMcpScope(this IServiceCollection services, McpScope scope, Action<McpScopeBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var builder = new McpScopeBuilder(services, scope);
+        services.AddMcpScope(scope);
+        configure(builder);
+
+        return services;
+    }
+
     // Adds a module's step to the tool calls of one scope (McpScopes.Any for every scope). It runs inside the MCP
     // module's pipeline, after its checks and within its audit, and is resolved from the request's services.
     public static IServiceCollection AddMcpCallToolFilter<TFilter>(this IServiceCollection services, string scopeName)

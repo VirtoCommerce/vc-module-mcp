@@ -61,6 +61,9 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string ShopHost = "shop.example.test";
     private const string GatedScope = "gated";
     private const string ConfirmScope = "confirm";
+    private const string BrandedScope = "branded";
+    private const string BrandedOrigin = "https://branded.example.test";
+    private const string OtherEndpointPath = "/other";
 
     private static readonly string[] _readerTools = ["canceled_tool", "interrupted_tool", "read_tool", "static_tool"];
     private static readonly string[] _writerTools = ["canceled_tool", "conditional_tool", "interrupted_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
@@ -92,7 +95,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()
                 .ConfigureServices(ConfigureServices)
-                .Configure(app => app.UseMcpScopes()))
+                .Configure(ConfigurePipeline))
             .StartAsync();
 
         _client = _host.GetTestClient();
@@ -334,6 +337,98 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_And_AuditItAsDeclined_When_TheClientCannotAskTheUser()
+    {
+        // Act: approval needs a person's confirmation, so a client that cannot ask is sent to the back office
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("back office", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        Assert.Empty(_completedChanges);
+        Assert.Equal(McpAuditOutcome.Declined, Assert.Single(_auditEntries).Outcome);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("forged")]
+    [InlineData("hash")]
+    [InlineData("replayed")]
+    public async Task ToolsCall_Should_AskAgain_When_TheAnswerComesWithAStateTheServerDidNotIssueForIt(string kind)
+    {
+        // Arrange: the client answers "confirm" with a state the server did not issue for this question
+        var questions = 0;
+        string issuedState = null;
+        var handler = new RequestStateRewriter(_host.GetTestServer().CreateHandler(), state =>
+        {
+            if (kind == "replayed")
+            {
+                // The first answer goes through with its own state; later questions get that used state back.
+                issuedState ??= state;
+                return issuedState;
+            }
+
+            return kind == "forged"
+                ? "mcp-confirm:" + Convert.ToBase64String(Encoding.UTF8.GetBytes("made up"))
+                : "mcp-confirm:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("delete_draft\n{}")));
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = _client.BaseAddress };
+        await using var client = await ConnectAsync(ConfirmScope, (_, _) =>
+        {
+            Interlocked.Increment(ref questions);
+            return ValueTask.FromResult(new ElicitResult { Action = "accept" });
+        }, httpClient: httpClient);
+
+        // Act
+        if (kind == "replayed")
+        {
+            await client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+                cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        var executionsBefore = ConfirmTools.Executions;
+        await Assert.ThrowsAnyAsync<Exception>(() => client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+            cancellationToken: TestContext.Current.CancellationToken).AsTask());
+
+        // Assert: the server keeps asking instead of running the tool
+        Assert.Equal(executionsBefore, ConfirmTools.Executions);
+        Assert.True(questions > 1);
+    }
+
+    [Fact]
+    public async Task Request_Should_UseTheScopesOwnChallengeWriterAndOrigin_And_LeaveOtherScopesAlone()
+    {
+        // Act
+        var branded = await PostAsync(null, ToolsList(), $"/{BrandedScope}/mcp");
+        var admin = await PostAsync(null, ToolsList());
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, branded.StatusCode);
+        Assert.Contains("branded_sign_in", await branded.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains($"realm=\"{BrandedOrigin}\"", branded.Headers.WwwAuthenticate.ToString());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, admin.StatusCode);
+        Assert.DoesNotContain("branded_sign_in", await admin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains($"realm=\"{Origin}\"", admin.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Request_Should_LeaveOtherEndpointsOfThePipelineAlone()
+    {
+        // Act: a bearer token the MCP steps would refuse, sent to an endpoint that is not MCP
+        using var request = new HttpRequestMessage(HttpMethod.Get, OtherEndpointPath);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token(audience: "https://elsewhere.example.test/api"));
+        var response = await _client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("other", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task ToolsCall_Should_TreatAToolOfAnotherScopeAsUnknown()
     {
         // Act
@@ -434,7 +529,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ApprovePendingChange_Should_ExecuteTheStoredCallOnce()
     {
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
@@ -462,7 +557,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ApprovePendingChange_Should_AuditARefusalAsFailed_And_LinkItToTheChange()
     {
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = "missing" }));
 
@@ -492,7 +587,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ApprovePendingChange_Should_Refuse_When_TheApproverMayNotRunTheTool()
     {
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
@@ -537,7 +632,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ApprovePendingChange_Should_RecordTheChangeAsFailed_When_TheToolIsCanceledWhileRunning()
     {
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = CanceledChange.Id }));
 
@@ -874,7 +969,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         DisableTools("submit_tool");
 
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
@@ -1163,7 +1258,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         _requesterPermissions.Clear();
 
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
@@ -1181,7 +1276,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         _requesterExists = false;
 
         // Act
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
@@ -1228,7 +1323,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     public async Task ApprovePendingChange_Should_Refuse_AnApproverOfAnotherScope()
     {
         // Act: an admin approver calls the approve tool in the category scope, where approvers need category:approve
-        var result = await CallAsync(
+        var result = await ConfirmedCallAsync(
             Token(audience: $"{Origin}/{CategoryScope}/mcp", permissions: [McpPermissions.Approve]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }),
             $"/{CategoryScope}/mcp");
@@ -1316,12 +1411,28 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         ClaimsPrincipalExtensions.UserNameClaimTypes = ["name"];
     }
 
+    // The platform's pipeline, with the MCP module's steps where the platform calls its module hooks
+    private static void ConfigurePipeline(IApplicationBuilder app)
+    {
+        app.UseRouting();
+        app.UseMcpScopeRequests(); // IPlatformStartup.ConfigureAfterRouting
+        app.UseAuthentication();
+        app.UseMcpScopeAuthentication(); // IPlatformStartup.ConfigureAfterAuthentication
+        app.UseAuthorization();
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapGet(OtherEndpointPath, () => "other");
+            endpoints.MapMcpScopes(); // IModule.PostInitialize
+        });
+    }
+
     private void ConfigureServices(IServiceCollection services)
     {
         services.AddRouting();
         services.AddSingleton<TimeProvider>(new TestTimeProvider());
         services.AddLogging();
         services.AddHttpContextAccessor();
+        services.AddMemoryCache();
         services.AddAuthentication(TestAuthenticationHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, null);
         services.AddAuthorization(options =>
@@ -1399,6 +1510,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             RequireAuthenticatedUser = true,
             Permissions = [WritePermission],
         });
+
+        // A scope that declares its own challenge bodies and origin; other scopes keep the module's.
+        services.AddMcpScope(new McpScope { Name = BrandedScope, RequireAuthenticatedUser = true }, scope => scope
+            .WithChallengeWriter<BrandedChallengeWriter>()
+            .WithPublicOriginResolver<BrandedOriginResolver>());
 
         services.AddMcpScope(new McpScope
         {
@@ -1657,8 +1773,21 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         return JsonNode.Parse(data);
     }
 
+    // A call from an MCP client that asks the user, who confirms it; returned as the JSON-RPC response of a raw call
+    private async Task<JsonNode> ConfirmedCallAsync(string token, object body, string path = "/admin/mcp")
+    {
+        var request = JsonSerializer.SerializeToNode(body)!["params"]!;
+        var arguments = request["arguments"]!.AsObject().ToDictionary(x => x.Key, x => (object)x.Value!.Deserialize<JsonElement>());
+        var scope = path.Trim('/').Split('/')[0];
+
+        await using var client = await ConnectAsync(scope, (_, _) => ValueTask.FromResult(new ElicitResult { Action = "accept" }), token);
+        var result = await client.CallToolAsync(request["name"]!.GetValue<string>(), arguments, cancellationToken: TestContext.Current.CancellationToken);
+
+        return new JsonObject { ["result"] = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions) };
+    }
+
     // An MCP client of the 2026-07-28 revision, which asks the user with the given handler
-    private async Task<McpClient> ConnectAsync(string scope, Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>> elicitation, string token = null)
+    private async Task<McpClient> ConnectAsync(string scope, Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>> elicitation, string token = null, HttpClient httpClient = null)
     {
         var transport = new HttpClientTransport(
             new HttpClientTransportOptions
@@ -1667,7 +1796,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
                 TransportMode = HttpTransportMode.StreamableHttp,
                 AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + (token ?? Token(audience: $"{Origin}/{scope}/mcp")) },
             },
-            _client,
+            httpClient ?? _client,
             ownsHttpClient: false);
 
         return await McpClient.CreateAsync(
@@ -1723,6 +1852,47 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private sealed class TestUserPrincipalFactory(Func<string, ClaimsPrincipal> create) : McpUserPrincipalFactory(null, null)
     {
         public override Task<ClaimsPrincipal> CreateAsync(string userId) => Task.FromResult(create(userId));
+    }
+
+    private sealed class BrandedChallengeWriter : McpChallengeWriter
+    {
+        protected override object GetChallengeBody(McpChallenge challenge)
+        {
+            return new { code = "branded_sign_in", message = challenge.ErrorDescription };
+        }
+    }
+
+    private sealed class BrandedOriginResolver(IOptions<McpOptions> options) : McpPublicOriginResolver(options)
+    {
+        public override Task<string> GetOriginAsync(HttpContext context, McpScope scope)
+        {
+            return Task.FromResult(BrandedOrigin);
+        }
+    }
+
+    // Replaces the state the client sends back with its answer, as a client that makes up or reuses states would.
+    private sealed class RequestStateRewriter(HttpMessageHandler inner, Func<string, string> rewrite) : DelegatingHandler(inner)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content != null)
+            {
+                var body = JsonNode.Parse(await request.Content.ReadAsStringAsync(cancellationToken));
+                if (body?["params"] is JsonObject parameters && parameters["requestState"] is JsonValue state)
+                {
+                    parameters["requestState"] = rewrite(state.GetValue<string>());
+                    var content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+                    foreach (var header in request.Content.Headers.Where(x => x.Key != "Content-Type" && x.Key != "Content-Length"))
+                    {
+                        content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                    }
+
+                    request.Content = content;
+                }
+            }
+
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 
     private sealed class TestAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>

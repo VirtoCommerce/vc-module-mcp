@@ -193,6 +193,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 "MCP": {
   "PublicOrigin": "https://admin.example.com",
   "MaxRequestBodySize": 1048576,
+  "EnablePersistentStorageTokenValidation": true,
   "Scopes": {
     "vendor": { "Enabled": false },
     "ucp": { "Hosts": [ "store.example.com" ] }
@@ -204,6 +205,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 | --- | --- |
 | `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. **Required outside Development**: without it, or the scope's own origin, `/{scope}/mcp` refuses access tokens and the module logs an error at startup, because the origin would otherwise come from the request's `Host` and forwarded headers. In Development it defaults to the origin of the request. |
 | `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413` before it is read. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
+| `MCP:EnablePersistentStorageTokenValidation` | `true` by default: the platform checks every bearer token in its token store, on every endpoint, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP. It is the platform's `Authorization:EnablePersistentStorageTokenValidation`, which the module turns on; it costs one token store lookup per request with a bearer token. `false` leaves the platform's own setting. Read at startup. |
 | `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
@@ -288,6 +290,18 @@ The module does not limit the request rate and does not add CORS headers: both b
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Request pipeline
+
+The MCP endpoints are endpoints of the platform's request pipeline, like its controllers, so an MCP request goes through the platform's error handling, security headers, forwarded headers, authentication and account lockout. The scope of a request is the metadata of the endpoint that routing matched (`McpScopeEndpointMetadata`), and the module adds its steps through the platform's module hooks:
+
+| Where | Hook | What runs |
+| --- | --- | --- |
+| After routing, before authentication | `IPlatformStartup.ConfigureAfterRouting` | The body size limit (`413` before anything reads the body), then the compatibility of JSON-only `tools/list` probes |
+| After authentication, before authorization | `IPlatformStartup.ConfigureAfterAuthentication` | The scope's token rules: the user comes from the MCP access token only; the `401` challenge and `403` of the MCP authorization flow |
+| With the platform's endpoints | `IModule.PostInitialize` | `UseEndpoints(e => e.MapMcpScopes())`: `/{scope}/mcp` of every scope, and `/mcp` of a scope's hosts (`RequireHost`) |
+
+Both steps run only for a request whose endpoint is an MCP endpoint; other requests pass them untouched. A module that adds a step for its own scope, such as UCP's store of the request, registers it in the same hooks and finds the scope with `HttpContext.GetMcpScope()`.
+
 ### Tool call flow
 
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
@@ -334,7 +348,7 @@ A token without a token id is refused while the platform stores tokens, which it
 The MCP endpoints check that a token was issued for them. The rest of the platform does not check token audiences yet, so an access token issued for `/admin/mcp` is also accepted by the platform's REST API and GraphQL, with the permissions of its user. Until the platform checks audiences per endpoint:
 
 - The tool switch, `[McpRequiresApproval]`, `[McpRequiresConfirmation]` and the MCP audit apply to calls made through MCP. They guard the user against an agent's mistakes; they are not a boundary against whoever holds the token, who can call the REST API the tools wrap directly.
-- **Disconnect** stops the agent's token on MCP at once. On the REST API it works until it expires, unless the platform checks tokens in its store on every request: set `Authorization:EnablePersistentStorageTokenValidation` to `true` on deployments with MCP scopes.
+- **Disconnect** stops the agent's token at once on MCP and, with `MCP:EnablePersistentStorageTokenValidation` (on by default), on the REST API and GraphQL as well. With it off, the token works on the REST API until it expires.
 - A client registered with `rsrc:` permissions that asks for a token without naming a resource gets a token for the whole platform API (`resource_server`).
 
 ### Approval
@@ -355,7 +369,7 @@ Changes are reviewed in the back office or with the first four tools below, pres
 | --- | --- | --- |
 | `list_pending_changes` | Compact list of submitted changes, by status | approvers: all changes; others: their own |
 | `get_pending_change` | Arguments, dry-run preview, reviewer and result of one change | approvers: any change; others: their own |
-| `approve_pending_change` | Approves the change and runs the tool with the stored arguments, as the approver, after the requester's dry run passes; its confirmation in the chat shows the tool, the requester and the masked arguments of the change | approvers only |
+| `approve_pending_change` | Approves the change and runs the tool with the stored arguments, as the approver, after the requester's dry run passes; its confirmation in the chat shows the tool, the requester and the masked arguments of the change; with a client that cannot ask, it is refused and the change is approved in the back office | approvers only |
 | `reject_pending_change` | Rejects the change; the requester uses it to withdraw their own change | approvers: any change; others: their own |
 | `get_job_status` | Status and progress of a background job started by a bulk tool | the user who started it, the requester of the change that started it, approvers |
 | `cancel_job` | Cancels a queued or running background job | as `get_job_status` |
@@ -431,6 +445,17 @@ serviceCollection.AddMcpScope(new McpScope
 });
 ```
 
+A scope that needs its own challenge bodies, its own public origin or its own step in the tool calls declares them with the scope; they apply to its requests only, and every other scope keeps the module's:
+
+```csharp
+serviceCollection.AddMcpScope(new McpScope { Name = "ucp", RequireAuthenticatedUser = false }, scope => scope
+    .WithChallengeWriter<UcpMcpChallengeWriter>()          // McpChallengeWriter: bodies of the 401 and 403 responses
+    .WithPublicOriginResolver<UcpMcpPublicOriginResolver>() // IMcpPublicOriginResolver: OAuth resource and token audience
+    .WithCallToolFilter<UcpMcpCallToolFilter>());           // IMcpCallToolFilter: a step around every tool call
+```
+
+The services are registered under the scope's key and resolved with `IServiceProvider.GetMcpScopeService<T>(scope)`, so an implementation never checks which scope it serves.
+
 `Version` sets the server version reported to MCP clients; it defaults to the version of this module. With `ApprovalPermission`, the review tools appear in the scope and work with its changes only; to narrow what an approver reviews, for example to the changes of their own seller, override `McpApprovalService.CanReviewAsync`.
 
 ### Wrap the tool calls of a scope
@@ -452,6 +477,8 @@ public sealed class StoreToolCallFilter(IStoreService storeService) : IMcpCallTo
 
 serviceCollection.AddMcpCallToolFilter<StoreToolCallFilter>("category-manager"); // McpScopes.Any for every scope
 ```
+
+A module that registers the scope itself declares the filter with it instead: `.WithCallToolFilter<StoreToolCallFilter>()` (see [Add a scope](#add-a-scope)).
 
 The filter is resolved from the request's services and runs inside the module's pipeline: after the permission checks, the switch and the argument validation, and within the audit and the `MCP tool` span, so the result it returns is the one that is audited and its spans are children of the tool's span. Calls of other scopes and of endpoints without a scope skip it. For a call held for approval it runs for the dry run only; an approved change runs the tool without it. The [UCP module](https://github.com/VirtoCommerce/vc-module-ucp) uses it for its buyer error envelopes and its `UCP {operation}` spans.
 
@@ -533,10 +560,19 @@ public object PausePromotion(string promotion_id, string reason, bool dryRun = f
 - `{argument}` in the message is replaced by the value of that argument of the call; `[McpSensitive]` values are shown as `***`. Without a message, the question names the tool and lists its arguments.
 - A declined or dismissed question ends the call with a tool error ("The user did not confirm the call, so nothing was done"), and the call is audited as `Declined`. A confirmed call runs and is audited as usual; the question itself is not audited.
 - A dry run (`dryRun: true`) does not ask. A tool with both attributes asks before it submits the change for approval.
-- The answer is tied to the tool and its arguments: if the agent repeats the call with other arguments, the user is asked again.
+- The answer is tied to the question: the server issues the question's state protected with ASP.NET Core data protection (signed and encrypted), bound to the user, the tool, the arguments and a nonce, and valid for 10 minutes and once. A client cannot make up a state and attach an answer to its first call; if the agent repeats the call with other arguments, the user is asked again.
 - The module's own `approve_pending_change` asks the approver before it applies a change; the marketing sample's `pause_promotion` asks before it pauses a promotion.
 
-**Clients.** The question uses MCP elicitation (form mode). The MCP endpoints are stateless, so a server can't send a client a request of its own in the middle of a call; it answers the call with an input-required result instead, and the client asks the user and repeats the call with the answer: multi round-trip requests (MRTR), from the 2026-07-28 protocol revision. Clients that speak that revision and declare elicitation ask the user. With other clients, today most of them, the call runs as without the attribute; most of them ask the user to allow each tool call with their own prompt.
+**Clients.** The question uses MCP elicitation (form mode). The MCP endpoints are stateless, so a server can't send a client a request of its own in the middle of a call; it answers the call with an input-required result instead, and the client asks the user and repeats the call with the answer: multi round-trip requests (MRTR), from the 2026-07-28 protocol revision. Clients that speak that revision and declare elicitation ask the user. What happens with other clients, today most of them, is the tool's `Fallback`:
+
+| `Fallback` | With a client that cannot ask |
+| --- | --- |
+| `McpConfirmationFallback.Allow` (default) | The call runs as without the attribute; most clients ask the user to allow each tool call with their own prompt. `pause_promotion` uses it. |
+| `McpConfirmationFallback.Refuse` | The call does not run and is audited as `Declined`; the agent is told to have the user do it in the back office. `approve_pending_change` uses it, so a change is approved only where a person confirms it: in the chat of a client that can ask, or in **Agent approvals**. |
+
+```csharp
+[McpRequiresConfirmation("Approve change {change_id} and run it now, as you?", Fallback = McpConfirmationFallback.Refuse)]
+```
 
 **Not a security control.** The client reports the user's answer, so confirmation guards the user against an agent's mistake, not against a client that answers by itself. For a change that a second person must check, use [approval](#approval).
 
@@ -641,8 +677,8 @@ The [extension sample](samples/VirtoCommerce.MCP.MarketingExtensionSample/README
 
 The behaviour of this module can be replaced through DI:
 
-- `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration.
-- `McpChallengeWriter` writes the HTTP 401 and 403 responses of the MCP endpoints; a module with an error format of its own replaces the bodies and keeps the status codes and the `WWW-Authenticate` header.
+- `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration. For one scope, declare it with the scope (`WithPublicOriginResolver<T>()`, see [Add a scope](#add-a-scope)); replacing the registration changes it for every scope.
+- `McpChallengeWriter` writes the HTTP 401 and 403 responses of the MCP endpoints; a module with an error format of its own replaces the bodies and keeps the status codes and the `WWW-Authenticate` header. For one scope, declare it with the scope (`WithChallengeWriter<T>()`).
 - `IMcpSessionService` is for tools: it tells whether the user's token is still active and signs the user out. The endpoints check tokens with `McpTokenValidator` (see below).
 - `IMcpJobDispatcher` starts and tracks the jobs of bulk tools.
 - `IMcpPageSizeResolver` decides how many rows a list tool returns.

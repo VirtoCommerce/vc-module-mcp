@@ -9,6 +9,8 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -32,6 +34,7 @@ public class McpCallToolFilter(
     McpToolAuthorizationService toolAuthorizationService,
     McpToolAvailabilityService toolAvailabilityService,
     McpAuditWriter auditWriter,
+    IDataProtectionProvider dataProtectionProvider,
     ILogger<McpCallToolFilter> logger)
 {
     private const string AuditedKey = "VirtoCommerce.MCP.Audit.Written";
@@ -40,6 +43,11 @@ public class McpCallToolFilter(
     private const string ConfirmationStatePrefix = "mcp-confirm:";
     private const int MaxConfirmationArguments = 10;
     private const int MaxConfirmationValueLength = 120;
+    private const string ConfirmationProtectorPurpose = "VirtoCommerce.MCP.Confirmation.v1";
+    private const string UsedConfirmationKeyPrefix = "VirtoCommerce.MCP.Confirmation.Used:";
+
+    // How long the user has to answer the question
+    protected static readonly TimeSpan ConfirmationLifetime = TimeSpan.FromMinutes(10);
 
     private static readonly Regex _placeholder = new(@"\{(\w+)\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
@@ -368,12 +376,32 @@ public class McpCallToolFilter(
     // The confirmation of a tool with [McpRequiresConfirmation], except for its dry runs, which change nothing.
     private async Task<CallToolResult> ConfirmAsync(RequestContext<CallToolRequestParams> context, McpServerTool tool, McpAuditEntry audit)
     {
-        if (tool?.GetConfirmation() == null || IsDryRunCall(tool, context.Params?.Arguments) || !CanAskUser(context.Server))
+        var confirmation = tool?.GetConfirmation();
+        if (confirmation == null || IsDryRunCall(tool, context.Params?.Arguments))
         {
             return null;
         }
 
+        if (!CanAskUser(context.Server))
+        {
+            return confirmation.Fallback == McpConfirmationFallback.Refuse ? RefuseUnconfirmable(tool, audit) : null;
+        }
+
         return ConfirmOrAsk(context, tool, audit, await GetConfirmationDetailsAsync(context, tool));
+    }
+
+    // A tool that a person must confirm, called from a client that cannot ask: the call does not run.
+    protected virtual CallToolResult RefuseUnconfirmable(McpServerTool tool, McpAuditEntry audit)
+    {
+        audit.Outcome = McpAuditOutcome.Declined;
+        audit.ErrorMessage = "The client cannot ask the user to confirm the call, and the tool does not run without it.";
+
+        var where = tool.ProtocolTool.Name == ModuleConstants.ToolNames.ApprovePendingChange
+            ? "Ask the user to approve the change in the back office (MCP > Pending changes)"
+            : "Ask the user to do it in the back office";
+
+        return CreateErrorResult($"'{tool.ProtocolTool.Name}' runs only after the user confirms it, and this MCP client cannot ask the user, " +
+            $"so nothing was done. {where}, or to use an MCP client that supports elicitation.");
     }
 
     // What the user confirms besides the call itself: for approve_pending_change, the change it applies, since the
@@ -409,10 +437,9 @@ public class McpCallToolFilter(
         }
 
         var arguments = context.Params?.Arguments;
-        var state = GetConfirmationState(tool, arguments);
 
-        if (string.Equals(context.Params?.RequestState, state, StringComparison.Ordinal) &&
-            context.Params.InputResponses?.TryGetValue(ConfirmationKey, out var response) == true)
+        if (context.Params?.InputResponses?.TryGetValue(ConfirmationKey, out var response) == true &&
+            TryUseConfirmationState(context, tool, arguments, context.Params.RequestState))
         {
             if (IsConfirmed(response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)))
             {
@@ -427,7 +454,7 @@ public class McpCallToolFilter(
 
         throw new InputRequiredException(
             new Dictionary<string, InputRequest> { [ConfirmationKey] = InputRequest.ForElicitation(CreateConfirmationRequest(tool, arguments, details)) },
-            state);
+            CreateConfirmationState(context, tool, arguments));
     }
 
     // The client asks the user in the chat: elicitation with forms, over multi round-trip requests, which a stateless
@@ -479,12 +506,66 @@ public class McpCallToolFilter(
         return answer.Content?.TryGetValue(ConfirmField, out var confirm) != true || confirm.ValueKind != JsonValueKind.False;
     }
 
-    // Ties an answer to the call it was asked for: the same tool with the same arguments.
-    protected static string GetConfirmationState(McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    // The state of a question ties the answer to it: the same user, tool and arguments, within the lifetime, once. The
+    // server protects it (data protection: signed and encrypted), so a client cannot make up the state of a question it
+    // was never asked and attach an answer to its first call.
+    protected virtual string CreateConfirmationState(RequestContext<CallToolRequestParams> context, McpServerTool tool, IDictionary<string, JsonElement> arguments)
     {
-        var call = tool.ProtocolTool.Name + "\n" + JsonSerializer.Serialize(arguments ?? new Dictionary<string, JsonElement>());
+        var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var payload = string.Join('\n', nonce, GetConfirmedCall(context, tool, arguments));
 
-        return ConfirmationStatePrefix + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(call)));
+        return ConfirmationStatePrefix + GetConfirmationProtector().Protect(payload, ConfirmationLifetime);
+    }
+
+    // Whether the state is one this server issued for this call and has not been used yet. Its nonce is remembered until
+    // the state expires; on a cluster that is per instance, so the lifetime is what bounds a repeat on another one.
+    protected virtual bool TryUseConfirmationState(RequestContext<CallToolRequestParams> context, McpServerTool tool, IDictionary<string, JsonElement> arguments, string state)
+    {
+        if (state?.StartsWith(ConfirmationStatePrefix, StringComparison.Ordinal) != true)
+        {
+            return false;
+        }
+
+        string payload;
+        DateTimeOffset expiration;
+        try
+        {
+            payload = GetConfirmationProtector().Unprotect(state[ConfirmationStatePrefix.Length..], out expiration);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+
+        var parts = payload.Split('\n', 2);
+        if (parts.Length != 2 || !string.Equals(parts[1], GetConfirmedCall(context, tool, arguments), StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var cache = context.Services.GetRequiredService<IMemoryCache>();
+        var usedKey = UsedConfirmationKeyPrefix + parts[0];
+        if (cache.TryGetValue(usedKey, out _))
+        {
+            return false;
+        }
+
+        cache.Set(usedKey, true, expiration);
+        return true;
+    }
+
+    private ITimeLimitedDataProtector GetConfirmationProtector()
+    {
+        return dataProtectionProvider.CreateProtector(ConfirmationProtectorPurpose).ToTimeLimitedDataProtector();
+    }
+
+    // The user, the tool and a hash of the arguments of the call the user confirms
+    private static string GetConfirmedCall(RequestContext<CallToolRequestParams> context, McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    {
+        var argumentsJson = JsonSerializer.Serialize(arguments ?? new Dictionary<string, JsonElement>());
+        var argumentsHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(argumentsJson)));
+
+        return string.Join('\n', context.User?.GetUserId() ?? string.Empty, tool.ProtocolTool.Name, argumentsHash);
     }
 
     private static string DescribeCall(McpServerTool tool, IDictionary<string, string> values)

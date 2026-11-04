@@ -14,7 +14,8 @@ public static class McpAuditOutcome
 
     public const string Disabled = "Disabled";
 
-    // The user did not confirm a call of a tool with [McpRequiresConfirmation], so it did not run.
+    // A call of a tool with [McpRequiresConfirmation] was not confirmed, so it did not run: the user declined, or the
+    // client could not ask the user and the tool refuses such calls (McpConfirmationFallback.Refuse).
     public const string Declined = "Declined";
 
     // The call was canceled while it ran: a timeout, or the client went away. It may have changed data partly.
