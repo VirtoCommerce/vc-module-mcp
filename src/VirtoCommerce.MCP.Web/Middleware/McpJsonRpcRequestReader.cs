@@ -53,13 +53,12 @@ public static class McpJsonRpcRequestReader
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
     {
-        foreach (var property in element.EnumerateObject().Where(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            value = property.Value;
-            return true;
-        }
+        var match = element.EnumerateObject()
+            .Where(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))
+            .Select(x => (JsonElement?)x.Value)
+            .FirstOrDefault();
 
-        value = default;
-        return false;
+        value = match ?? default;
+        return match.HasValue;
     }
 }
