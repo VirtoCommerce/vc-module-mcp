@@ -18,6 +18,10 @@ public class McpOptions
     // token; other tokens are not looked up.
     public bool ValidateAgentTokensOnAllEndpoints { get; set; } = true;
 
+    // Origins of browser pages, besides the scope's own, allowed to call every scope, for example a web MCP client.
+    // A request without an Origin header (a server-side client) is not checked.
+    public IList<string> AllowedOrigins { get; set; } = [];
+
     public Dictionary<string, McpScopeOptions> Scopes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
@@ -30,4 +34,7 @@ public class McpScopeOptions
     // Hosts that serve the scope at /mcp, for example a storefront host for a buyer scope. An entry with a port matches that port only.
     // The scope stays available at /{scope}/mcp on every host.
     public IList<string> Hosts { get; set; } = [];
+
+    // Origins of browser pages allowed to call this scope, besides MCP:AllowedOrigins and the scope's own origin.
+    public IList<string> AllowedOrigins { get; set; } = [];
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -42,7 +43,7 @@ public class McpTrackedJobHandler(
         }
 
         // Switching the tool off stops its queued jobs too, not only its new calls.
-        if (toolAvailabilityService != null && await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(job.ScopeName, job.ToolName)))
+        if (toolAvailabilityService != null && await IsToolDisabledAsync(job))
         {
             job.Status = McpJobStatus.Canceled;
             job.Message = $"Not started: tool '{job.ToolName}' was switched off by the administrator.";
@@ -101,6 +102,28 @@ public class McpTrackedJobHandler(
             await jobService.SaveChangesAsync([job]);
             McpDiagnostics.RecordJob(job.Status);
         }
+    }
+
+    // The tool switch for the users of the job: the user it runs as and, for an approved change, its requester.
+    protected virtual async Task<bool> IsToolDisabledAsync(McpJob job)
+    {
+        var userIds = new[] { job.UserId, job.RequestedByUserId }.Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+        if (userIds.Count == 0)
+        {
+            return await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(job.ScopeName, job.ToolName));
+        }
+
+        var principalFactory = serviceProvider.GetService<McpUserPrincipalFactory>();
+        foreach (var userId in userIds)
+        {
+            var user = principalFactory == null ? null : await principalFactory.CreateAsync(userId);
+            if (await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(job.ScopeName, job.ToolName, user)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string Truncate(string value)

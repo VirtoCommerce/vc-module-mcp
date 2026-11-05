@@ -64,6 +64,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private const string ConfirmScope = "confirm";
     private const string BrandedScope = "branded";
     private const string BrandedOrigin = "https://branded.example.test";
+    private const string AllowedBrowserOrigin = "https://inspector.example.test";
     private const string OtherEndpointPath = "/other";
 
     private static readonly string[] _readerTools = ["canceled_tool", "interrupted_tool", "read_tool", "static_tool"];
@@ -75,6 +76,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private readonly List<string> _requesterPermissions = [WritePermission];
 
     private bool _requesterExists = true;
+    private readonly HashSet<string> _toolSwitchedOffForUsers = [];
     private readonly ConcurrentBag<McpPendingChange> _submittedChanges = [];
     private readonly ConcurrentBag<(McpPendingChange Change, string Result, bool Succeeded)> _completedChanges = [];
     private readonly Mock<IMcpApprovalService> _approvalService = new();
@@ -414,6 +416,47 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, admin.StatusCode);
         Assert.DoesNotContain("branded_sign_in", await admin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Contains($"realm=\"{Origin}\"", admin.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Request_Should_BeForbidden_When_ABrowserPageOfAnotherOriginCallsTheScope()
+    {
+        // Act: a page that DNS rebinding pointed at the server sends its own Host and Origin
+        var rebound = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", host: "evil.example.test", origin: "http://evil.example.test");
+        var otherOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: "http://evil.example.test");
+        var opaqueOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: "null");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, rebound.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, otherOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, opaqueOrigin.StatusCode);
+        Assert.DoesNotContain("\"tools\"", await otherOrigin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Request_Should_PassTheOriginCheck_When_TheOriginIsTheScopesOrAllowedOrNotSent()
+    {
+        // Act
+        var ownOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: Origin);
+        var allowedOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: AllowedBrowserOrigin);
+        var serverSideClient = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, ownOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, allowedOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, serverSideClient.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Should_CheckTheOriginAgainstTheScopesOwnOrigin()
+    {
+        // Act: the branded scope resolves its own origin; the module's origin is not that scope's
+        var brandedOrigin = await PostAsync(null, ToolsList(), $"/{BrandedScope}/mcp", origin: BrandedOrigin);
+        var moduleOrigin = await PostAsync(null, ToolsList(), $"/{BrandedScope}/mcp", origin: Origin);
+
+        // Assert: past the origin check, the scope asks for a sign-in
+        Assert.Equal(HttpStatusCode.Unauthorized, brandedOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, moduleOrigin.StatusCode);
     }
 
     [Fact]
@@ -1298,6 +1341,24 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheToolIsSwitchedOffForTheRequester()
+    {
+        // Arrange: a replacement of the tool switches turns the tool off for the requester only
+        _toolSwitchedOffForUsers.Add("requester");
+
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("switched off for its requester", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ApprovePendingChange_Should_Refuse_When_TheRequesterNoLongerExists()
     {
         // Arrange
@@ -1495,10 +1556,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.Configure<McpOptions>(options =>
         {
             options.PublicOrigin = Origin;
-            options.Scopes[ShopScope] = new McpScopeOptions { Hosts = [ShopHost] };
+            options.Scopes[ShopScope] = new McpScopeOptions { Hosts = [ShopHost], AllowedOrigins = [AllowedBrowserOrigin] };
         });
         services.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         services.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        services.AddTransient<IMcpOriginValidator, McpOriginValidator>();
         services.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         services.AddTransient<IMcpTokenValidator, ActiveTokenValidator>();
         services.AddTransient<McpConnectedAgentService, TestConnectedAgentService>();
@@ -1506,7 +1568,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddTransient<McpChallengeWriter>();
         services.AddTransient<McpToolAuthorizationService>();
         services.AddTransient<McpAuditWriter>();
-        services.AddTransient<IMcpToolAvailabilityService, McpToolAvailabilityService>();
+        services.AddTransient<IMcpToolAvailabilityService>(_ => new PerUserToolAvailabilityService(_settingsManager.Object, _toolSwitchedOffForUsers));
         services.AddTransient<McpPendingChangeExecutor>();
         services.AddTransient<McpUserPrincipalFactory>(_ => new TestUserPrincipalFactory(CreateUserPrincipal));
         services.AddScoped<McpCallToolFilter>();
@@ -1587,7 +1649,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddMcpTools([typeof(ScopedPermissionTools)]);
         services.AddMcpTools<McpApprovalTools>();
         services.AddMcpTools<McpJobTools>();
-        services.AddMcpTools([typeof(PartnerTools), typeof(FailingTools), typeof(SensitiveTools), typeof(ShopTools), typeof(CategoryTools)]);
+        services.AddMcpTools([typeof(PartnerTools), typeof(FailingTools), typeof(SensitiveTools), typeof(ShopTools), typeof(CategoryTools), typeof(GatedSearchTools)]);
     }
 
     private void DisableTools(string value)
@@ -1795,7 +1857,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         };
     }
 
-    private async Task<HttpResponseMessage> PostAsync(string token, object body, string path = "/admin/mcp", bool acceptEventStream = true, string host = null)
+    private async Task<HttpResponseMessage> PostAsync(string token, object body, string path = "/admin/mcp", bool acceptEventStream = true, string host = null, string origin = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
@@ -1804,6 +1866,11 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         if (host != null)
         {
             request.Headers.Host = host;
+        }
+
+        if (origin != null)
+        {
+            request.Headers.Add("Origin", origin);
         }
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -1915,6 +1982,15 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private static class McpPermissions
     {
         public const string Approve = ModuleConstants.Security.Permissions.Approve;
+    }
+
+    // A replacement of the tool switches that turns every tool off for some users, on top of the configured switches
+    private sealed class PerUserToolAvailabilityService(ISettingsManager settingsManager, ISet<string> userIds) : McpToolAvailabilityService(settingsManager)
+    {
+        public override async Task<bool> IsDisabledAsync(McpToolAvailabilityContext context)
+        {
+            return userIds.Contains(context.User?.FindFirst("sub")?.Value ?? string.Empty) || await base.IsDisabledAsync(context);
+        }
     }
 
     private sealed class TestUserPrincipalFactory(Func<string, ClaimsPrincipal> create) : McpUserPrincipalFactory(null, null)
@@ -2271,6 +2347,16 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [McpServerTool(Name = "get_my_prices"), Description("Needs a permission.")]
         [Authorize(WritePermission)]
         public static string GetMyPrices() => "prices";
+    }
+
+    // A tool of another scope with the name of the shop's open tool, that needs a user there.
+    [McpServerToolType]
+    [McpScope(GatedScope)]
+    public static class GatedSearchTools
+    {
+        [McpServerTool(Name = "search_products"), Description("Needs a signed-in user in this scope.")]
+        [McpRequiresUser]
+        public static string SearchProducts() => "gated products";
     }
 
     [McpServerPromptType]

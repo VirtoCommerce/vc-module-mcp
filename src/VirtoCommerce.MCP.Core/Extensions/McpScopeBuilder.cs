@@ -61,6 +61,14 @@ public class McpScopeBuilder
         return this;
     }
 
+    // The browser origins allowed to call the scope's endpoint, when MCP:AllowedOrigins and the scope's origin are not enough.
+    public virtual McpScopeBuilder WithOriginValidator<TValidator>()
+        where TValidator : class, IMcpOriginValidator
+    {
+        Services.AddKeyedTransient<IMcpOriginValidator, TValidator>(ServiceKey);
+        return this;
+    }
+
     // A step in the tool calls of the scope, inside the MCP module's checks and audit.
     public virtual McpScopeBuilder WithCallToolFilter<TFilter>()
         where TFilter : class, IMcpCallToolFilter

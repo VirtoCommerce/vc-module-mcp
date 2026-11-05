@@ -100,6 +100,14 @@ public class McpPendingChangeExecutor(
             return $"its requester is no longer allowed to run tool '{change.ToolName}'";
         }
 
+        // A switch that turns the tool off for some users, stores or organizations applies to the requester too.
+        var httpContext = services.GetService<IHttpContextAccessor>()?.HttpContext;
+        var availabilityContext = new McpToolAvailabilityContext(change.ScopeName, change.ToolName, requester, httpContext);
+        if (await services.GetRequiredService<IMcpToolAvailabilityService>().IsDisabledAsync(availabilityContext))
+        {
+            return $"tool '{change.ToolName}' is switched off for its requester";
+        }
+
         var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(change.Arguments ?? "{}", McpJsonUtilities.DefaultOptions);
         arguments[dryRunParameter] = JsonSerializer.SerializeToElement(true);
 

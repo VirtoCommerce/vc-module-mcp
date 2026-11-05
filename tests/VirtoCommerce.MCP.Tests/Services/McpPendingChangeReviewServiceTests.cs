@@ -312,6 +312,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
             .AddSingleton<IHttpContextAccessor>(_httpContextAccessor)
             .AddSingleton(requesterFactory.Object)
             .AddSingleton(_toolAuthorizationService.Object)
+            .AddSingleton<IMcpToolAvailabilityService>(_toolAvailabilityService.Object)
             .BuildServiceProvider();
     }
 

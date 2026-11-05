@@ -182,7 +182,10 @@ A tool that is switched off disappears from `tools/list`, a call to it is refuse
 
 In **Connected agents**, users see the agents they signed in to, with when they were last used. **Disconnect** ends an agent's sign-in at once: its next request is refused, and the user signs in again to reconnect. With `mcp:manage`, an administrator sees and disconnects everyone's agents.
 
-Disconnect does not touch the changes the agent submitted for approval: they stay in **Pending changes** and can still be approved, as the requester's own changes. After disconnecting an agent that misbehaved, reject its pending changes there; the requester's name and the time of each change show which ones it submitted.
+Disconnect does not touch what the agent already handed over to the platform:
+
+- The changes it submitted for approval stay in **Pending changes** and can still be approved, as the requester's own changes. A change records the user, not the agent: when the user has several agents, the **Audit** entry of the submission (outcome `PendingApproval`, with the change id and the client) shows which agent submitted it. After disconnecting an agent that misbehaved, reject its pending changes there.
+- The bulk jobs it started keep running, and queued ones still start; the user or an approver cancels them with `cancel_job` from another session.
 
 ## Configuration
 
@@ -196,9 +199,11 @@ Disconnect does not touch the changes the agent submitted for approval: they sta
   "PublicOrigin": "https://admin.example.com",
   "MaxRequestBodySize": 1048576,
   "ValidateAgentTokensOnAllEndpoints": true,
+  "AllowedOrigins": [],
   "Scopes": {
     "vendor": { "Enabled": false },
-    "ucp": { "Hosts": [ "store.example.com" ] }
+    "ucp": { "Hosts": [ "store.example.com" ] },
+    "admin": { "AllowedOrigins": [ "https://mcp-console.example.com" ] }
   }
 }
 ```
@@ -208,11 +213,24 @@ Disconnect does not touch the changes the agent submitted for approval: they sta
 | `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. **Required outside Development**: without it, or the scope's own origin, `/{scope}/mcp` refuses access tokens and the module logs an error at startup, because the origin would otherwise come from the request's `Host` and forwarded headers. In Development it defaults to the origin of the request. |
 | `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413` before it is read. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
 | `MCP:ValidateAgentTokensOnAllEndpoints` | `true` by default: on every endpoint of the platform, an agent's token is looked up in the token store, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP: a request with a revoked agent token gets `401 invalid_token`. An agent's token is one issued for an MCP endpoint (its audience, of any scope, switched off or not), or issued to a client application registered for an MCP resource, as **Connected agents** lists them; the second covers a token of the agent's authorization requested without a resource. Other tokens, cookies and API keys are not looked up, so the rest of the platform behaves as before. It costs one token store lookup per request with an agent's token, and one cached client lookup per client. |
+| `MCP:AllowedOrigins` | Origins of browser pages allowed to call every scope, besides each scope's own origin, for example a web MCP client such as MCP Inspector (`http://localhost:6274`). Empty by default. See [Browser origins](#browser-origins). |
 | `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
+| `MCP:Scopes:{scope}:AllowedOrigins` | Origins of browser pages allowed to call this scope only. |
 
 Invalid origins stop the platform at startup: an origin is an absolute `http` or `https` address without a path, query or fragment.
+
+#### Browser origins
+
+The MCP transport requires a server to check the `Origin` header, so a web page a user opens cannot reach an MCP server, for example through DNS rebinding. The module checks it on every scope, before the token:
+
+- A request without `Origin` is not checked. Server-side MCP clients (Claude, ChatGPT, agents, MCP Inspector's CLI) send none, so they are not affected.
+- A browser page may call a scope from the scope's own origin (`MCP:Scopes:{scope}:PublicOrigin`, `MCP:PublicOrigin`, a host of `MCP:Scopes:{scope}:Hosts`, or the origin the scope's module resolves, such as UCP's store), and from the origins of `MCP:AllowedOrigins` and the scope's `AllowedOrigins`.
+- Without a configured origin, the scope's origin is the request's own, whose `Host` a rebinding page chooses; it is accepted on `localhost` and loopback addresses only, the Development case.
+- Any other origin, including the opaque `null` of sandboxed pages and files, is answered with `403` and a warning in the log.
+
+A web MCP client hosted on another origin, such as MCP Inspector's browser UI, needs its origin in `AllowedOrigins`. The `Host` header itself is limited by the platform's `AllowedHosts` setting.
 
 > [!NOTE]
 > On a deployment where `Authorization:OAuthLoginPath` points to the storefront login page, the platform host needs the per-host login path from [VirtoCommerce/vc-platform#3121](https://github.com/VirtoCommerce/vc-platform/pull/3121) for the `admin` scope sign-in to work.
@@ -299,7 +317,7 @@ The MCP endpoints are endpoints of the platform's request pipeline, like its con
 | Where | Hook | What runs |
 | --- | --- | --- |
 | After routing, before authentication | `IPlatformStartup.ConfigureAfterRouting` | The body size limit (`413` before anything reads the body), the JSON-RPC request read once (`HttpContext.GetMcpRequest()`), then the compatibility of JSON-only `tools/list` probes |
-| After authentication, before authorization | `IPlatformStartup.ConfigureAfterAuthentication` | The scope's token rules: the user comes from the MCP access token only; the `401` challenge and `403` of the MCP authorization flow. On the other endpoints, an agent's token is looked up in the token store (`MCP:ValidateAgentTokensOnAllEndpoints`) |
+| After authentication, before authorization | `IPlatformStartup.ConfigureAfterAuthentication` | The `Origin` of browser requests (`403` for an origin the scope does not allow), after the modules' steps after routing so the scope's origin is resolved; then the scope's token rules: the user comes from the MCP access token only; the `401` challenge and `403` of the MCP authorization flow. On the other endpoints, an agent's token is looked up in the token store (`MCP:ValidateAgentTokensOnAllEndpoints`) |
 | With the platform's endpoints | `IModule.PostInitialize` | `UseEndpoints(e => e.MapMcpScopes())`: `/{scope}/mcp` of every scope, and `/mcp` of a scope's hosts (`RequireHost`) |
 
 The MCP steps run only for a request whose endpoint is an MCP endpoint; other requests pass them untouched, except for the token store lookup of an agent's token. A module that adds a step for its own scope, such as UCP's store of the request, registers it in the same hooks and finds the scope with `HttpContext.GetMcpScope()`.
@@ -696,10 +714,11 @@ The [extension sample](samples/VirtoCommerce.MCP.MarketingExtensionSample/README
 A module outside this repository references `VirtoCommerce.MCP.Core` only, so the behaviour of this module is replaced through the contracts there:
 
 - `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration. For one scope, declare it with the scope (`WithPublicOriginResolver<T>()`, see [Add a scope](#add-a-scope)); replacing the registration changes it for every scope.
+- `IMcpOriginValidator` decides which browser origins may call a scope (see [Browser origins](#browser-origins)). For one scope, declare it with the scope (`WithOriginValidator<T>()`).
 - `McpChallengeWriter` writes the HTTP 401 and 403 responses of the MCP endpoints; a module with an error format of its own replaces the bodies and keeps the status codes and the `WWW-Authenticate` header. For one scope, declare it with the scope (`WithChallengeWriter<T>()`).
 - `IMcpSessionService` is for tools: it tells whether the user's token is still active and signs the user out.
 - `IMcpTokenValidator` holds the rules an MCP access token must meet: OpenIddict's bearer token only, issued for the resource, to a client, for a user, and active in the token store. The MCP endpoints use it, and so can another endpoint that accepts the same tokens, such as UCP's REST API.
-- `IMcpToolAvailabilityService` decides the tool switches. Its context carries the scope, the tool, the user and the request, so a replacement can switch a tool off for one store, organization or user; the default reads `MCP.Tools.Disabled` per scope.
+- `IMcpToolAvailabilityService` decides the tool switches. Its context carries the scope, the tool, the user and the request, so a replacement can switch a tool off for one store, organization or user; the default reads `MCP.Tools.Disabled` per scope. The user is the one the call runs for: the caller of a tool; at the approval of a pending change, the approver and then the requester; for a queued job, the user it runs as and the requester of the change that started it, without a request.
 - `IMcpCallToolFilter` adds a step to the tool calls of a scope (`WithCallToolFilter<T>()` or `AddMcpCallToolFilter<T>(scope)`).
 - `IMcpJobDispatcher` starts and tracks the jobs of bulk tools.
 - `IMcpPageSizeResolver` decides how many rows a list tool returns.
@@ -739,6 +758,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
+| `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
 | `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |
 

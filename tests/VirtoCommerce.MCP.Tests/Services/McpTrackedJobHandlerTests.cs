@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,6 +54,26 @@ public class McpTrackedJobHandlerTests
         Assert.Equal(0, CountingJob.Executions);
         Assert.Equal(McpJobStatus.Canceled, _jobs["job-1"].Status);
         Assert.Contains("switched off", _jobs["job-1"].Message);
+    }
+
+    [Fact]
+    public async Task Execute_Should_NotStartTheJob_When_ItsToolIsSwitchedOffForTheRequester()
+    {
+        // Arrange: a switch that turns the tool off for one user, the one who submitted the change the approver ran
+        var availability = new Mock<McpToolAvailabilityService>(Mock.Of<VirtoCommerce.Platform.Core.Settings.ISettingsManager>());
+        availability.Setup(x => x.IsDisabledAsync(It.IsAny<McpToolAvailabilityContext>()))
+            .ReturnsAsync((McpToolAvailabilityContext c) => c.User?.FindFirst("sub")?.Value == "requester");
+        var handler = CreateHandler(availability.Object);
+        _jobs["job-1"].UserId = "approver";
+        _jobs["job-1"].RequestedByUserId = "requester";
+
+        // Act
+        await handler.Execute(CreatePayload(new CountPayload { Count = 3 }), CreateContext(), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(0, CountingJob.Executions);
+        Assert.Equal(McpJobStatus.Canceled, _jobs["job-1"].Status);
+        availability.Verify(x => x.IsDisabledAsync(It.Is<McpToolAvailabilityContext>(c => c.User.FindFirst("sub").Value == "approver")), Times.Once);
     }
 
     [Fact]
@@ -167,7 +188,15 @@ public class McpTrackedJobHandlerTests
                 return true;
             });
 
-        var services = new ServiceCollection().AddTransient<CountingJob>().BuildServiceProvider();
+        var principalFactory = new Mock<McpUserPrincipalFactory>(null, null);
+        principalFactory
+            .Setup(x => x.CreateAsync(It.IsAny<string>()))
+            .ReturnsAsync((string userId) => new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", userId)], "test")));
+
+        var services = new ServiceCollection()
+            .AddTransient<CountingJob>()
+            .AddSingleton(principalFactory.Object)
+            .BuildServiceProvider();
 
         return new McpTrackedJobHandler(services, jobService.Object, new TestTimeProvider(), NullLogger<McpTrackedJobHandler>.Instance, toolAvailabilityService);
     }

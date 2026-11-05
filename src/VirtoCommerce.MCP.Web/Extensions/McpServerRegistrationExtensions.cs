@@ -24,7 +24,7 @@ namespace VirtoCommerce.MCP.Web.Extensions;
 //   UseMcpScopeRequests           - body size limit, the JSON-RPC request read once (HttpContext.GetMcpRequest),
 //                                   probe compatibility                       (IPlatformStartup.ConfigureAfterRouting)
 //   UseAuthentication
-//   UseMcpScopeAuthentication     - the scope's token rules and challenges; agents' tokens checked in the token store
+//   UseMcpScopeAuthentication     - the Origin of browser requests; the scope's token rules and challenges; agents' tokens checked in the token store
 //                                   on the other endpoints                    (IPlatformStartup.ConfigureAfterAuthentication)
 //   UseAuthorization
 //   UseEndpoints(MapMcpScopes)    - the MCP server                          (IModule.PostInitialize)
@@ -64,13 +64,15 @@ public static class McpServerRegistrationExtensions
         });
     }
 
-    // After authentication: on an MCP endpoint, the request's user comes from its MCP access token only, and is
-    // challenged as the MCP authorization flow expects; on the other endpoints, an agent's token is checked in the token
-    // store, so a disconnected agent loses them too.
+    // After authentication: on an MCP endpoint, a browser request's Origin is checked, then the request's user comes from
+    // its MCP access token only, and is challenged as the MCP authorization flow expects; on the other endpoints, an
+    // agent's token is checked in the token store, so a disconnected agent loses them too.
     public static IApplicationBuilder UseMcpScopeAuthentication(this IApplicationBuilder app)
     {
         return app
-            .UseWhen(IsMcpRequest, branch => branch.UseMiddleware<McpScopeAuthenticationMiddleware>())
+            .UseWhen(IsMcpRequest, branch => branch
+                .UseMiddleware<McpOriginValidationMiddleware>()
+                .UseMiddleware<McpScopeAuthenticationMiddleware>())
             .UseWhen(context => !IsMcpRequest(context), branch => branch.UseMiddleware<McpAgentTokenMiddleware>());
     }
 

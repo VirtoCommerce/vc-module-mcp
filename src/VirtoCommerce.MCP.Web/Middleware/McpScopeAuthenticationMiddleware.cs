@@ -14,6 +14,7 @@ using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Web.Filters;
 using VirtoCommerce.MCP.Web.Services;
 
 namespace VirtoCommerce.MCP.Web.Middleware;
@@ -119,7 +120,10 @@ public class McpScopeAuthenticationMiddleware(
             return null;
         }
 
-        var tools = context.RequestServices.GetRequiredService<McpToolCatalog>().GetTools(scope).ToList();
+        // The tools the session of the scope lists: a tool of the same name in another scope does not count.
+        var tools = context.RequestServices.GetRequiredService<McpToolCatalog>().GetTools(scope)
+            .Where(x => McpScopeSessionConfigurator.IsVisible(x, scope))
+            .ToList();
 
         return request.ToolNames.FirstOrDefault(toolName => tools.Any(x =>
             string.Equals(x.ProtocolTool.Name, toolName, StringComparison.Ordinal) && RequiresUser(x)));

@@ -92,6 +92,8 @@ public class Module : IModule, IHasConfiguration
             .Validate(x => IsValidOrigin(x.PublicOrigin), "MCP:PublicOrigin must be an absolute http or https origin without a path, for example https://admin.example.com.")
             .Validate(x => x.Scopes.Values.All(scope => IsValidOrigin(scope.PublicOrigin)), "MCP:Scopes:{scope}:PublicOrigin must be an absolute http or https origin without a path.")
             .Validate(HasUniqueHosts, "MCP:Scopes:{scope}:Hosts: a host can serve one scope only.")
+            .Validate(x => (x.AllowedOrigins ?? []).Concat(x.Scopes.Values.SelectMany(scope => scope?.AllowedOrigins ?? [])).All(IsAllowedOrigin),
+                "MCP:AllowedOrigins and MCP:Scopes:{scope}:AllowedOrigins: each entry must be an absolute http or https origin without a path, for example https://inspector.example.com.")
             .ValidateOnStart();
     }
 
@@ -112,6 +114,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        serviceCollection.AddTransient<IMcpOriginValidator, McpOriginValidator>();
         serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         serviceCollection.AddTransient<IMcpTokenValidator, McpTokenValidator>();
         serviceCollection.AddTransient<McpChallengeWriter>();
@@ -265,6 +268,11 @@ public class Module : IModule, IHasConfiguration
         return !hosts.Where((host, index) => hosts.Skip(index + 1).Any(other =>
             string.Equals(host.Host, other.Host, StringComparison.OrdinalIgnoreCase) &&
             (host.Port == null || other.Port == null || host.Port == other.Port))).Any();
+    }
+
+    private static bool IsAllowedOrigin(string origin)
+    {
+        return !string.IsNullOrWhiteSpace(origin) && IsValidOrigin(origin.Trim());
     }
 
     private static bool IsValidOrigin(string origin)
