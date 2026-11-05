@@ -199,22 +199,10 @@ public class McpCallToolFilter(
             return CreateErrorResult(audit.ErrorMessage + " Tell the user that this action is not available now.");
         }
 
-        // The scope's middleware challenges such a call before it gets here; this holds when the request named the tool
-        // in a way that middleware did not read.
-        if (tool != null && context.User?.Identity?.IsAuthenticated != true && McpScopeAuthenticationMiddleware.RequiresUser(tool))
+        var forbidden = tool != null ? await RefuseUserAsync(context, scope, tool, audit) : null;
+        if (forbidden != null)
         {
-            audit.Outcome = McpAuditOutcome.Forbidden;
-            audit.ErrorMessage = $"Sign in to use tool '{audit.ToolName}'.";
-
-            return CreateErrorResult(audit.ErrorMessage);
-        }
-
-        if (tool != null && !await MayRunAsync(context, scope, tool))
-        {
-            audit.Outcome = McpAuditOutcome.Forbidden;
-            audit.ErrorMessage = $"You are not allowed to run tool '{audit.ToolName}'.";
-
-            return CreateErrorResult(audit.ErrorMessage);
+            return forbidden;
         }
 
         // An invalid argument is reported as a tool error, not as a protocol error, so the model can correct the call.
@@ -223,6 +211,30 @@ public class McpCallToolFilter(
         {
             audit.Outcome = McpAuditOutcome.Error;
             audit.ErrorMessage = $"Argument '{missingArgument}' is required.";
+
+            return CreateErrorResult(audit.ErrorMessage);
+        }
+
+        return null;
+    }
+
+    // The error result of a call the user may not make, with its audit outcome, or null when the user may run the tool.
+    private async Task<CallToolResult> RefuseUserAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpServerTool tool, McpAuditEntry audit)
+    {
+        // The scope's middleware challenges such a call before it gets here; this holds when the request named the tool
+        // in a way that middleware did not read.
+        if (context.User?.Identity?.IsAuthenticated != true && McpScopeAuthenticationMiddleware.RequiresUser(tool))
+        {
+            audit.Outcome = McpAuditOutcome.Forbidden;
+            audit.ErrorMessage = $"Sign in to use tool '{audit.ToolName}'.";
+
+            return CreateErrorResult(audit.ErrorMessage);
+        }
+
+        if (!await MayRunAsync(context, scope, tool))
+        {
+            audit.Outcome = McpAuditOutcome.Forbidden;
+            audit.ErrorMessage = $"You are not allowed to run tool '{audit.ToolName}'.";
 
             return CreateErrorResult(audit.ErrorMessage);
         }

@@ -21,10 +21,15 @@ public class McpConnectedAgentService(
 {
     private const string McpResourceSuffix = "/mcp";
 
-    public virtual async Task<McpConnectedAgentSearchResult> SearchAsync(McpConnectedAgentSearchCriteria criteria)
+    public virtual Task<McpConnectedAgentSearchResult> SearchAsync(McpConnectedAgentSearchCriteria criteria)
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
+        return SearchAgentsAsync(criteria);
+    }
+
+    private async Task<McpConnectedAgentSearchResult> SearchAgentsAsync(McpConnectedAgentSearchCriteria criteria)
+    {
         var agents = new List<McpConnectedAgent>();
 
         // Each list is read to the end before the next query: the OpenIddict stores share one database connection.
