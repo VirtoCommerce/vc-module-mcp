@@ -3,12 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.Platform.Core.Settings;
 
 namespace VirtoCommerce.MCP.Web.Services;
 
+// The switches of the MCP.Tools.Disabled setting, per scope; the user and the request of the context are not used.
 public class McpToolAvailabilityService(
     ISettingsManager settingsManager)
+    : IMcpToolAvailabilityService
 {
     public const string AllTools = "*";
 
@@ -24,6 +28,20 @@ public class McpToolAvailabilityService(
     public virtual async Task<bool> IsDisabledAsync(string scopeName, string toolName)
     {
         return IsDisabled(await GetDisabledToolNamesAsync(scopeName), toolName);
+    }
+
+    public virtual Task<IReadOnlySet<string>> GetDisabledToolNamesAsync(McpToolAvailabilityContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return GetDisabledToolNamesAsync(context.ScopeName);
+    }
+
+    public virtual Task<bool> IsDisabledAsync(McpToolAvailabilityContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return IsDisabledAsync(context.ScopeName, context.ToolName);
     }
 
     // Switches a tool, or with * a whole scope, on or off in one scope, keeping the other entries of the setting.

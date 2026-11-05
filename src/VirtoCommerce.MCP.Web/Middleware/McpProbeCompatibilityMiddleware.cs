@@ -42,8 +42,8 @@ public class McpProbeCompatibilityMiddleware(
 
     private static async Task<bool> IsToolsListRequest(HttpRequest request)
     {
-        var (method, _) = await McpJsonRpcRequestReader.ReadAsync(request);
-        return method == "tools/list";
+        var mcpRequest = await McpJsonRpcRequestReader.GetOrReadAsync(request.HttpContext);
+        return mcpRequest.Method == "tools/list";
     }
 
     private async Task RewriteEventStreamResponseAsJson(HttpContext context)

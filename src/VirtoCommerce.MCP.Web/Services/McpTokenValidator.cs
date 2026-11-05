@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
 using OpenIddict.Server;
 using OpenIddict.Validation.AspNetCore;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.Platform.Security.Model.OpenIddict;
 
 namespace VirtoCommerce.MCP.Web.Services;
@@ -17,6 +18,7 @@ namespace VirtoCommerce.MCP.Web.Services;
 public class McpTokenValidator(
     IOpenIddictTokenManager tokenManager,
     IOptions<OpenIddictServerOptions> serverOptions = null)
+    : IMcpTokenValidator
 {
     // The bearer token as the platform's OpenIddict validation reads it, not whatever the default authentication scheme
     // produced: a cookie, an API key or Basic credentials never stand in for an MCP access token. OpenIddict caches
@@ -78,6 +80,35 @@ public class McpTokenValidator(
             .Where(claim => _clientClaimTypes.Contains(claim.Type) && !string.IsNullOrEmpty(claim.Value))
             .Select(claim => claim.Value)
             .Distinct(StringComparer.Ordinal) ?? [];
+    }
+
+    public virtual async Task<string> GetTokenErrorAsync(ClaimsPrincipal principal, string expectedResource, CancellationToken cancellationToken)
+    {
+        if (principal?.Identity?.IsAuthenticated != true)
+        {
+            return "The access token is invalid or expired.";
+        }
+
+        if (!HasExpectedAudience(principal, expectedResource))
+        {
+            return "The access token was not issued for this MCP resource.";
+        }
+
+        if (IsClientIdentity(principal))
+        {
+            return "The access token identifies the MCP client, not a user. Connect the client with a user's sign-in.";
+        }
+
+        // A token issued with no client, such as by the password grant of an anonymous client, skips the user's consent
+        // and is not listed in Connected agents, so the user could not disconnect it.
+        if (!GetClientIds(principal).Any())
+        {
+            return "The access token was not issued to an MCP client. Connect the MCP client with a user's sign-in.";
+        }
+
+        return await IsActiveAsync(principal, cancellationToken)
+            ? null
+            : "The OAuth session has ended. Sign in again to continue.";
     }
 
     public virtual async Task<bool> IsActiveAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)

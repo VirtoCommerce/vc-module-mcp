@@ -21,7 +21,8 @@ namespace VirtoCommerce.MCP.Web.Extensions;
 // metadata (McpScopeEndpointMetadata), and two steps of the MCP module run around the platform's authentication:
 //
 //   UseRouting                    - matches the MCP endpoint of the scope
-//   UseMcpScopeRequests           - body size limit, probe compatibility    (IPlatformStartup.ConfigureAfterRouting)
+//   UseMcpScopeRequests           - body size limit, the JSON-RPC request read once (HttpContext.GetMcpRequest),
+//                                   probe compatibility                       (IPlatformStartup.ConfigureAfterRouting)
 //   UseAuthentication
 //   UseMcpScopeAuthentication     - the scope's token rules and challenges; agents' tokens checked in the token store
 //                                   on the other endpoints                    (IPlatformStartup.ConfigureAfterAuthentication)
@@ -31,6 +32,9 @@ public static class McpServerRegistrationExtensions
 {
     public static IMcpServerBuilder AddScopedMcpServer(this IServiceCollection services)
     {
+        // The tools each scope serves, after the removals and replacements modules declared
+        services.TryAddTransient<McpToolCatalog>();
+
         var builder = services.AddMcpServer()
             .WithHttpTransport(options => options.Stateless = true)
             .AddAuthorizationFilters()
@@ -51,6 +55,11 @@ public static class McpServerRegistrationExtensions
         return app.UseWhen(IsMcpRequest, branch =>
         {
             branch.UseMiddleware<McpRequestSizeLimitMiddleware>();
+            branch.Use(async (context, next) =>
+            {
+                await McpJsonRpcRequestReader.GetOrReadAsync(context);
+                await next(context);
+            });
             branch.UseMiddleware<McpProbeCompatibilityMiddleware>();
         });
     }

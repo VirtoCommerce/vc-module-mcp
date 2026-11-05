@@ -43,7 +43,7 @@ public class McpTrackedJobHandlerTests
     {
         // Arrange
         var availability = new Mock<McpToolAvailabilityService>(Mock.Of<VirtoCommerce.Platform.Core.Settings.ISettingsManager>());
-        availability.Setup(x => x.IsDisabledAsync("admin", "count")).ReturnsAsync(true);
+        availability.Setup(x => x.IsDisabledAsync(It.Is<McpToolAvailabilityContext>(c => c.ScopeName == "admin" && c.ToolName == "count"))).ReturnsAsync(true);
         var handler = CreateHandler(availability.Object);
 
         // Act

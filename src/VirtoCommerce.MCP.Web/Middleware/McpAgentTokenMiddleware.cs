@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Services;
 
 namespace VirtoCommerce.MCP.Web.Middleware;
@@ -18,7 +19,7 @@ public class McpAgentTokenMiddleware(RequestDelegate next)
         HttpContext context,
         IOptions<McpOptions> options,
         McpAgentTokenClassifier agentTokenClassifier,
-        McpTokenValidator tokenValidator)
+        IMcpTokenValidator tokenValidator)
     {
         var user = context.User;
 

@@ -7,6 +7,7 @@ public static class McpHttpContextExtensions
 {
     private static readonly object _scopeKey = new();
     private static readonly object _endpointPathKey = new();
+    private static readonly object _requestKey = new();
 
     // The scope of the request: the one set for it, or the one of the MCP endpoint that routing matched.
     public static McpScope GetMcpScope(this HttpContext context)
@@ -46,6 +47,18 @@ public static class McpHttpContextExtensions
     public static void SetMcpEndpointPath(this HttpContext context, string endpointPath)
     {
         context.Items[_endpointPathKey] = endpointPath;
+    }
+
+    // The JSON-RPC request of an MCP endpoint, read once after routing (UseMcpScopeRequests), so middleware of the
+    // platform pipeline sees the method and the tool without parsing the body; null when it is not an MCP request.
+    public static McpRequestInfo GetMcpRequest(this HttpContext context)
+    {
+        return context?.Items.TryGetValue(_requestKey, out var request) == true ? request as McpRequestInfo : null;
+    }
+
+    public static void SetMcpRequest(this HttpContext context, McpRequestInfo request)
+    {
+        context.Items[_requestKey] = request;
     }
 
     // The MCP endpoint that routing matched for the request, or null when it is not an MCP request.

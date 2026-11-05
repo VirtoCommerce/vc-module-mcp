@@ -30,6 +30,18 @@ public static class McpServiceCollectionExtensions
         return services;
     }
 
+    // Changes a scope another module declared, for the requests of that scope: its tools, challenge writer, origin
+    // resolver and call filters (McpScopeBuilder). The scope itself stays as the module declared it.
+    public static IServiceCollection ConfigureMcpScope(this IServiceCollection services, string scopeName, Action<McpScopeBuilder> configure)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(scopeName);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        configure(new McpScopeBuilder(services, new McpScope { Name = scopeName }));
+
+        return services;
+    }
+
     // Adds a module's step to the tool calls of one scope (McpScopes.Any for every scope). It runs inside the MCP
     // module's pipeline, after its checks and within its audit, and is resolved from the request's services. It also
     // runs around the execution of an approved change of the scope, and around the requester's dry run before it.

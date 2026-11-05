@@ -182,6 +182,8 @@ A tool that is switched off disappears from `tools/list`, a call to it is refuse
 
 In **Connected agents**, users see the agents they signed in to, with when they were last used. **Disconnect** ends an agent's sign-in at once: its next request is refused, and the user signs in again to reconnect. With `mcp:manage`, an administrator sees and disconnects everyone's agents.
 
+Disconnect does not touch the changes the agent submitted for approval: they stay in **Pending changes** and can still be approved, as the requester's own changes. After disconnecting an agent that misbehaved, reject its pending changes there; the requester's name and the time of each change show which ones it submitted.
+
 ## Configuration
 
 > [!NOTE]
@@ -296,11 +298,13 @@ The MCP endpoints are endpoints of the platform's request pipeline, like its con
 
 | Where | Hook | What runs |
 | --- | --- | --- |
-| After routing, before authentication | `IPlatformStartup.ConfigureAfterRouting` | The body size limit (`413` before anything reads the body), then the compatibility of JSON-only `tools/list` probes |
+| After routing, before authentication | `IPlatformStartup.ConfigureAfterRouting` | The body size limit (`413` before anything reads the body), the JSON-RPC request read once (`HttpContext.GetMcpRequest()`), then the compatibility of JSON-only `tools/list` probes |
 | After authentication, before authorization | `IPlatformStartup.ConfigureAfterAuthentication` | The scope's token rules: the user comes from the MCP access token only; the `401` challenge and `403` of the MCP authorization flow. On the other endpoints, an agent's token is looked up in the token store (`MCP:ValidateAgentTokensOnAllEndpoints`) |
 | With the platform's endpoints | `IModule.PostInitialize` | `UseEndpoints(e => e.MapMcpScopes())`: `/{scope}/mcp` of every scope, and `/mcp` of a scope's hosts (`RequireHost`) |
 
 The MCP steps run only for a request whose endpoint is an MCP endpoint; other requests pass them untouched, except for the token store lookup of an agent's token. A module that adds a step for its own scope, such as UCP's store of the request, registers it in the same hooks and finds the scope with `HttpContext.GetMcpScope()`.
+
+A step that decides per operation, such as a quota for write tools or an extra access rule, reads the operation with `HttpContext.GetMcpRequest()` instead of parsing the body again: its `Method` (`tools/call`, `tools/list`, ...) and the tool names of a `tools/call`. The MCP server reads the parameters ignoring case, so a request can carry several names (`name` and `Name`); `ToolNames` has every one of them, `ToolName` is set only when there is exactly one, and `IsAmbiguous` tells the two apart. Decide on every name: the module's own sign-in challenge does. Registered in `ConfigureAfterAuthentication`, the step also sees the validated user, and refuses with any HTTP status, for example `429` with `Retry-After`.
 
 ### Tool call flow
 
@@ -669,25 +673,40 @@ A partner project changes the behaviour of a module's tools with the platform's 
 | New tools, prompts and resources next to the existing ones | `AddMcpToolsFromAssembly`, `AddMcpPromptsFromAssembly`, `AddMcpResourcesFromAssembly` with the same `[McpScope]` |
 | Settings of the extension | Options bound from configuration |
 | A tool that must not be used | **Agent tools** or `MCP.Tools.Disabled` |
+| Another implementation of a tool | `ConfigureMcpScope(scope, s => s.ReplaceTool<TToolType>(name))` |
+| A tool the solution does not serve at all | `ConfigureMcpScope(scope, s => s.RemoveTool(name))` |
 
 - Declare the extended module as a dependency in `module.manifest`, so the platform initializes your module after it and your registrations win.
-- A tool name is unique in a scope: add tools under new names, and change the behaviour of an existing tool through the services it uses.
+- A tool name is unique in a scope. Change the behaviour of an existing tool through the services it uses when they are open for it; otherwise replace the tool:
+
+```csharp
+// In the module that depends on UCP
+serviceCollection.ConfigureMcpScope("ucp", scope => scope
+    .ReplaceTool<MyProductTools>("search_products") // MyProductTools has [McpScope("ucp")] and a tool named search_products
+    .RemoveTool("list_regions"));
+```
+
+`ReplaceTool` registers the tools of the type and serves the last registration of the name in that scope instead of the first; other scopes keep the original. `RemoveTool` stops serving the tool in that scope only. Without them, a second tool of the same name is not served, and the module logs an error at startup.
 - To be extensible this way, a module creates its models with `AbstractTypeFactory`, registers its services in DI, and makes their methods `virtual`.
 
 The [extension sample](samples/VirtoCommerce.MCP.MarketingExtensionSample/README.md) applies each of these to the marketing sample, with unit tests.
 
 ### Replace the MCP infrastructure
 
-The behaviour of this module can be replaced through DI:
+A module outside this repository references `VirtoCommerce.MCP.Core` only, so the behaviour of this module is replaced through the contracts there:
 
 - `IMcpPublicOriginResolver` decides the public origin of a scope, for example from a store URL instead of configuration. For one scope, declare it with the scope (`WithPublicOriginResolver<T>()`, see [Add a scope](#add-a-scope)); replacing the registration changes it for every scope.
 - `McpChallengeWriter` writes the HTTP 401 and 403 responses of the MCP endpoints; a module with an error format of its own replaces the bodies and keeps the status codes and the `WWW-Authenticate` header. For one scope, declare it with the scope (`WithChallengeWriter<T>()`).
-- `IMcpSessionService` is for tools: it tells whether the user's token is still active and signs the user out. The endpoints check tokens with `McpTokenValidator` (see below).
+- `IMcpSessionService` is for tools: it tells whether the user's token is still active and signs the user out.
+- `IMcpTokenValidator` holds the rules an MCP access token must meet: OpenIddict's bearer token only, issued for the resource, to a client, for a user, and active in the token store. The MCP endpoints use it, and so can another endpoint that accepts the same tokens, such as UCP's REST API.
+- `IMcpToolAvailabilityService` decides the tool switches. Its context carries the scope, the tool, the user and the request, so a replacement can switch a tool off for one store, organization or user; the default reads `MCP.Tools.Disabled` per scope.
+- `IMcpCallToolFilter` adds a step to the tool calls of a scope (`WithCallToolFilter<T>()` or `AddMcpCallToolFilter<T>(scope)`).
 - `IMcpJobDispatcher` starts and tracks the jobs of bulk tools.
 - `IMcpPageSizeResolver` decides how many rows a list tool returns.
 - `IMcpApprovalService` implements the pending change lifecycle; `McpApprovalService` has virtual methods for the self-approval and expiration rules, and `CanReviewAsync` for which changes an approver may review.
 - `IMcpCleanupService` decides what the cleanup deletes.
-- `McpPendingChangeReviewService`, `McpCallToolFilter`, `McpPendingChangeExecutor`, `McpAuditWriter`, `McpToolAuthorizationService`, `McpToolAvailabilityService` and `McpTokenValidator` have virtual methods for the back-office review, the execution pipeline, the execution of an approved change, the audit entry, the tool permission check, the tool switches and the token check.
+
+The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeExecutor`, `McpPendingChangeReviewService`, `McpAuditWriter`, `McpToolAuthorizationService`) are not in a package; their virtual methods are for this repository's own modules and tests.
 
 ## Components
 
@@ -715,7 +734,9 @@ The behaviour of this module can be replaced through DI:
 | `McpAuditWriter` | | Audit entries with masked arguments |
 | `McpJobDispatcher` | `IMcpJobDispatcher` | Background jobs of bulk tools and their tracking |
 | `McpToolAuthorizationService` | | `[Authorize]`, `[McpPermission]` and approver checks |
-| `McpToolAvailabilityService` | | Tool switches (`MCP.Tools.Disabled`) |
+| `McpToolAvailabilityService` | `IMcpToolAvailabilityService` | Tool switches (`MCP.Tools.Disabled`) |
+| `McpTokenValidator` | `IMcpTokenValidator` | The rules an MCP access token must meet |
+| `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |

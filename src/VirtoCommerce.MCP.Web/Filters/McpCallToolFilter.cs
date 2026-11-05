@@ -32,7 +32,7 @@ namespace VirtoCommerce.MCP.Web.Filters;
 public class McpCallToolFilter(
     IMcpApprovalService approvalService,
     McpToolAuthorizationService toolAuthorizationService,
-    McpToolAvailabilityService toolAvailabilityService,
+    IMcpToolAvailabilityService toolAvailabilityService,
     McpAuditWriter auditWriter,
     IDataProtectionProvider dataProtectionProvider,
     ILogger<McpCallToolFilter> logger)
@@ -190,7 +190,8 @@ public class McpCallToolFilter(
     // The error result of a call that must not run, with its audit outcome, or null when the call may run.
     private async Task<CallToolResult> RefuseAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpServerTool tool, McpAuditEntry audit)
     {
-        if (await toolAvailabilityService.IsDisabledAsync(scope.Name, audit.ToolName))
+        var httpContext = context.Services?.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()?.HttpContext;
+        if (await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(scope.Name, audit.ToolName, context.User, httpContext)))
         {
             audit.Outcome = McpAuditOutcome.Disabled;
             audit.ErrorMessage = $"Tool '{audit.ToolName}' is disabled by the administrator.";

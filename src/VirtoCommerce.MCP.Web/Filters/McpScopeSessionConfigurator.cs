@@ -10,6 +10,7 @@ using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Services;
 
 namespace VirtoCommerce.MCP.Web.Filters;
@@ -22,11 +23,12 @@ public static class McpScopeSessionConfigurator
     {
         var services = context.RequestServices;
         var scope = context.GetMcpScope();
-        var tools = services.GetServices<McpServerTool>();
+        var tools = services.GetRequiredService<McpToolCatalog>().GetTools(scope);
 
         if (scope != null)
         {
-            var disabledToolNames = await services.GetRequiredService<McpToolAvailabilityService>().GetDisabledToolNamesAsync(scope.Name);
+            var disabledToolNames = await services.GetRequiredService<IMcpToolAvailabilityService>()
+                .GetDisabledToolNamesAsync(new McpToolAvailabilityContext(scope.Name, user: context.User, httpContext: context));
             tools = tools.Where(tool => !McpToolAvailabilityService.IsDisabled(disabledToolNames, tool.ProtocolTool.Name));
         }
 

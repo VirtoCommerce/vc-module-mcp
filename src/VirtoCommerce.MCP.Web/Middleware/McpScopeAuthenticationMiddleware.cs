@@ -26,7 +26,7 @@ public class McpScopeAuthenticationMiddleware(
 
     public async Task InvokeAsync(
         HttpContext context,
-        McpTokenValidator tokenValidator,
+        IMcpTokenValidator tokenValidator,
         IAuthorizationPolicyProvider policyProvider,
         IAuthorizationService authorizationService,
         IHostEnvironment environment)
@@ -87,7 +87,7 @@ public class McpScopeAuthenticationMiddleware(
         HttpContext context,
         McpChallenge challenge,
         IMcpPublicOriginResolver originResolver,
-        McpTokenValidator tokenValidator,
+        IMcpTokenValidator tokenValidator,
         IHostEnvironment environment)
     {
         if (!HasBearerHeader(context.Request))
@@ -105,23 +105,24 @@ public class McpScopeAuthenticationMiddleware(
             return "This MCP server has no public origin configured (MCP:PublicOrigin), so it cannot check that a token was issued for it. Ask the administrator to set it.";
         }
 
-        return await GetTokenErrorAsync(context.User, challenge.Resource, tokenValidator, context.RequestAborted);
+        return await tokenValidator.GetTokenErrorAsync(context.User, challenge.Resource, context.RequestAborted);
     }
 
     // In a scope open to anonymous users, a call to a tool that needs a user is answered with a challenge instead of
-    // an error, so the MCP client signs the user in and repeats the call.
+    // an error, so the MCP client signs the user in and repeats the call. A request that names several tools is
+    // challenged when any of them needs a user.
     private static async Task<string> FindToolThatRequiresUserAsync(HttpContext context, McpScope scope)
     {
-        var (method, toolName) = await McpJsonRpcRequestReader.ReadAsync(context.Request);
-        if (method != RequestMethods.ToolsCall || string.IsNullOrEmpty(toolName))
+        var request = await McpJsonRpcRequestReader.GetOrReadAsync(context);
+        if (request.Method != RequestMethods.ToolsCall)
         {
             return null;
         }
 
-        var tool = context.RequestServices.GetServices<McpServerTool>()
-            .FirstOrDefault(x => x.IsInMcpScope(scope.Name) && string.Equals(x.ProtocolTool.Name, toolName, StringComparison.Ordinal));
+        var tools = context.RequestServices.GetRequiredService<McpToolCatalog>().GetTools(scope).ToList();
 
-        return tool != null && RequiresUser(tool) ? toolName : null;
+        return request.ToolNames.FirstOrDefault(toolName => tools.Any(x =>
+            string.Equals(x.ProtocolTool.Name, toolName, StringComparison.Ordinal) && RequiresUser(x)));
     }
 
     public static bool RequiresUser(IMcpServerPrimitive primitive)
@@ -132,39 +133,6 @@ public class McpScopeAuthenticationMiddleware(
         }
 
         return !primitive.Metadata.OfType<IAllowAnonymous>().Any() && primitive.Metadata.OfType<IAuthorizeData>().Any();
-    }
-
-    private static async Task<string> GetTokenErrorAsync(
-        ClaimsPrincipal user,
-        string resource,
-        McpTokenValidator tokenValidator,
-        CancellationToken cancellationToken)
-    {
-        if (user?.Identity?.IsAuthenticated != true)
-        {
-            return "The access token is invalid or expired.";
-        }
-
-        if (!McpTokenValidator.HasExpectedAudience(user, resource))
-        {
-            return "The access token was not issued for this MCP resource.";
-        }
-
-        if (McpTokenValidator.IsClientIdentity(user))
-        {
-            return "The access token identifies the MCP client, not a user. Connect the client with a user's sign-in.";
-        }
-
-        // A token issued with no client, such as by the password grant of an anonymous client, skips the user's consent
-        // and is not listed in Connected agents, so the user could not disconnect it.
-        if (!McpTokenValidator.GetClientIds(user).Any())
-        {
-            return "The access token was not issued to an MCP client. Connect the MCP client with a user's sign-in.";
-        }
-
-        return await tokenValidator.IsActiveAsync(user, cancellationToken)
-            ? null
-            : "The OAuth session has ended. Sign in again to continue.";
     }
 
     private async Task<string> FindMissingPermissionAsync(

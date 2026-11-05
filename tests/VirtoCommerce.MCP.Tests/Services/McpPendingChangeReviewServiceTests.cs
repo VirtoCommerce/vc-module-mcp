@@ -56,7 +56,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
         _scopeRegistry.Setup(x => x.GetScope(McpScopes.Admin)).Returns(_adminScope);
         _toolAuthorizationService.Setup(x => x.IsApproverAsync(It.IsAny<ClaimsPrincipal>(), _adminScope)).ReturnsAsync(true);
         _toolAuthorizationService.Setup(x => x.IsAuthorizedAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<IMcpServerPrimitive>())).ReturnsAsync(true);
-        _toolAvailabilityService.Setup(x => x.IsDisabledAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+        _toolAvailabilityService.Setup(x => x.IsDisabledAsync(It.IsAny<McpToolAvailabilityContext>())).ReturnsAsync(false);
         _approvalService.Setup(x => x.CanReviewAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<McpPendingChange>())).ReturnsAsync(true);
         _approvalService
             .Setup(x => x.ApproveAsync(ChangeId, ApproverId, It.IsAny<string>(), It.IsAny<string>()))
@@ -188,7 +188,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
     public async Task ApproveAsync_Should_NotRunTheChange_When_TheToolIsSwitchedOff()
     {
         // Arrange
-        _toolAvailabilityService.Setup(x => x.IsDisabledAsync(McpScopes.Admin, ToolName)).ReturnsAsync(true);
+        _toolAvailabilityService.Setup(x => x.IsDisabledAsync(It.Is<McpToolAvailabilityContext>(c => c.ScopeName == McpScopes.Admin && c.ToolName == ToolName))).ReturnsAsync(true);
 
         // Act
         var action = () => CreateService().ApproveAsync(User(ApproverId), ChangeId, null, Services(ActivateTool()));
@@ -308,6 +308,7 @@ public class McpPendingChangeReviewServiceTests : McpTestsBase
 
         return new ServiceCollection()
             .AddSingleton(tool)
+            .AddTransient<McpToolCatalog>()
             .AddSingleton<IHttpContextAccessor>(_httpContextAccessor)
             .AddSingleton(requesterFactory.Object)
             .AddSingleton(_toolAuthorizationService.Object)

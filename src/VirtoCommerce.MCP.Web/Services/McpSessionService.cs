@@ -8,7 +8,7 @@ using VirtoCommerce.Platform.Core.Security;
 namespace VirtoCommerce.MCP.Web.Services;
 
 public class McpSessionService(
-    McpTokenValidator tokenValidator,
+    IMcpTokenValidator tokenValidator,
     IOpenIddictTokenManager tokenManager,
     IUserSessionsService userSessionsService)
     : IMcpSessionService

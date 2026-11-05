@@ -1,19 +1,35 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using VirtoCommerce.MCP.Core.Extensions;
+using VirtoCommerce.MCP.Core.Models;
 
 namespace VirtoCommerce.MCP.Web.Middleware;
 
-// Reads the method and the tool name of a single JSON-RPC request without consuming the body, so the MCP server still reads it.
+// Reads the method and the tool names of a single JSON-RPC request without consuming the body, so the MCP server still reads it.
 public static class McpJsonRpcRequestReader
 {
-    public static async Task<(string Method, string ToolName)> ReadAsync(HttpRequest request)
+    // The request as read for it once (HttpContext.GetMcpRequest), or read now and kept for the rest of the pipeline.
+    public static async Task<McpRequestInfo> GetOrReadAsync(HttpContext context)
+    {
+        var request = context.GetMcpRequest();
+        if (request == null)
+        {
+            request = await ReadAsync(context.Request);
+            context.SetMcpRequest(request);
+        }
+
+        return request;
+    }
+
+    public static async Task<McpRequestInfo> ReadAsync(HttpRequest request)
     {
         if (!HttpMethods.IsPost(request.Method) || !request.HasJsonContentType())
         {
-            return (null, null);
+            return McpRequestInfo.None;
         }
 
         request.EnableBuffering();
@@ -25,14 +41,14 @@ public static class McpJsonRpcRequestReader
             if (root.ValueKind != JsonValueKind.Object ||
                 !root.TryGetProperty("method", out var method) || method.ValueKind != JsonValueKind.String)
             {
-                return (null, null);
+                return McpRequestInfo.None;
             }
 
-            return (method.GetString(), GetToolName(root));
+            return new McpRequestInfo(method.GetString(), GetToolNames(root));
         }
         catch (JsonException)
         {
-            return (null, null);
+            return McpRequestInfo.None;
         }
         finally
         {
@@ -40,25 +56,22 @@ public static class McpJsonRpcRequestReader
         }
     }
 
-    // params.name of a tools/call request. Matched ignoring case, as the MCP server reads the parameters.
-    private static string GetToolName(JsonElement root)
+    // params.name of a tools/call request. Matched ignoring case, as the MCP server reads the parameters, and every
+    // match is kept: which one the server binds is not for this reader to guess.
+    private static IEnumerable<string> GetToolNames(JsonElement root)
     {
-        if (!TryGetPropertyIgnoreCase(root, "params", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        return TryGetPropertyIgnoreCase(parameters, "name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : null;
+        return GetPropertiesIgnoreCase(root, "params")
+            .Where(x => x.ValueKind == JsonValueKind.Object)
+            .SelectMany(x => GetPropertiesIgnoreCase(x, "name"))
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString())
+            .ToList();
     }
 
-    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    private static IEnumerable<JsonElement> GetPropertiesIgnoreCase(JsonElement element, string name)
     {
-        var match = element.EnumerateObject()
+        return element.EnumerateObject()
             .Where(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))
-            .Select(x => (JsonElement?)x.Value)
-            .FirstOrDefault();
-
-        value = match ?? default;
-        return match.HasValue;
+            .Select(x => x.Value);
     }
 }

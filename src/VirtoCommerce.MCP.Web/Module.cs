@@ -113,12 +113,12 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
         serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
-        serviceCollection.AddTransient<McpTokenValidator>();
+        serviceCollection.AddTransient<IMcpTokenValidator, McpTokenValidator>();
         serviceCollection.AddTransient<McpChallengeWriter>();
         serviceCollection.AddTransient<IMcpSessionService, McpSessionService>();
         serviceCollection.AddTransient<McpToolAuthorizationService>();
         serviceCollection.AddTransient<McpAuditWriter>();
-        serviceCollection.AddTransient<McpToolAvailabilityService>();
+        serviceCollection.AddTransient<IMcpToolAvailabilityService, McpToolAvailabilityService>();
         serviceCollection.AddTransient<McpPendingChangeExecutor>();
         serviceCollection.AddTransient<McpUserPrincipalFactory>();
         serviceCollection.AddTransient<McpPendingChangeReviewService>();
@@ -204,9 +204,9 @@ public class Module : IModule, IHasConfiguration
     {
         var logger = serviceProvider.GetRequiredService<ILogger<Module>>();
 
-        LogDuplicates(logger, "tool", serviceProvider.GetServices<McpServerTool>());
-        LogDuplicates(logger, "prompt", serviceProvider.GetServices<McpServerPrompt>());
-        LogDuplicates(logger, "resource", serviceProvider.GetServices<McpServerResource>());
+        LogDuplicates(logger, "tool", serviceProvider.GetRequiredService<McpToolCatalog>().FindUnresolvedDuplicates());
+        LogDuplicates(logger, "prompt", McpScopeSessionConfigurator.FindDuplicateNames(serviceProvider.GetServices<McpServerPrompt>()));
+        LogDuplicates(logger, "resource", McpScopeSessionConfigurator.FindDuplicateNames(serviceProvider.GetServices<McpServerResource>()));
 
         foreach (var tool in serviceProvider.GetServices<McpServerTool>().Where(x =>
             !string.IsNullOrEmpty(x.Metadata.OfType<McpRequiresApprovalAttribute>().FirstOrDefault()?.Condition) && x.FindApprovalCondition() == null))
@@ -244,9 +244,9 @@ public class Module : IModule, IHasConfiguration
         }
     }
 
-    private static void LogDuplicates(ILogger logger, string kind, IEnumerable<IMcpServerPrimitive> primitives)
+    private static void LogDuplicates(ILogger logger, string kind, IEnumerable<(string ScopeName, string Name)> duplicates)
     {
-        foreach (var (scopeName, name) in McpScopeSessionConfigurator.FindDuplicateNames(primitives))
+        foreach (var (scopeName, name) in duplicates)
         {
             logger.LogError("MCP {Kind} '{Name}' is registered more than once for {ScopeName}. Only the first registration is served.",
                 kind, name, scopeName != null ? $"scope '{scopeName}'" : "endpoints without a scope");

@@ -21,7 +21,7 @@ public class McpTrackedJobHandler(
     IMcpJobService jobService,
     TimeProvider timeProvider,
     ILogger<McpTrackedJobHandler> logger,
-    McpToolAvailabilityService toolAvailabilityService = null)
+    IMcpToolAvailabilityService toolAvailabilityService = null)
     : IBackgroundJobHandler<McpTrackedJobPayload>
 {
     private const int MaxMessageLength = 2048;
@@ -42,7 +42,7 @@ public class McpTrackedJobHandler(
         }
 
         // Switching the tool off stops its queued jobs too, not only its new calls.
-        if (toolAvailabilityService != null && await toolAvailabilityService.IsDisabledAsync(job.ScopeName, job.ToolName))
+        if (toolAvailabilityService != null && await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(job.ScopeName, job.ToolName)))
         {
             job.Status = McpJobStatus.Canceled;
             job.Message = $"Not started: tool '{job.ToolName}' was switched off by the administrator.";

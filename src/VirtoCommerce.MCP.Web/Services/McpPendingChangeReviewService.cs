@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -25,7 +26,7 @@ public class McpPendingChangeReviewService(
     IMcpApprovalService approvalService,
     IMcpScopeRegistry scopeRegistry,
     McpToolAuthorizationService toolAuthorizationService,
-    McpToolAvailabilityService toolAvailabilityService,
+    IMcpToolAvailabilityService toolAvailabilityService,
     McpPendingChangeExecutor pendingChangeExecutor,
     TimeProvider timeProvider)
 {
@@ -105,12 +106,13 @@ public class McpPendingChangeReviewService(
     // The tool as the scope serves it now: in the scope, and not switched off.
     public virtual async Task<McpServerTool> FindAvailableToolAsync(IServiceProvider services, McpScope scope, string toolName)
     {
-        if (scope == null || await toolAvailabilityService.IsDisabledAsync(scope.Name, toolName))
+        var httpContext = services.GetService<IHttpContextAccessor>()?.HttpContext;
+        if (scope == null || await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(scope.Name, toolName, httpContext?.User, httpContext)))
         {
             return null;
         }
 
-        return services.GetServices<McpServerTool>()
+        return services.GetRequiredService<McpToolCatalog>().GetTools(scope)
             .FirstOrDefault(x => x.ProtocolTool.Name == toolName && x.IsInMcpScope(scope.Name));
     }
 

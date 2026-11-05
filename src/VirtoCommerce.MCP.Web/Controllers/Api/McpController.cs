@@ -29,7 +29,7 @@ public class McpController(
     IMcpScopeRegistry scopeRegistry,
     McpPendingChangeReviewService reviewService,
     McpToolAuthorizationService toolAuthorizationService,
-    McpToolAvailabilityService toolAvailabilityService,
+    IMcpToolAvailabilityService toolAvailabilityService,
     McpAgentTokenClassifier agentTokenClassifier,
     IAuthorizationService authorizationService,
     TimeProvider timeProvider)
@@ -45,7 +45,7 @@ public class McpController(
 
         foreach (var scope in scopeRegistry.Scopes.OrderBy(x => x.Name))
         {
-            var disabledToolNames = await toolAvailabilityService.GetDisabledToolNamesAsync(scope.Name);
+            var disabledToolNames = await toolAvailabilityService.GetDisabledToolNamesAsync(new McpToolAvailabilityContext(scope.Name, user: User, httpContext: HttpContext));
 
             result.Add(new McpScopeInfo
             {
@@ -214,15 +214,15 @@ public class McpController(
 
     private async Task<IList<McpToolInfo>> GetToolInfosAsync()
     {
-        var tools = HttpContext.RequestServices.GetServices<McpServerTool>().ToList();
+        var catalog = HttpContext.RequestServices.GetRequiredService<McpToolCatalog>();
         var result = new List<McpToolInfo>();
 
         foreach (var scope in scopeRegistry.Scopes.OrderBy(x => x.Name))
         {
-            var disabledToolNames = await toolAvailabilityService.GetDisabledToolNamesAsync(scope.Name);
+            var disabledToolNames = await toolAvailabilityService.GetDisabledToolNamesAsync(new McpToolAvailabilityContext(scope.Name, user: User, httpContext: HttpContext));
             var scopeDisabled = disabledToolNames.Contains(McpToolAvailabilityService.AllTools);
 
-            result.AddRange(tools
+            result.AddRange(catalog.GetTools(scope)
                 .Where(tool => McpScopeSessionConfigurator.IsVisible(tool, scope))
                 .OrderBy(tool => tool.ProtocolTool.Name)
                 .Select(tool =>

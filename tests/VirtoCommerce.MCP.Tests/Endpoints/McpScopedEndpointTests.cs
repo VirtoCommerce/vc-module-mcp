@@ -786,6 +786,19 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ToolsCall_Should_ChallengeAnAnonymousUser_When_TheRequestAlsoNamesAToolThatRequiresAUser()
+    {
+        // Arrange: two names that differ in case only; the server may bind either
+        var body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"search_products\",\"Name\":\"get_my_orders\",\"arguments\":{}}}";
+
+        // Act
+        var response = await PostAsync(token: null, JsonNode.Parse(body), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ToolsCall_Should_AuditTheCallAsCanceled_When_ItIsCanceledWhileRunning()
     {
         // Act
@@ -1487,13 +1500,13 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         services.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
         services.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
-        services.AddTransient<McpTokenValidator, ActiveTokenValidator>();
+        services.AddTransient<IMcpTokenValidator, ActiveTokenValidator>();
         services.AddTransient<McpConnectedAgentService, TestConnectedAgentService>();
         services.AddTransient<McpAgentTokenClassifier>();
         services.AddTransient<McpChallengeWriter>();
         services.AddTransient<McpToolAuthorizationService>();
         services.AddTransient<McpAuditWriter>();
-        services.AddTransient<McpToolAvailabilityService>();
+        services.AddTransient<IMcpToolAvailabilityService, McpToolAvailabilityService>();
         services.AddTransient<McpPendingChangeExecutor>();
         services.AddTransient<McpUserPrincipalFactory>(_ => new TestUserPrincipalFactory(CreateUserPrincipal));
         services.AddScoped<McpCallToolFilter>();
