@@ -138,8 +138,9 @@ An administrator does this once per platform, and registers one OAuth client per
 | Symptom | Cause |
 | --- | --- |
 | The sign-in page does not open, or the sign-in ends with an error page | The redirect URI or the callback port of the client does not match its registration |
-| `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and in the client's `rsrc:` permission exactly, scheme and port included |
+| `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and in the client's `rsrc:` permission exactly, scheme and port included. Or it was issued without an OAuth client (password grant): connect with the registered client |
 | HTTP 403 | The scope requires a permission the user lacks, for example `vendor_portal:access` for `/vendor/mcp` |
+| HTTP 403 from a client that runs in a browser | Its page origin is not the scope's origin: add it to `MCP:AllowedOrigins` or `MCP:Scopes:{scope}:AllowedOrigins` (see [Browser origins](#browser-origins)) |
 | The agent sees fewer tools than expected | Tools the user has no permission for are not listed; a tool switched off in **Agent tools** is not listed either |
 | claude.ai or ChatGPT cannot reach the endpoint | They connect from their own cloud: the endpoint must be reachable from the internet over HTTPS |
 
@@ -184,7 +185,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 
 Disconnect does not touch what the agent already handed over to the platform:
 
-- The changes it submitted for approval stay in **Pending changes** and can still be approved, as the requester's own changes. A change records the user, not the agent: when the user has several agents, the **Audit** entry of the submission (outcome `PendingApproval`, with the change id and the client) shows which agent submitted it. After disconnecting an agent that misbehaved, reject its pending changes there.
+- The changes it submitted for approval stay in **Agent approvals** and can still be approved, as the requester's own changes. A change records the user, not the agent: when the user has several agents, the **Agent audit log** entry of the submission (outcome `PendingApproval`, with the change id and the client) shows which agent submitted it. After disconnecting an agent that misbehaved, reject its pending changes there.
 - The bulk jobs it started keep running, and queued ones still start; the user or an approver cancels them with `cancel_job` from another session.
 
 ## Configuration
@@ -211,11 +212,11 @@ Disconnect does not touch what the agent already handed over to the platform:
 | Key | Description |
 | --- | --- |
 | `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. **Required outside Development**: without it, or the scope's own origin, `/{scope}/mcp` refuses access tokens and the module logs an error at startup, because the origin would otherwise come from the request's `Host` and forwarded headers. In Development it defaults to the origin of the request. |
-| `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413` before it is read. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
+| `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413`: before it is read when it declares its length, and as soon as it passes the limit when it is sent chunked. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
 | `MCP:ValidateAgentTokensOnAllEndpoints` | `true` by default: on every endpoint of the platform, an agent's token is looked up in the token store, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP: a request with a revoked agent token gets `401 invalid_token`. An agent's token is one issued for an MCP endpoint (its audience, of any scope, switched off or not), or issued to a client application registered for an MCP resource, as **Connected agents** lists them; the second covers a token of the agent's authorization requested without a resource. Other tokens, cookies and API keys are not looked up, so the rest of the platform behaves as before. It costs one token store lookup per request with an agent's token, and one cached client lookup per client. |
 | `MCP:AllowedOrigins` | Origins of browser pages allowed to call every scope, besides each scope's own origin, for example a web MCP client such as MCP Inspector (`http://localhost:6274`). Empty by default. See [Browser origins](#browser-origins). |
 | `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
-| `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
+| `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from `MCP:Scopes:ucp:PublicOrigin`, otherwise from the URL of the request's store. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
 | `MCP:Scopes:{scope}:AllowedOrigins` | Origins of browser pages allowed to call this scope only. |
 
@@ -226,7 +227,7 @@ Invalid origins stop the platform at startup: an origin is an absolute `http` or
 The MCP transport requires a server to check the `Origin` header, so a web page a user opens cannot reach an MCP server, for example through DNS rebinding. The module checks it on every scope, before the token:
 
 - A request without `Origin` is not checked. Server-side MCP clients (Claude, ChatGPT, agents, MCP Inspector's CLI) send none, so they are not affected.
-- A browser page may call a scope from the scope's own origin (`MCP:Scopes:{scope}:PublicOrigin`, `MCP:PublicOrigin`, a host of `MCP:Scopes:{scope}:Hosts`, or the origin the scope's module resolves, such as UCP's store), and from the origins of `MCP:AllowedOrigins` and the scope's `AllowedOrigins`.
+- A browser page may call a scope from the scope's own origin, the one its tokens are checked against on that endpoint (`MCP:Scopes:{scope}:PublicOrigin` or `MCP:PublicOrigin` at `/{scope}/mcp`, the host itself at `/mcp` of a host of `MCP:Scopes:{scope}:Hosts`, or the origin the scope's module resolves, such as UCP's store), and from the origins of `MCP:AllowedOrigins` and the scope's `AllowedOrigins`.
 - Without a configured origin, the scope's origin is the request's own, whose `Host` a rebinding page chooses; it is accepted on `localhost` and loopback addresses only, the Development case.
 - Any other origin, including the opaque `null` of sandboxed pages and files, is answered with `403` and a warning in the log.
 
@@ -291,7 +292,7 @@ The SDK copies the text of a tool's error result into the status description of 
 
 ### Rate limiting and CORS
 
-The module does not limit the request rate and does not add CORS headers: both belong to the infrastructure in front of the platform. Limit the rate of requests to `/*/mcp`, and to `/mcp` on the hosts of scopes, in the API gateway or the load balancer, because an agent that goes into a loop can call a tool hundreds of times a minute. CORS is needed only for MCP clients that run in a browser; Claude, ChatGPT and other hosted clients call the server from their own back end.
+The module does not limit the request rate and does not add CORS headers: both belong to the infrastructure in front of the platform. Limit the rate of requests to `/*/mcp`, and to `/mcp` on the hosts of scopes, in the API gateway or the load balancer, because an agent that goes into a loop can call a tool hundreds of times a minute. CORS is needed only for MCP clients that run in a browser, and such a client's origin must also be listed in `MCP:AllowedOrigins` (see [Browser origins](#browser-origins)); Claude, ChatGPT and other hosted clients call the server from their own back end.
 
 ## Architecture
 
@@ -327,7 +328,7 @@ A step that decides per operation, such as a quota for write tools or an extra a
 ### Tool call flow
 
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
-1. The module resolves the scope from the path or the host, reads the token with the platform's OpenIddict validation, and checks that it was issued for this endpoint, to a user (not to the client itself), and is still valid in the platform token store.
+1. The module resolves the scope from the path or the host, reads the token with the platform's OpenIddict validation, and checks that it was issued for this endpoint, to an OAuth client, for a user (not to the client itself), and is still valid in the platform token store.
 1. The scope's permission, if it has one, and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
 1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
 1. A tool marked `[McpRequiresConfirmation]` asks the user in the chat first, when the client can ask (see [Confirmation in the chat](#confirmation-in-the-chat)); a call the user declines does not run.
@@ -707,7 +708,7 @@ serviceCollection.ConfigureMcpScope("ucp", scope => scope
 `ReplaceTool` registers the tools of the type and serves the last registration of the name in that scope instead of the first; other scopes keep the original. `RemoveTool` stops serving the tool in that scope only. Without them, a second tool of the same name is not served, and the module logs an error at startup.
 - To be extensible this way, a module creates its models with `AbstractTypeFactory`, registers its services in DI, and makes their methods `virtual`.
 
-The [extension sample](samples/VirtoCommerce.MCP.MarketingExtensionSample/README.md) applies each of these to the marketing sample, with unit tests.
+The [extension sample](samples/VirtoCommerce.MCP.MarketingExtensionSample/README.md) applies the model, service and new-tool rows to the marketing sample, with unit tests; `ReplaceTool` and `RemoveTool` are shown in the snippet above.
 
 ### Replace the MCP infrastructure
 
@@ -758,6 +759,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
+| `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
 | `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |

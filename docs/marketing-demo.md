@@ -23,7 +23,7 @@ The sample works on realistic mock data, so you can show it on any platform: thr
 
 ## Set it up
 
-You need a platform with the `VirtoCommerce.MCP` and `VirtoCommerce.Marketing` modules, and an MCP client that supports OAuth: Claude Code, Claude Desktop, or any other.
+You need a platform with the `VirtoCommerce.MCP`, `VirtoCommerce.Marketing` and `VirtoCommerce.Content` modules (and `VirtoCommerce.BackgroundJobs` for the bulk tools), and an MCP client that supports OAuth: Claude Code, Claude Desktop, or any other.
 
 1. **Install the sample.** Build `samples/VirtoCommerce.MCP.MarketingSample` and copy `module.manifest` and the `VirtoCommerce.MCP.MarketingSample.*` files from `bin/Debug/net10.0` into `modules/VirtoCommerce.MCP.MarketingSample/bin` of the platform (the manifest one level up, next to `bin`). Install the MCP module from its package (`vc-build Compress` creates it in `artifacts`).
 
@@ -118,7 +118,7 @@ The marketing lead asks their own agent:
 
 > What is waiting for my approval?
 
-`list_pending_changes`, then `get_pending_change` show each change with its arguments and preview. "Approve the laptop extension" runs `approve_pending_change`: the promotion changes once, as the approver, and the result is recorded. A change that breaks the policy, such as raising a discount to 40%, shows the policy warning in its preview; the lead rejects it with a reason with `reject_pending_change`, and the requester sees the reason.
+`list_pending_changes`, then `get_pending_change` show each change with its arguments and preview. "Approve the laptop extension" runs `approve_pending_change`: the agent's client asks the approver to confirm in the chat, then the promotion changes once, as the approver, and the result is recorded. A client that cannot ask refuses the call (audited `Declined`); the approver then approves in **Agent approvals**. A change that breaks the policy, such as raising a discount to 40%, shows the policy warning in its preview; the lead rejects it with a reason with `reject_pending_change`, and the requester sees the reason.
 
 ### Tuesday: plan Black Friday
 

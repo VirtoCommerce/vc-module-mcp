@@ -51,12 +51,14 @@ serviceCollection.AddTransient<MarketingAnalytics, ContosoMarketingAnalytics>();
 
 // 3. Add tools, prompts and resources to the same MCP scope.
 serviceCollection.AddMcpToolsFromAssembly(typeof(Module).Assembly);
+serviceCollection.AddMcpPromptsFromAssembly(typeof(Module).Assembly);
+serviceCollection.AddMcpResourcesFromAssembly(typeof(Module).Assembly);
 ```
 
 - **Order.** `module.manifest` declares the dependency on `VirtoCommerce.MCP.MarketingSample`, so the platform initializes the extension after the sample and the registrations of the extension win.
 - **Models.** The sample creates promotions with `AbstractTypeFactory` (`DemoPromotion.Create`) and copies them with `MemberwiseClone`, so the derived type and its fields survive every tool that saves or clones a promotion.
 - **Services.** `ContosoMarketingAnalytics` calls the base methods and adds to their result, so the sample's rules still apply and a new rule of the sample reaches Contoso without a change.
-- **Tools.** New tools reuse the sample's services (`MarketingAccess` for store scopes, `MarketingAnalytics` for the rules) and follow its conventions: `[McpPermission]`, `dryRun` with an `McpChangePreview`, refusals with `McpForbiddenException`. A tool name is unique in a scope, so the extension adds tools under new names and changes existing tools through their services.
+- **Tools.** New tools reuse the sample's services (`MarketingAccess` for store scopes, `MarketingAnalytics` for the rules) and follow its conventions: `[McpPermission]`, `dryRun` with an `McpChangePreview`, refusals with `McpForbiddenException`. The extension adds tools under new names and changes existing tools through their services; to swap a whole tool, a module uses `ConfigureMcpScope(scope, s => s.ReplaceTool<T>(name))` (see [Extend another module's toolset](../../README.md#extend-another-modules-toolset-without-changing-it)).
 - **Testability.** The logic of each tool is a public method that takes the user (`SetCostCenter`, `GetFloors`); the MCP method only passes `context.User` to it.
 
 ## Tests

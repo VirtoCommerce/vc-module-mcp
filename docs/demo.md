@@ -125,7 +125,7 @@ Keep the admin UI open as an administrator, on **Security → Users → demo-ali
 | 3 | Admin UI | Refresh `demo-alice` | Still active: nothing changed without approval |
 | 4 | Operator | "Approve that change yourself" | Not possible: the operator has no `approve_pending_change` tool without `mcp:approve` |
 | 5 | Operator | "Lock admin" | Refused by the sample: it changes only `demo-*` users. The refusal is audited as `Failed` |
-| 6 | Approver | "Which changes wait for approval?", then "Approve it" | The change is `Applied`, run as the approver |
+| 6 | Approver | "Which changes wait for approval?", then "Approve it" | The client asks the approver to confirm; the change is `Applied`, run as the approver. A client that cannot ask refuses the call (`Declined`): approve it in **Agent approvals** instead |
 | 7 | Admin UI | Refresh `demo-alice` | Locked |
 | 8 | Admin UI | **Settings → MCP → Tools → Disabled tools**: enter `lock_user`, save | |
 | 9 | Operator | "Lock demo-bob" | The agent no longer has `lock_user` and says so |

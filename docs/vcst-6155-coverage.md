@@ -8,7 +8,7 @@ How the module and the samples answer the story [VCST-6155](https://virtocommerc
 | --- | --- |
 | A dedicated module that hosts all MCP infrastructure and removes duplication across modules | This module. UCP moved to it in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`) of `vc-module-ucp`, verified on a local platform ([Moving UCP to the MCP module](ucp-migration.md)) |
 | Declarative registration of tools, resources, prompts | `AddMcpTools*`, `AddMcpPrompts*`, `AddMcpResources*` with `[McpScope]`; [Adding tools to a scope](../README.md#add-tools-to-a-scope) |
-| Scopes: storefront, admin, vendor, custom | `AddMcpScope`; `admin` and `vendor` built in, `ucp` reserved; [Scopes](../README.md#scopes) |
+| Scopes: storefront, admin, vendor, custom | `AddMcpScope`; `admin` and `vendor` built in, `ucp` registered by the UCP module; [Scopes](../README.md#scopes) |
 | Scope from the request domain (primary proposal) or the URL path (alternative) | Both: `/{scope}/mcp` on any host, and `/mcp` on the hosts of `MCP:Scopes:{scope}:Hosts` |
 | Anonymous, authenticated and permission-protected tools, checked before execution | Anonymous scopes; `[McpRequiresUser]`; `[Authorize]` and `[McpPermission]`, checked before the tool runs |
 | Marketer bounded by store permission scopes, enforced inside each tool | `[McpPermission]` and `GetMcpPermissionGrant`; refusals with `McpForbiddenException`, audited as `Forbidden` |
@@ -62,11 +62,10 @@ Scenarios of the comment and where the [marketer guide](marketing-demo.md) shows
 | `content.publish`, approval when the window includes today | `publish_content` with `[McpRequiresApproval(Condition = nameof(GoesLiveToday))]` |
 | `content.unpublish` / `content.reschedule` | `unpublish_content`, `reschedule_publication` |
 | `content.clone_campaign` with a job handle | `clone_content_campaign` |
-
 | `content.propose_copy` → `content.apply_copy(changeId)` | `propose_content_copy`, a pending change with the old and the new text; `approve_pending_change` applies it |
 
 The "personalise without touching code" scenario of the comment is the content part of Thursday in the [marketer guide](marketing-demo.md): `list_content_placeholders`, `publish_content` with a segment, and `explain_content_resolution` for a customer of the segment and one outside it.
 
 ## Open questions of the comment of 2026-10-27
 
-Answered by the implementation: the job pattern for long-running operations; authentication per scope (required, or anonymous with sign-in on demand per tool); the UCP split (phase 4), done on the UCP branch. Approval in other scopes is available as a capability and stays off outside `admin` until a module turns it on. The back-office UI is the module's Admin Shell plugin: the approval queue with the diff of each change, the audit log and the tool switches per scope and per tool (README, *Back office*). Tool calls, reviews and jobs emit OpenTelemetry traces, metrics and logs under `VirtoCommerce.MCP`, and each audit entry keeps its trace id (README, *Observability*). Still open, outside this repository: CIMD client registration (a platform task), publishing the `VirtoCommerce.MCP.Core` package, MCP Tasks (not in the C# SDK 2.3.0 yet), and whether UCP's input capture is needed in MCP.
+Answered by the implementation: the job pattern for long-running operations; authentication per scope (required, or anonymous with sign-in on demand per tool); the UCP split (phase 4), done on the UCP branch. Approval in other scopes is available as a capability and stays off outside `admin` until a module turns it on. The back-office UI is the module's Admin Shell plugin: the approval queue with the diff of each change, the audit log, the tool switches per scope and per tool, and the connected agents (README, *Work with agents in the back office*). Tool calls, reviews and jobs emit OpenTelemetry traces, metrics and logs under `VirtoCommerce.MCP`, and each audit entry keeps its trace id (README, *Observability*). Still open, outside this repository: CIMD client registration (a platform task), publishing the `VirtoCommerce.MCP.Core` package, MCP Tasks (not in the C# SDK 2.3.0 yet), and whether UCP's input capture is needed in MCP.
