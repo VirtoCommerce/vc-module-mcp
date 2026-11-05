@@ -115,6 +115,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
         serviceCollection.AddTransient<IMcpOriginValidator, McpOriginValidator>();
+        serviceCollection.AddTransient<IOAuthResourceProvider, McpOAuthResourceProvider>();
         serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         serviceCollection.AddTransient<IMcpTokenValidator, McpTokenValidator>();
         serviceCollection.AddTransient<McpChallengeWriter>();
