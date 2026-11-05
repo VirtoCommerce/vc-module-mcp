@@ -66,6 +66,11 @@ public class McpPendingChangeReviewService(
             throw new McpForbiddenException($"You are not allowed to run tool '{change.ToolName}', so you cannot approve its changes.");
         }
 
+        if (user.GetMcpOperatorUserId() != null && user.HasRequested(change) && !await approvalService.IsSelfApprovalAllowedAsync())
+        {
+            throw new McpException($"Pending change '{changeId}' was requested by you and must be approved by another user.");
+        }
+
         using var activity = McpDiagnostics.StartReview(scope.Name, change.ToolName, "approve", change.Id, BackOfficeClientId);
 
         var refusal = await pendingChangeExecutor.FindRequesterRefusalAsync(services, scope, tool, change);
@@ -148,10 +153,7 @@ public class McpPendingChangeReviewService(
             return $"The change is {status.ToLowerInvariant()}.";
         }
 
-        var isRequester = !string.IsNullOrEmpty(change.RequestedByUserId) &&
-            string.Equals(change.RequestedByUserId, user.GetUserId(), StringComparison.OrdinalIgnoreCase);
-
-        if (isRequester && !await approvalService.IsSelfApprovalAllowedAsync())
+        if (user.HasRequested(change) && !await approvalService.IsSelfApprovalAllowedAsync())
         {
             return "You requested this change, so another user must approve it.";
         }

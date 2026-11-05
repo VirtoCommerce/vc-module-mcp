@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading;
@@ -126,7 +126,7 @@ public class McpScopeAuthenticationMiddleware(
 
     public static bool RequiresUser(IMcpServerPrimitive primitive)
     {
-        if (primitive.Metadata.OfType<McpRequiresUserAttribute>().Any() || primitive.Metadata.OfType<McpPermissionAttribute>().Any())
+        if (primitive.Metadata.Any(x => x is McpRequiresUserAttribute or McpPermissionAttribute or McpAnyUserAttribute))
         {
             return true;
         }
@@ -153,6 +153,13 @@ public class McpScopeAuthenticationMiddleware(
         if (McpTokenValidator.IsClientIdentity(user))
         {
             return "The access token identifies the MCP client, not a user. Connect the client with a user's sign-in.";
+        }
+
+        // A token issued with no client, such as by the password grant of an anonymous client, skips the user's consent
+        // and is not listed in Connected agents, so the user could not disconnect it.
+        if (!McpTokenValidator.GetClientIds(user).Any())
+        {
+            return "The access token was not issued to an MCP client. Connect the MCP client with a user's sign-in.";
         }
 
         return await tokenValidator.IsActiveAsync(user, cancellationToken)

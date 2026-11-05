@@ -123,6 +123,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpUserPrincipalFactory>();
         serviceCollection.AddTransient<McpPendingChangeReviewService>();
         serviceCollection.AddTransient<McpConnectedAgentService>();
+        serviceCollection.AddTransient<McpAgentTokenClassifier>();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
         serviceCollection.AddMemoryCache();

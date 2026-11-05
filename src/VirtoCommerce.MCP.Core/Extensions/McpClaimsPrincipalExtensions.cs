@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.Platform.Core;
+using VirtoCommerce.Platform.Core.Security;
 
 namespace VirtoCommerce.MCP.Core.Extensions;
 
@@ -54,6 +55,27 @@ public static class McpClaimsPrincipalExtensions
 
         // A scoped claim that cannot be read grants no scope at all, never the global permission.
         return grant;
+    }
+
+    // The user who signs in as this one (security:loginOnBehalf), or null when the user signed in as themselves.
+    public static string GetMcpOperatorUserId(this ClaimsPrincipal user)
+    {
+        var operatorUserId = user?.FindFirst(PlatformConstants.Security.Claims.OperatorUserId)?.Value;
+
+        return string.IsNullOrEmpty(operatorUserId) ? null : operatorUserId;
+    }
+
+    // Whether the user, or the operator signed in as the user, requested the change: an operator who impersonates
+    // another approver must not approve their own change through them.
+    public static bool HasRequested(this ClaimsPrincipal user, McpPendingChange change)
+    {
+        if (user == null || change == null || string.IsNullOrEmpty(change.RequestedByUserId))
+        {
+            return false;
+        }
+
+        return new[] { user.GetUserId(), user.GetMcpOperatorUserId() }
+            .Any(x => !string.IsNullOrEmpty(x) && string.Equals(x, change.RequestedByUserId, StringComparison.OrdinalIgnoreCase));
     }
 
     private static McpPermissionScope[] ParseScopes(string json)

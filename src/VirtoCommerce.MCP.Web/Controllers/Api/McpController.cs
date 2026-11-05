@@ -30,6 +30,7 @@ public class McpController(
     McpPendingChangeReviewService reviewService,
     McpToolAuthorizationService toolAuthorizationService,
     McpToolAvailabilityService toolAvailabilityService,
+    McpAgentTokenClassifier agentTokenClassifier,
     IAuthorizationService authorizationService,
     TimeProvider timeProvider)
     : Controller
@@ -162,7 +163,7 @@ public class McpController(
     [HttpPost("pending-changes/{id}/approve")]
     public Task<ActionResult<McpPendingChangeDetails>> ApprovePendingChange([FromRoute] string id, [FromBody] McpReviewRequest request)
     {
-        return ReviewAsync(() => reviewService.ApproveAsync(User, id, request?.Comment, HttpContext.RequestServices));
+        return ReviewAsPersonAsync(() => reviewService.ApproveAsync(User, id, request?.Comment, HttpContext.RequestServices));
     }
 
     /// <summary>
@@ -171,7 +172,7 @@ public class McpController(
     [HttpPost("pending-changes/{id}/reject")]
     public Task<ActionResult<McpPendingChangeDetails>> RejectPendingChange([FromRoute] string id, [FromBody] McpReviewRequest request)
     {
-        return ReviewAsync(() => reviewService.RejectAsync(User, id, request?.Comment));
+        return ReviewAsPersonAsync(() => reviewService.RejectAsync(User, id, request?.Comment));
     }
 
     /// <summary>
@@ -259,6 +260,18 @@ public class McpController(
     private async Task<bool> IsAuthorizedAsync(string permission)
     {
         return (await authorizationService.AuthorizeAsync(User, permission)).Succeeded;
+    }
+
+    // A decision on a change is a person's, in the back office: an AI agent's token, which also reaches this API, is
+    // refused, so an agent cannot approve here what approve_pending_change approves only after the user confirms it.
+    private async Task<ActionResult<McpPendingChangeDetails>> ReviewAsPersonAsync(Func<Task<McpPendingChangeDetails>> review)
+    {
+        if (await agentTokenClassifier.IsAgentTokenAsync(User))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "An AI agent cannot review pending changes here. The user reviews them in the back office (MCP > Pending changes)." });
+        }
+
+        return await ReviewAsync(review);
     }
 
     private async Task<ActionResult<McpPendingChangeDetails>> ReviewAsync(Func<Task<McpPendingChangeDetails>> review)

@@ -169,7 +169,7 @@ public class McpCallToolFilter(
             return refusal;
         }
 
-        var declined = await ConfirmAsync(context, tool, audit);
+        var declined = await ConfirmAsync(context, scope, tool, audit);
         if (declined != null)
         {
             return declined;
@@ -374,7 +374,7 @@ public class McpCallToolFilter(
     }
 
     // The confirmation of a tool with [McpRequiresConfirmation], except for its dry runs, which change nothing.
-    private async Task<CallToolResult> ConfirmAsync(RequestContext<CallToolRequestParams> context, McpServerTool tool, McpAuditEntry audit)
+    private async Task<CallToolResult> ConfirmAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpServerTool tool, McpAuditEntry audit)
     {
         var confirmation = tool?.GetConfirmation();
         if (confirmation == null || IsDryRunCall(tool, context.Params?.Arguments))
@@ -387,7 +387,7 @@ public class McpCallToolFilter(
             return confirmation.Fallback == McpConfirmationFallback.Refuse ? RefuseUnconfirmable(tool, audit) : null;
         }
 
-        return ConfirmOrAsk(context, tool, audit, await GetConfirmationDetailsAsync(context, tool));
+        return ConfirmOrAsk(context, tool, audit, await GetConfirmationDetailsAsync(context, scope, tool));
     }
 
     // A tool that a person must confirm, called from a client that cannot ask: the call does not run.
@@ -405,8 +405,9 @@ public class McpCallToolFilter(
     }
 
     // What the user confirms besides the call itself: for approve_pending_change, the change it applies, since the
-    // change id alone tells the user nothing.
-    protected virtual async Task<string> GetConfirmationDetailsAsync(RequestContext<CallToolRequestParams> context, McpServerTool tool)
+    // change id alone tells the user nothing. Only a change the user may review in this scope is described; for any
+    // other the tool itself answers that it was not found.
+    protected virtual async Task<string> GetConfirmationDetailsAsync(RequestContext<CallToolRequestParams> context, McpScope scope, McpServerTool tool)
     {
         if (tool.ProtocolTool.Name != ModuleConstants.ToolNames.ApprovePendingChange ||
             context.Params?.Arguments?.TryGetValue("change_id", out var changeId) != true || changeId.ValueKind != JsonValueKind.String)
@@ -415,7 +416,8 @@ public class McpCallToolFilter(
         }
 
         var change = await context.Services.GetRequiredService<IMcpPendingChangeService>().GetByIdAsync(changeId.GetString());
-        if (change == null)
+        if (change == null || !string.Equals(change.ScopeName, scope.Name, StringComparison.OrdinalIgnoreCase) ||
+            !await approvalService.CanReviewAsync(context.User, change))
         {
             return null;
         }

@@ -85,6 +85,14 @@ public class McpConnectedAgentService(
         return McpConnectedAgentRevokeResult.Revoked;
     }
 
+    // Whether the client is an agent: an application registered for an MCP resource.
+    public virtual async Task<bool> IsAgentClientAsync(string clientId)
+    {
+        var application = string.IsNullOrEmpty(clientId) ? null : await applicationManager.FindByClientIdAsync(clientId);
+
+        return application != null && (await GetMcpResourcesAsync(application)).Count > 0;
+    }
+
     // An authorization of an MCP client: this API never touches the user's other sessions, such as the back office.
     protected virtual async Task<bool> IsMcpAuthorizationAsync(object authorization)
     {

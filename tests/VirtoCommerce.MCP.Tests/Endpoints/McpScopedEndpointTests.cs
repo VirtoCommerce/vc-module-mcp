@@ -51,6 +51,7 @@ namespace VirtoCommerce.MCP.Tests.Endpoints;
 public sealed class McpScopedEndpointTests : IAsyncLifetime
 {
     private const string Origin = "http://localhost";
+    private const string AgentClientId = "agent-app";
     private const string WritePermission = "test:write";
     private const string PartnerScope = "partner";
     private const string ScopedPermission = "test:scoped";
@@ -537,6 +538,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.False(IsError(result), Text(result));
         Assert.Equal(1, TestTools.Executions);
         Assert.Equal(1, TestTools.DryRuns); // the requester's access is checked again with a dry run before the change runs
+        Assert.Equal(2, AdminCallCounterFilter.CallsOf("submit_tool")); // the scope's call filters run around both
 
         var completed = Assert.Single(_completedChanges);
         Assert.True(completed.Succeeded);
@@ -745,6 +747,18 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         // Assert
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Contains("identifies the MCP client", response.Headers.WwwAuthenticate.ToString());
+        Assert.Empty(_searchCriteria);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeRefused_When_TheTokenWasIssuedWithNoClient()
+    {
+        // Act
+        var response = await PostAsync(TokenWithoutClient(McpPermissions.Approve), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("not issued to an MCP client", response.Headers.WwwAuthenticate.ToString());
         Assert.Empty(_searchCriteria);
     }
 
@@ -1089,7 +1103,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var result = await CallAsync(token: null, ToolsList(), $"/{ShopScope}/mcp");
 
         // Assert
-        Assert.Equal(["get_my_orders", "search_products"], ToolNames(result));
+        Assert.Equal(["get_my_orders", "get_my_wishlist", "search_products"], ToolNames(result));
     }
 
     [Fact]
@@ -1105,6 +1119,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     [Theory]
     [InlineData("get_my_orders")]
+    [InlineData("get_my_wishlist")]
     [InlineData("get_my_prices")]
     public async Task ToolsCall_Should_ChallengeAnAnonymousUser_When_TheToolRequiresAUser(string toolName)
     {
@@ -1153,7 +1168,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var result = await CallAsync(token: null, ToolsList(), "/mcp", host: ShopHost);
 
         // Assert
-        Assert.Equal(["get_my_orders", "search_products"], ToolNames(result));
+        Assert.Equal(["get_my_orders", "get_my_wishlist", "search_products"], ToolNames(result));
     }
 
     [Fact]
@@ -1320,6 +1335,27 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApprovePendingChange_Should_NotShowAChangeOfAnotherScope_In_TheConfirmation()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(McpScopes.Admin, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "decline" });
+        }, Token(permissions: [McpPermissions.Approve, WritePermission]));
+
+        // Act: the id of a change of the category scope, called in the admin scope
+        await client.CallToolAsync(ModuleConstants.ToolNames.ApprovePendingChange, new Dictionary<string, object> { ["change_id"] = CategoryChange.Id },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(question);
+        Assert.DoesNotContain("Tool:", question);
+        Assert.DoesNotContain("p6", question);
+    }
+
+    [Fact]
     public async Task ApprovePendingChange_Should_Refuse_AnApproverOfAnotherScope()
     {
         // Act: an admin approver calls the approve tool in the category scope, where approvers need category:approve
@@ -1452,6 +1488,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
         services.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
         services.AddTransient<McpTokenValidator, ActiveTokenValidator>();
+        services.AddTransient<McpConnectedAgentService, TestConnectedAgentService>();
+        services.AddTransient<McpAgentTokenClassifier>();
         services.AddTransient<McpChallengeWriter>();
         services.AddTransient<McpToolAuthorizationService>();
         services.AddTransient<McpAuditWriter>();
@@ -1526,6 +1564,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
         services.AddScopedMcpServer();
         services.AddMcpCallToolFilter<PartnerMarkerFilter>(PartnerScope);
+        services.AddMcpCallToolFilter<AdminCallCounterFilter>(McpScopes.Admin);
         services.AddMcpTools<TestTools>();
         services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools), typeof(UndeclaredTools)]);
         services.AddMcpTools<CanceledTools>();
@@ -1687,7 +1726,17 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     private static McpPendingChange PreviewChange { get; } = CreatePreviewChange();
 
-    private static McpPendingChange[] StoredChanges => [StoredChange, CanceledChange, SensitiveChange, PreviewChange];
+    private static McpPendingChange CategoryChange { get; } = CreateCategoryChange();
+
+    private static McpPendingChange[] StoredChanges => [StoredChange, CanceledChange, SensitiveChange, PreviewChange, CategoryChange];
+
+    private static McpPendingChange CreateCategoryChange()
+    {
+        var change = CreateStoredChange("change-6", "submit_tool", "{\"promotionId\":\"p6\"}");
+        change.ScopeName = CategoryScope;
+
+        return change;
+    }
 
     private static McpPendingChange CreatePreviewChange()
     {
@@ -1835,6 +1884,12 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         return $"{user}|{audience}|{string.Join(';', permissions)}";
     }
 
+    // A token issued with no client, as the password grant of an anonymous client issues it
+    private static string TokenWithoutClient(params string[] permissions)
+    {
+        return Token(permissions: permissions) + "#email=user-1@example.com";
+    }
+
     // A client-credentials token: the client id is the subject, and the claim of the given type names the client too.
     private static string ClientToken(string clientId, string clientClaimType, params string[] permissions)
     {
@@ -1852,6 +1907,12 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private sealed class TestUserPrincipalFactory(Func<string, ClaimsPrincipal> create) : McpUserPrincipalFactory(null, null)
     {
         public override Task<ClaimsPrincipal> CreateAsync(string userId) => Task.FromResult(create(userId));
+    }
+
+    // The agent's client application is the one registered for an MCP resource
+    private sealed class TestConnectedAgentService() : McpConnectedAgentService(null, null, null, null, null)
+    {
+        public override Task<bool> IsAgentClientAsync(string clientId) => Task.FromResult(clientId == AgentClientId);
     }
 
     private sealed class BrandedChallengeWriter : McpChallengeWriter
@@ -1912,7 +1973,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
                 return Task.FromResult(AuthenticateResult.NoResult());
             }
 
-            // user|audience|permission;permission[#claimType=value]
+            // user|audience|permission;permission[#claimType=value]; without a claim, the token names the agent's client
             var token = header["Bearer ".Length..].Split('#', 2);
             var parts = token[0].Split('|', 3);
             var claims = new List<Claim>
@@ -1925,6 +1986,10 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
             if (token.Length > 1 && token[1].Split('=', 2) is [var claimType, var claimValue])
             {
                 claims.Add(new Claim(claimType, claimValue));
+            }
+            else
+            {
+                claims.Add(new Claim("client_id", AgentClientId));
             }
 
             var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
@@ -1966,6 +2031,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         {
             _dryRuns = 0;
             _executions = 0;
+            AdminCallCounterFilter.Reset();
         }
 
         [McpServerTool(Name = "read_tool"), Description("Reads.")]
@@ -2185,6 +2251,10 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         [McpRequiresUser]
         public static string GetMyOrders() => "orders";
 
+        [McpServerTool(Name = "get_my_wishlist"), Description("Every signed-in user.")]
+        [McpAnyUser]
+        public static string GetMyWishlist() => "wishlist";
+
         [McpServerTool(Name = "get_my_prices"), Description("Needs a permission.")]
         [Authorize(WritePermission)]
         public static string GetMyPrices() => "prices";
@@ -2216,6 +2286,26 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     {
         [McpServerTool(Name = "unscoped_tool"), Description("Not on any scope.")]
         public static string UnscopedTool() => "unscoped";
+    }
+
+    // A module filter of the admin scope that counts the calls it sees
+    public sealed class AdminCallCounterFilter : IMcpCallToolFilter
+    {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _calls = new();
+
+        public static int CallsOf(string toolName) => _calls.GetValueOrDefault(toolName);
+
+        public static void Reset() => _calls.Clear();
+
+        public ValueTask<CallToolResult> InvokeAsync(
+            McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+            RequestContext<CallToolRequestParams> context,
+            CancellationToken cancellationToken)
+        {
+            _calls.AddOrUpdate(context.Params?.Name ?? string.Empty, 1, (_, count) => count + 1);
+
+            return next(context, cancellationToken);
+        }
     }
 
     // A module filter of the partner scope: marks the result, and turns it into a tool error to show that the audit

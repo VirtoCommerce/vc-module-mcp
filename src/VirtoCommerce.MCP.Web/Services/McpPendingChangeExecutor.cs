@@ -15,6 +15,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 
 namespace VirtoCommerce.MCP.Web.Services;
 
@@ -104,7 +105,7 @@ public class McpPendingChangeExecutor(
 
         try
         {
-            var result = await tool.InvokeAsync(CreateToolContext(server, new RequestId(change.Id), services, requester, tool, change.ToolName, arguments), CancellationToken.None);
+            var result = await InvokeToolAsync(tool, CreateToolContext(server, new RequestId(change.Id), services, requester, tool, change.ToolName, arguments), change.ScopeName);
 
             return result.IsError == true ? $"its dry run as the requester failed: {GetText(result)}" : null;
         }
@@ -149,7 +150,7 @@ public class McpPendingChangeExecutor(
             var toolContext = CreateToolContext(server, requestId, services, user, tool, change.ToolName, arguments);
             toolContext.SetExecutedPendingChange(change.Id, change.RequestedByUserId);
 
-            result = await tool.InvokeAsync(toolContext, CancellationToken.None);
+            result = await InvokeToolAsync(tool, toolContext, change.ScopeName);
             audit.Outcome = result.IsError == true ? McpAuditOutcome.Failed : McpAuditOutcome.Succeeded;
         }
         catch (Exception ex)
@@ -168,6 +169,23 @@ public class McpPendingChangeExecutor(
         await auditWriter.WriteAsync(audit, arguments, change.SensitiveArgumentPaths);
 
         return result;
+    }
+
+    // The tool inside the scope's call filters (AddMcpCallToolFilter), in the order they run around an agent's call, so
+    // an approved change meets the same per-tool policy when it runs as the call that submitted it did.
+    protected virtual async Task<CallToolResult> InvokeToolAsync(McpServerTool tool, RequestContext<CallToolRequestParams> context, string scopeName)
+    {
+        McpRequestHandler<CallToolRequestParams, CallToolResult> handler = (toolContext, cancellationToken) => tool.InvokeAsync(toolContext, cancellationToken);
+
+        var registrations = context.Services.GetServices<McpCallToolFilterRegistration>().Where(x => x.AppliesTo(scopeName)).Reverse();
+        foreach (var registration in registrations)
+        {
+            var next = handler;
+            var filter = (IMcpCallToolFilter)context.Services.GetRequiredService(registration.FilterType);
+            handler = (toolContext, cancellationToken) => filter.InvokeAsync(next, toolContext, cancellationToken);
+        }
+
+        return await handler(context, CancellationToken.None);
     }
 
     private static RequestContext<CallToolRequestParams> CreateToolContext(

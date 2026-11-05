@@ -71,6 +71,15 @@ public class McpTokenValidator(
             paths.Contains(audience.AbsolutePath.TrimEnd('/'), StringComparer.OrdinalIgnoreCase));
     }
 
+    // The client application the token was issued to, as the token names it
+    public static IEnumerable<string> GetClientIds(ClaimsPrincipal principal)
+    {
+        return principal?.Claims
+            .Where(claim => _clientClaimTypes.Contains(claim.Type) && !string.IsNullOrEmpty(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.Ordinal) ?? [];
+    }
+
     public virtual async Task<bool> IsActiveAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
         var tokenId = principal.GetTokenId();

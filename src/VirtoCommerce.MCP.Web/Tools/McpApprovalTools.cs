@@ -137,6 +137,11 @@ public class McpApprovalTools(
             throw new McpException($"You are not allowed to run tool '{change.ToolName}', so you cannot approve its changes.");
         }
 
+        if (user.GetMcpOperatorUserId() != null && user.HasRequested(change) && !await approvalService.IsSelfApprovalAllowedAsync())
+        {
+            throw new McpException($"Pending change '{change_id}' was requested by you and must be approved by another user.");
+        }
+
         var refusal = await pendingChangeExecutor.FindRequesterRefusalAsync(requestContext, tool, change);
         if (refusal != null)
         {

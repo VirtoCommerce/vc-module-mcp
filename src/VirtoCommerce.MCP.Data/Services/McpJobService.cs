@@ -22,6 +22,8 @@ public class McpJobService(
     IEventPublisher eventPublisher)
     : CrudService<McpJob, McpJobEntity, McpJobChangingEvent, McpJobChangedEvent>(repositoryFactory, platformMemoryCache, eventPublisher), IMcpJobService
 {
+    private readonly IEventPublisher _eventPublisher = eventPublisher;
+
     protected override Task<IList<McpJobEntity>> LoadEntities(IRepository repository, IList<string> ids, string responseGroup)
     {
         return ((IMcpRepository)repository).GetJobsByIdsAsync(ids);
@@ -34,8 +36,14 @@ public class McpJobService(
         return TryChangeStatusInternalAsync(job, expectedStatus);
     }
 
+    // The update bypasses SaveChangesAsync, so the job's events are published here, as for any other change of a job;
+    // McpJobChangedEvent only when the status was still the expected one.
     protected virtual async Task<bool> TryChangeStatusInternalAsync(McpJob job, string expectedStatus)
     {
+        var original = (await GetAsync([job.Id])).FirstOrDefault();
+        var changedEntries = new[] { new GenericChangedEntry<McpJob>(job, original, EntryState.Modified) };
+        await _eventPublisher.Publish(new McpJobChangingEvent(changedEntries));
+
         int affected;
         using (var repository = repositoryFactory())
         {
@@ -52,6 +60,13 @@ public class McpJobService(
         GenericCachingRegion<McpJob>.ExpireTokenForKey(job.Id);
         GenericSearchCachingRegion<McpJob>.ExpireRegion();
 
-        return affected > 0;
+        if (affected == 0)
+        {
+            return false;
+        }
+
+        await _eventPublisher.Publish(new McpJobChangedEvent(changedEntries));
+
+        return true;
     }
 }

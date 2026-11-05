@@ -205,7 +205,7 @@ In **Connected agents**, users see the agents they signed in to, with when they 
 | --- | --- |
 | `MCP:PublicOrigin` | Origin advertised in the OAuth metadata and expected in token audiences. **Required outside Development**: without it, or the scope's own origin, `/{scope}/mcp` refuses access tokens and the module logs an error at startup, because the origin would otherwise come from the request's `Host` and forwarded headers. In Development it defaults to the origin of the request. |
 | `MCP:MaxRequestBodySize` | Largest MCP request body in bytes, `1048576` (1 MB) by default; a larger request is answered with `413` before it is read. `0` turns the limit off. The platform itself sets no limit, and tool arguments are small JSON. |
-| `MCP:ValidateAgentTokensOnAllEndpoints` | `true` by default: on every endpoint of the platform, a token issued for an MCP endpoint is looked up in the token store, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP: a request with a revoked agent token gets `401 invalid_token`. Other tokens, cookies and API keys are not looked up, so the rest of the platform behaves as before. It costs one token store lookup per request with an agent's token. |
+| `MCP:ValidateAgentTokensOnAllEndpoints` | `true` by default: on every endpoint of the platform, an agent's token is looked up in the token store, so **Disconnect** ends an agent's access to the REST API and GraphQL at once, not only to MCP: a request with a revoked agent token gets `401 invalid_token`. An agent's token is one issued for an MCP endpoint (its audience, of any scope, switched off or not), or issued to a client application registered for an MCP resource, as **Connected agents** lists them; the second covers a token of the agent's authorization requested without a resource. Other tokens, cookies and API keys are not looked up, so the rest of the platform behaves as before. It costs one token store lookup per request with an agent's token, and one cached client lookup per client. |
 | `MCP:Scopes:{scope}:Enabled` | Switches a scope off. Defaults to `true`. A scope switched off has no endpoint and no metadata, and is not on **Agent tools**; `{scope}/*` in `MCP.Tools.Disabled` instead keeps the endpoint and refuses every call. |
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from the store or `UCP:PublicOrigin`. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
@@ -238,7 +238,7 @@ Invalid origins stop the platform at startup: an origin is an absolute `http` or
 | `mcp:audit:read` | Read the tool call audit log |
 | `mcp:manage` | See the tools of every scope and switch them on and off; see and disconnect the AI agents of every user (without it, users see and disconnect their own) |
 
-There is no permission to connect an agent. A tool is protected by the permission of what it does, the same one the back office and the REST API check, so an agent can do what its user can do and no more. Who may connect at all is decided by the OAuth clients an administrator registers, the user's consent, **Disconnect** in **Connected agents** and the scope switch in **Agent tools**. A scope can still require a permission for every request (`McpScope.Permissions`), as `vendor` requires `vendor_portal:access`.
+There is no permission to connect an agent. A tool is protected by the permission of what it does, the same one the back office and the REST API check, so an agent can do what its user can do and no more. Who may connect at all is decided by the OAuth clients an administrator registers, the user's consent, **Disconnect** in **Connected agents** and the scope switch in **Agent tools**. An MCP endpoint accepts only a token issued to a client: a token with no client, which the platform's password grant issues to an anonymous client, skips the consent and could not be disconnected, so it is refused. A scope can still require a permission for every request (`McpScope.Permissions`), as `vendor` requires `vendor_portal:access`.
 
 ### Observability
 
@@ -312,7 +312,7 @@ The MCP steps run only for a request whose endpoint is an MCP endpoint; other re
 1. A tool marked `[McpRequiresApproval]` does not run: it runs once with its `dryRun` (or `dry_run`) parameter set, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. A tool that requires approval but has no dry-run parameter is refused, and reported as an error at startup. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
 1. The call is audited (user, OAuth client, tool, arguments, outcome, duration, trace id), logged and traced.
-1. An approver reviews the pending change in the back office or with the review tools. Approving repeats the dry run as the requester, and then runs the tool with the stored arguments, as the approver.
+1. An approver reviews the pending change in the back office or with the review tools. Approving repeats the dry run as the requester, and then runs the tool with the stored arguments, as the approver. The scope's call filters run around both, as around the call that submitted it.
 
 A tool refuses a request with `McpException` (audited as `Failed`) or `McpForbiddenException` (audited as `Forbidden`): the agent gets the message as it is, as the tool's error. A call that returns a tool error carries the trace id in `_meta.trace_id`; protocol errors, such as an unknown tool, are JSON-RPC errors without it.
 
@@ -349,14 +349,17 @@ The MCP endpoints check that a token was issued for them. The rest of the platfo
 
 - The tool switch, `[McpRequiresApproval]`, `[McpRequiresConfirmation]` and the MCP audit apply to calls made through MCP. They guard the user against an agent's mistakes; they are not a boundary against whoever holds the token, who can call the REST API the tools wrap directly.
 - **Disconnect** stops the agent's token at once on MCP and, with `MCP:ValidateAgentTokensOnAllEndpoints` (on by default), on the REST API and GraphQL as well. With it off, the token works on the REST API until it expires. The platform's own `Authorization:EnablePersistentStorageTokenValidation` checks every token instead, which also ends a token as soon as its user's password or roles change.
-- A client registered with `rsrc:` permissions that asks for a token without naming a resource gets a token for the whole platform API (`resource_server`).
+- A client registered with `rsrc:` permissions that asks for a token without naming a resource gets a token for the whole platform API (`resource_server`). It is still an agent's token: **Disconnect** ends it on the REST API too, and the back office refuses it for reviewing pending changes.
 
 ### Approval
 
-- By default a change cannot be approved by the user who requested it (`MCP.Approval.AllowSelfApproval`).
+- By default a change cannot be approved by the user who requested it (`MCP.Approval.AllowSelfApproval`), nor by another user while the requester is signed in as them (`security:loginOnBehalf`).
+- Pending changes are reviewed by a person: `approve_pending_change` runs only after the user confirms it in the chat, and the back office's approve and reject endpoints refuse an agent's token.
 - The approver must also be allowed to run the tool, and a tool switched off cannot be approved.
 - The requester must still be able to make the change: before it runs as the approver, the tool's dry run is repeated as the requester. A requester whose account is gone or locked, who lost the tool's permission, or whose stores or sellers do not cover the change is refused, and the change stays pending for the approver to reject. A tool that requires approval therefore needs a dry run.
 - The change runs as the approver, whose access may be wider. A tool held for approval should store the scope of the change explicitly in its arguments (for example the store ids), not "every store I may use", which differs between the requester and the approver.
+- The requester's dry run sees the requester as `RequestContext.User` only; `HttpContext.User` and the platform services that read the current user still see the approver. A tool's dry run should take the user from its request context.
+- The dry run runs again at approval, so a dry run must not have side effects (counters, lookups that write).
 - A change expires after `MCP.Approval.PendingChangeLifetimeHours` and can no longer be approved.
 - A change is executed at most once, even if two approvers, or two replicas, approve it at the same time.
 - A call with `dryRun: true` changes nothing, so it runs right away instead of being submitted.
@@ -480,7 +483,7 @@ serviceCollection.AddMcpCallToolFilter<StoreToolCallFilter>("category-manager");
 
 A module that registers the scope itself declares the filter with it instead: `.WithCallToolFilter<StoreToolCallFilter>()` (see [Add a scope](#add-a-scope)).
 
-The filter is resolved from the request's services and runs inside the module's pipeline: after the permission checks, the switch and the argument validation, and within the audit and the `MCP tool` span, so the result it returns is the one that is audited and its spans are children of the tool's span. Calls of other scopes and of endpoints without a scope skip it. For a call held for approval it runs for the dry run only; an approved change runs the tool without it. The [UCP module](https://github.com/VirtoCommerce/vc-module-ucp) uses it for its buyer error envelopes and its `UCP {operation}` spans.
+The filter is resolved from the request's services and runs inside the module's pipeline: after the permission checks, the switch and the argument validation, and within the audit and the `MCP tool` span, so the result it returns is the one that is audited and its spans are children of the tool's span. Calls of other scopes and of endpoints without a scope skip it. For a call held for approval it runs for the dry run; when the change is approved, it runs again around the requester's dry run and around the execution, so a per-tool policy also applies to approved changes. The [UCP module](https://github.com/VirtoCommerce/vc-module-ucp) uses it for its buyer error envelopes and its `UCP {operation}` spans.
 
 ### Permissions limited to stores or sellers
 

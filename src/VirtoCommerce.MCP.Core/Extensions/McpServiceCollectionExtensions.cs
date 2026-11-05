@@ -31,7 +31,8 @@ public static class McpServiceCollectionExtensions
     }
 
     // Adds a module's step to the tool calls of one scope (McpScopes.Any for every scope). It runs inside the MCP
-    // module's pipeline, after its checks and within its audit, and is resolved from the request's services.
+    // module's pipeline, after its checks and within its audit, and is resolved from the request's services. It also
+    // runs around the execution of an approved change of the scope, and around the requester's dry run before it.
     public static IServiceCollection AddMcpCallToolFilter<TFilter>(this IServiceCollection services, string scopeName)
         where TFilter : class, IMcpCallToolFilter
     {
@@ -39,6 +40,7 @@ public static class McpServiceCollectionExtensions
 
         services.AddHttpContextAccessor();
         services.AddScoped<TFilter>();
+        services.AddSingleton(new McpCallToolFilterRegistration(scopeName, typeof(TFilter)));
         services.AddMcpServer().WithRequestFilters(filters =>
             filters.AddCallToolFilter(next => (context, cancellationToken) => IsInScope(context.Services, scopeName)
                 ? context.Services.GetRequiredService<TFilter>().InvokeAsync(next, context, cancellationToken)
