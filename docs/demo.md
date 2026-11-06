@@ -49,26 +49,22 @@ Restart the platform: it picks up the setting and loads the sample module. The *
 
 ## 3. Register the OAuth client
 
-The platform does not register MCP clients on the fly, so the client is registered once. Sign in to Swagger (`/docs`) as an administrator and call `POST /api/platform/oauthapps`:
+The platform does not register MCP clients on the fly, so the client is registered once. As an administrator, open **Security → OAuth applications** in the Admin Shell or the classic Manager (platform 3.1095.0 or later), select **Add** and fill in:
 
-```json
-{
-  "displayName": "MCP demo",
-  "clientId": "mcp-demo",
-  "clientType": "public",
-  "consentType": "explicit",
-  "redirectUris": [ "http://localhost:65111/callback" ],
-  "postLogoutRedirectUris": [],
-  "requirements": [ "ft:pkce" ],
-  "permissions": [ "rsrc:http://localhost:10645/admin/mcp" ],
-  "properties": {},
-  "settings": {}
-}
-```
+| Field | Value |
+| --- | --- |
+| Display name, Client ID | `MCP demo`, `mcp-demo` |
+| Client type | Public (**Require PKCE** switches on) |
+| Consent | Explicit |
+| Grant types | Authorization code, Refresh token |
+| Redirect URIs | `http://localhost:65111/callback` |
+| Resources | *MCP: Virto Commerce Back Office*, `http://localhost:10645/admin/mcp` |
 
-- `rsrc:` allows the client to request tokens for the MCP endpoint.
+- **Resources** allows the client to request tokens for the MCP endpoint (a `rsrc:` permission).
 - The redirect URI is where Claude Code listens after the sign-in; the port must match `--callback-port` in step 5.
-- `"consentType": "explicit"` shows the platform consent screen on the first sign-in, naming the agent; `"implicit"` skips it.
+- **Consent** *Explicit* shows the platform consent screen on the first sign-in, naming the agent; *Implicit* skips it.
+
+The [README](../README.md#set-up-the-platform-for-agents) shows the screen.
 
 ## 4. Create roles and users
 
@@ -166,7 +162,7 @@ The criteria also take `scopeName`, `userId`, `pendingChangeId`, `startDate`, `e
 | Symptom | Cause |
 | --- | --- |
 | `/mcp` shows `ECONNREFUSED` | The platform is not running. Start it, then `/mcp` → **Reconnect** |
-| The sign-in ends with an error about the resource | `Authorization:Resources` or the client's `rsrc:` permission does not match the URL in `.mcp.json` exactly |
+| The sign-in ends with an error about the resource | `Authorization:Resources` or the client's **Resources** do not match the URL in `.mcp.json` exactly |
 | The browser signs in as the wrong user | The platform session from an earlier sign-in is reused. Sign out of the platform, then **Authenticate** again |
 | The sign-in page does not open | Another process uses the callback port. Use another port in both the client's redirect URI and `--callback-port` |
 | The agent has no `search_users` | The sample module is not loaded, or the user lacks `platform:security:read` |
