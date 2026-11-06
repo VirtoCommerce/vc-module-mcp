@@ -7,6 +7,7 @@ using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Data.Services;
 using VirtoCommerce.MCP.Web.Services;
+using VirtoCommerce.Platform.Core.Security;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Services;
@@ -27,7 +28,7 @@ public class McpOAuthResourceProviderTests
             new McpScope { Name = "vendor" });
 
         // Act
-        var resources = await provider.GetResourcesAsync(CreateContext(options));
+        var resources = await provider.GetResourcesAsync(new OAuthResourceContext { HttpContext = CreateContext(options) }, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(
@@ -47,13 +48,27 @@ public class McpOAuthResourceProviderTests
         var provider = CreateProvider(options, new McpScope { Name = "ucp" });
 
         // Act
-        var resources = await provider.GetResourcesAsync(CreateContext(options));
+        var resources = await provider.GetResourcesAsync(new OAuthResourceContext { HttpContext = CreateContext(options) }, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(
             ["http://platform.local:10645/ucp/mcp", "https://shop.example.com/mcp", "http://localhost:5173/mcp"],
             resources.Select(x => x.Uri));
         Assert.All(resources, x => Assert.Equal("ucp", x.Title));
+    }
+
+    [Fact]
+    public async Task GetResourcesAsync_Should_ListNothing_When_ThereIsNoRequest()
+    {
+        // Arrange
+        var options = new McpOptions();
+        var provider = CreateProvider(options, new McpScope { Name = "admin" });
+
+        // Act
+        var resources = await provider.GetResourcesAsync(new OAuthResourceContext(), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Empty(resources);
     }
 
     private static McpOAuthResourceProvider CreateProvider(McpOptions options, params McpScope[] scopes)

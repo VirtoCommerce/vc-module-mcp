@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
@@ -20,9 +21,16 @@ public class McpOAuthResourceProvider(
 {
     public const string ResourceKind = "mcp";
 
-    public async Task<IList<OAuthResource>> GetResourcesAsync(HttpContext httpContext)
+    public virtual async Task<IList<OAuthResource>> GetResourcesAsync(OAuthResourceContext context, CancellationToken cancellationToken)
     {
         var result = new List<OAuthResource>();
+
+        // The public origin of a scope may come from the request; without one the endpoints are not listed
+        var httpContext = context?.HttpContext;
+        if (httpContext == null)
+        {
+            return result;
+        }
 
         foreach (var scope in scopeRegistry.Scopes.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
         {
