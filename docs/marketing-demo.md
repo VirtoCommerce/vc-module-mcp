@@ -35,19 +35,7 @@ You need a platform with the `VirtoCommerce.MCP`, `VirtoCommerce.Marketing` and 
     }
     ```
 
-1. **Register the MCP client** once, as an administrator, with `POST /api/platform/oauthapps`:
-
-    ```json
-    {
-      "displayName": "Marketing agent",
-      "clientId": "mcp-demo",
-      "clientType": "public",
-      "consentType": "explicit",
-      "redirectUris": [ "http://localhost:65111/callback" ],
-      "requirements": [ "ft:pkce" ],
-      "permissions": [ "rsrc:http://localhost:10645/admin/mcp" ]
-    }
-    ```
+1. **Register the MCP client** once, as an administrator, in **Security → OAuth applications** (Admin Shell or classic Manager): **Add**, Display name `Marketing agent`, Client ID `mcp-demo`, Client type *Public* (PKCE switches on), Consent *Explicit*, Grant types *Authorization code* and *Refresh token*, Redirect URI `http://localhost:65111/callback`, and under **Resources** tick *MCP: Virto Commerce Back Office* (`http://localhost:10645/admin/mcp`). The [README](../README.md#set-up-the-platform-for-agents) shows the screen.
 
 1. **Create the roles** in **Security → Roles**:
 
@@ -216,4 +204,4 @@ The demo data lives in memory: restart the platform to start over. Pending chang
 | The agent has no marketing tools | The sample is not loaded, or the user has no `marketing:read` |
 | The store-limited marketer sees every store | The role was created with the scope in one call; save it again |
 | `generate_coupons` fails with "Background jobs are not available" | The `VirtoCommerce.BackgroundJobs` module is not installed |
-| The sign-in ends with an error about the resource | `Authorization:Resources` or the client's `rsrc:` permission does not match the MCP address exactly |
+| The sign-in ends with an error about the resource | `Authorization:Resources` or the client's **Resources** do not match the MCP address exactly |

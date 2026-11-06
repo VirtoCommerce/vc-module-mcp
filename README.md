@@ -84,7 +84,7 @@ Menu names in the agents change from release to release; if a step does not matc
 
 An administrator does this once per platform, and registers one OAuth client per kind of agent.
 
-1. **Install** `VirtoCommerce.MCP` (platform 3.1091.0 or later) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
+1. **Install** `VirtoCommerce.MCP` (platform 3.1095.0 or later for the OAuth applications screen of step 3) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
 1. **Allow tokens for the endpoint** in `appsettings.json`:
 
     ```json
@@ -93,19 +93,24 @@ An administrator does this once per platform, and registers one OAuth client per
     }
     ```
 
-1. **Register the agent** as an OAuth client with `POST /api/platform/oauthapps` (Swagger at `/docs`). Change only `clientId`, `displayName` and `redirectUris` from one agent to the next:
+1. **Register the agent** in **Security → OAuth applications** of the back office, one application per kind of agent. The screen is the same in the Admin Shell (3.1094.0 or later) and in the classic Manager (`VirtoCommerce.AdminAngularJs` 3.1096.0 or later). Select **Add**, then:
 
-    ```json
-    {
-      "clientId": "claude-code",
-      "displayName": "Claude Code",
-      "clientType": "public",
-      "consentType": "explicit",
-      "redirectUris": [ "http://localhost:65111/callback" ],
-      "requirements": [ "ft:pkce" ],
-      "permissions": [ "rsrc:https://virtostart-demo-admin.govirto.com/admin/mcp" ]
-    }
-    ```
+    1. **Display name** and **Client ID**: the agent shows the name on the consent page; the user enters the client ID in the agent.
+    1. **Client type**: *Public*. The secret disappears, and **Require PKCE** switches on.
+    1. **Consent**: *Explicit*.
+    1. **Grant types**: *Authorization code* and *Refresh token* only.
+    1. **Redirect URIs**: the agent's address from the table below; type it and press Enter.
+    1. **Resources (MCP endpoints and APIs)**: tick the MCP endpoint the agent connects to, for example *MCP: Virto Commerce Back Office*. The screen lists the endpoint of every scope at its public origin; an endpoint marked *Not in Authorization:Resources* needs step 2 first. An address the list does not show, such as another host of the scope, goes to **Other resources**.
+    1. **Save**.
+
+    ![A Claude client for the back-office MCP endpoint in Security → OAuth applications of the Admin Shell](docs/media/oauth-app-agent-admin-shell.png)
+
+    <details>
+    <summary>The same client in the classic Manager</summary>
+
+    ![The same client in the OAuth applications blade of the classic Manager](docs/media/oauth-app-agent-classic.png)
+
+    </details>
 
     | Agent | Redirect URI |
     | --- | --- |
@@ -120,16 +125,17 @@ An administrator does this once per platform, and registers one OAuth client per
 1. **Hand out** the endpoint URL and the client id of each agent.
 
 > [!NOTE]
-> Two stories make this shorter. With [VCST-6641](https://virtocommerce.atlassian.net/browse/VCST-6641), the OAuth client is set up in **Security → OAuth applications** of the back office instead of the API. With [VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639), agents that identify themselves with a client ID metadata document connect with the endpoint URL alone, as with Shopify, BigCommerce or commercetools.
+> With [VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639), agents that identify themselves with a client ID metadata document will connect with the endpoint URL alone, as with Shopify, BigCommerce or commercetools.
 
 <details>
 <summary>Why each field of the client</summary>
 
-* `clientType: public`: the agent holds no secret, only the user's token.
-* `requirements: ft:pkce`: the sign-in is protected by PKCE, as the MCP specification requires.
-* `consentType: explicit`: the user sees which agent they let act as them, once per user and agent.
-* `permissions: rsrc:…`: the resources the client may ask a token for (RFC 8707); it must match the URL the agent uses exactly, scheme and port included. It limits what a client may request, not what it receives: a token request that names no resource gets a token for the whole platform API (`resource_server`). MCP clients name the MCP endpoint, so their tokens are for that endpoint only; see [What the token protects today](#what-the-token-protects-today).
-* `POST /api/platform/oauthapps` also adds default permissions to every client (`client_credentials`, `email`, `profile`, end session). They give a public client no access, since it holds no secret.
+* **Client type** *Public*: the agent holds no secret, only the user's token.
+* **Require PKCE**: the sign-in is protected by PKCE, as the MCP specification requires.
+* **Consent** *Explicit*: the user sees which agent they let act as them, once per user and agent.
+* **Grant types**: an agent signs the user in with an authorization code and renews the token with a refresh token. *Client credentials* and *Password* would let a client get tokens without the user's sign-in, so they stay off.
+* **Resources**: the resources the client may ask a token for (RFC 8707), stored as `rsrc:` permissions; it must match the URL the agent uses exactly, scheme and port included. It limits what a client may request, not what it receives: a token request that names no resource gets a token for the whole platform API (`resource_server`). MCP clients name the MCP endpoint, so their tokens are for that endpoint only; see [What the token protects today](#what-the-token-protects-today).
+* What the screen shows after **Save** is what is stored. Scripts can send the same fields to `POST /api/platform/oauthapps`.
 
 </details>
 
@@ -138,7 +144,7 @@ An administrator does this once per platform, and registers one OAuth client per
 | Symptom | Cause |
 | --- | --- |
 | The sign-in page does not open, or the sign-in ends with an error page | The redirect URI or the callback port of the client does not match its registration |
-| `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and in the client's `rsrc:` permission exactly, scheme and port included. Or it was issued without an OAuth client (password grant): connect with the registered client |
+| `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and ticked in the client's **Resources** exactly, scheme and port included. Or it was issued without an OAuth client (password grant): connect with the registered client |
 | HTTP 403 | The scope requires a permission the user lacks, for example `vendor_portal:access` for `/vendor/mcp` |
 | HTTP 403 from a client that runs in a browser | Its page origin is not the scope's origin: add it to `MCP:AllowedOrigins` or `MCP:Scopes:{scope}:AllowedOrigins` (see [Browser origins](#browser-origins)) |
 | The agent sees fewer tools than expected | Tools the user has no permission for are not listed; a tool switched off in **Agent tools** is not listed either |
