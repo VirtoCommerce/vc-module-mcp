@@ -185,22 +185,36 @@ public class Module : IModule, IHasConfiguration
             return;
         }
 
+        var logger = serviceProvider.GetRequiredService<ILogger<Module>>();
+        foreach (var scope in FindScopesWithoutPublicOrigin(serviceProvider))
+        {
+            logger.LogError("MCP scope '{ScopeName}' has no public origin: neither MCP:PublicOrigin nor MCP:Scopes:{ScopeName}:PublicOrigin is set. " +
+                "Its endpoint {Path} refuses access tokens until one is set.", scope.Name, scope.Name, scope.Path);
+        }
+    }
+
+    // The enabled scopes whose origin comes from the MCP configuration only and is not set there. A scope that declared
+    // its own IMcpPublicOriginResolver (WithPublicOriginResolver) is left out: its origin may come from elsewhere, such
+    // as the URL of the request's store, which only that resolver knows.
+    public static IList<McpScope> FindScopesWithoutPublicOrigin(IServiceProvider serviceProvider)
+    {
         var options = serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value;
         if (!string.IsNullOrEmpty(options.PublicOrigin))
         {
-            return;
+            return [];
         }
 
-        var logger = serviceProvider.GetRequiredService<ILogger<Module>>();
-        foreach (var scope in serviceProvider.GetRequiredService<IMcpScopeRegistry>().Scopes)
-        {
-            options.Scopes.TryGetValue(scope.Name, out var scopeOptions);
-            if (scopeOptions?.Enabled != false && string.IsNullOrEmpty(scopeOptions?.PublicOrigin))
+        var keyedServices = serviceProvider.GetService<IServiceProviderIsKeyedService>();
+
+        return serviceProvider.GetRequiredService<IMcpScopeRegistry>().Scopes
+            .Where(scope =>
             {
-                logger.LogError("MCP scope '{ScopeName}' has no public origin: neither MCP:PublicOrigin nor MCP:Scopes:{ScopeName}:PublicOrigin is set. " +
-                    "Its endpoint {Path} refuses access tokens until one is set.", scope.Name, scope.Name, scope.Path);
-            }
-        }
+                options.Scopes.TryGetValue(scope.Name, out var scopeOptions);
+                return scopeOptions?.Enabled != false &&
+                    string.IsNullOrEmpty(scopeOptions?.PublicOrigin) &&
+                    keyedServices?.IsKeyedService(typeof(IMcpPublicOriginResolver), McpScopeBuilder.GetServiceKey(scope.Name)) != true;
+            })
+            .ToList();
     }
 
     private static void ValidateMcpPrimitives(IServiceProvider serviceProvider)

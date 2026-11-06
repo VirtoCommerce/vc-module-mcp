@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web;
@@ -89,6 +90,32 @@ public class ModuleTests
 
         // Act & Assert
         Assert.Throws<OptionsValidationException>(() => serviceProvider.GetRequiredService<IOptions<McpOptions>>().Value);
+    }
+
+    [Fact]
+    public void FindScopesWithoutPublicOrigin_Should_LeaveOut_TheScopesWithTheirOwnOriginResolver()
+    {
+        // Arrange
+        var services = Initialize(new Dictionary<string, string> { ["MCP:Scopes:vendor:PublicOrigin"] = "https://vendor.example.com" });
+        services.AddMcpScope(new McpScope { Name = "ucp" }, scope => scope.WithPublicOriginResolver<McpPublicOriginResolver>());
+        services.AddMcpScope(new McpScope { Name = "shop" });
+        using var serviceProvider = services.BuildServiceProvider();
+
+        // Act
+        var scopes = Module.FindScopesWithoutPublicOrigin(serviceProvider);
+
+        // Assert
+        Assert.Equal([McpScopes.Admin, "shop"], scopes.Select(x => x.Name).Order().ToArray());
+    }
+
+    [Fact]
+    public void FindScopesWithoutPublicOrigin_Should_FindNone_When_TheModuleOriginIsSet()
+    {
+        // Arrange
+        using var serviceProvider = Initialize(Configuration("https://admin.example.com", null)).BuildServiceProvider();
+
+        // Act & Assert
+        Assert.Empty(Module.FindScopesWithoutPublicOrigin(serviceProvider));
     }
 
     private static Dictionary<string, string> Configuration(string publicOrigin, string scopeOrigin)
