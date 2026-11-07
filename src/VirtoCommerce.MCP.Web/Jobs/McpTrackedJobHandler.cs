@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,13 +43,19 @@ public class McpTrackedJobHandler(
             return;
         }
 
-        // Switching the tool off stops its queued jobs too, not only its new calls.
-        if (toolAvailabilityService != null && await IsToolDisabledAsync(job))
+        // A job whose user, or the requester of its approved change, no longer exists or is locked does not start, as
+        // the approval of a change does not.
+        var users = await GetUsersAsync(job);
+        if (users == null)
         {
-            job.Status = McpJobStatus.Canceled;
-            job.Message = $"Not started: tool '{job.ToolName}' was switched off by the administrator.";
-            job.FinishedDate = timeProvider.GetUtcNow().UtcDateTime;
-            await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued);
+            await CancelQueuedJobAsync(job, "Not started: the account it runs for no longer exists or is locked.");
+            return;
+        }
+
+        // Switching the tool off stops its queued jobs too, not only its new calls.
+        if (toolAvailabilityService != null && await IsToolDisabledAsync(job, users))
+        {
+            await CancelQueuedJobAsync(job, $"Not started: tool '{job.ToolName}' was switched off by the administrator.");
             return;
         }
 
@@ -104,19 +111,42 @@ public class McpTrackedJobHandler(
         }
     }
 
-    // The tool switch for the users of the job: the user it runs as and, for an approved change, its requester.
-    protected virtual async Task<bool> IsToolDisabledAsync(McpJob job)
+    // The users of the job: the user it runs as and, for an approved change, its requester. Null when one of them no
+    // longer exists or is locked; empty for a job of no user.
+    protected virtual async Task<IList<ClaimsPrincipal>> GetUsersAsync(McpJob job)
     {
         var userIds = new[] { job.UserId, job.RequestedByUserId }.Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
-        if (userIds.Count == 0)
+        var principalFactory = serviceProvider.GetService<McpUserPrincipalFactory>();
+        if (userIds.Count == 0 || principalFactory == null)
+        {
+            return [];
+        }
+
+        var users = new List<ClaimsPrincipal>();
+        foreach (var userId in userIds)
+        {
+            var user = await principalFactory.CreateAsync(userId);
+            if (user == null)
+            {
+                return null;
+            }
+
+            users.Add(user);
+        }
+
+        return users;
+    }
+
+    // The tool switch for each user of the job; for a job of no user, the switch without one.
+    protected virtual async Task<bool> IsToolDisabledAsync(McpJob job, IList<ClaimsPrincipal> users)
+    {
+        if (users.Count == 0)
         {
             return await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(job.ScopeName, job.ToolName));
         }
 
-        var principalFactory = serviceProvider.GetService<McpUserPrincipalFactory>();
-        foreach (var userId in userIds)
+        foreach (var user in users)
         {
-            var user = principalFactory == null ? null : await principalFactory.CreateAsync(userId);
             if (await toolAvailabilityService.IsDisabledAsync(new McpToolAvailabilityContext(job.ScopeName, job.ToolName, user)))
             {
                 return true;
@@ -124,6 +154,14 @@ public class McpTrackedJobHandler(
         }
 
         return false;
+    }
+
+    private async Task CancelQueuedJobAsync(McpJob job, string message)
+    {
+        job.Status = McpJobStatus.Canceled;
+        job.Message = message;
+        job.FinishedDate = timeProvider.GetUtcNow().UtcDateTime;
+        await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued);
     }
 
     private static string Truncate(string value)

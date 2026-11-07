@@ -622,7 +622,7 @@ return await jobDispatcher.EnqueueAsync<GenerateCouponsJob>(requestContext, payl
 ```
 
 - The handler is an ordinary `IBackgroundJobHandler<TPayload>`, registered with `AddBackgroundJob`. Its progress reports become the progress of the job, shown in the admin UI and returned by `get_job_status`.
-- The result is an `McpJobHandle`: `job_id`, `status`, `title`, `total_count`, `message` and the preview. A queued job is canceled at once by `cancel_job`; a running one stops when the job engine supports cancellation. A queued job of a tool switched off with `MCP.Tools.Disabled` does not start.
+- The result is an `McpJobHandle`: `job_id`, `status`, `title`, `total_count`, `message` and the preview. A queued job is canceled at once by `cancel_job`; a running one stops when the job engine supports cancellation. A queued job of a tool switched off with `MCP.Tools.Disabled`, or whose user or the requester of its change no longer exists or is locked, does not start.
 - A job is visible to the user who ran the tool and, when an approved change started it, to the user who requested the change; approvers of a scope see every job of that scope.
 
 ### Sensitive arguments

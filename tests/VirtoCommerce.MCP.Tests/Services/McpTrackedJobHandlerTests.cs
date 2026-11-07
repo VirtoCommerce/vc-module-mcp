@@ -76,6 +76,42 @@ public class McpTrackedJobHandlerTests
         availability.Verify(x => x.IsDisabledAsync(It.Is<McpToolAvailabilityContext>(c => c.User.FindFirst("sub").Value == "approver")), Times.Once);
     }
 
+    [Theory]
+    [InlineData("approver", "requester", "requester")]
+    [InlineData("approver", "requester", "approver")]
+    [InlineData("user-1", null, "user-1")]
+    public async Task Execute_Should_NotStartTheJob_When_TheAccountOfOneOfItsUsersNoLongerExistsOrIsLocked(string userId, string requestedByUserId, string goneUserId)
+    {
+        // Arrange: no tool switches, so only the account check stops the job
+        var handler = CreateHandler(goneUserId: goneUserId);
+        _jobs["job-1"].UserId = userId;
+        _jobs["job-1"].RequestedByUserId = requestedByUserId;
+
+        // Act
+        await handler.Execute(CreatePayload(new CountPayload { Count = 3 }), CreateContext(), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(0, CountingJob.Executions);
+        Assert.Equal(McpJobStatus.Canceled, _jobs["job-1"].Status);
+        Assert.Contains("no longer exists or is locked", _jobs["job-1"].Message);
+    }
+
+    [Fact]
+    public async Task Execute_Should_RunTheJob_When_ItsUsersExist()
+    {
+        // Arrange
+        var handler = CreateHandler(goneUserId: "someone-else");
+        _jobs["job-1"].UserId = "approver";
+        _jobs["job-1"].RequestedByUserId = "requester";
+
+        // Act
+        await handler.Execute(CreatePayload(new CountPayload { Count = 1 }), CreateContext(), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(1, CountingJob.Executions);
+        Assert.Equal(McpJobStatus.Succeeded, _jobs["job-1"].Status);
+    }
+
     [Fact]
     public async Task Execute_Should_RunTheModuleHandler_And_RecordItsProgressAndSuccess()
     {
@@ -162,7 +198,7 @@ public class McpTrackedJobHandlerTests
         Assert.Equal(0, CountingJob.Executions);
     }
 
-    private McpTrackedJobHandler CreateHandler(McpToolAvailabilityService toolAvailabilityService = null)
+    private McpTrackedJobHandler CreateHandler(McpToolAvailabilityService toolAvailabilityService = null, string goneUserId = null)
     {
         CountingJob.Executions = 0;
         _jobs["job-1"] = new McpJob { Id = "job-1", ScopeName = "admin", ToolName = "count", Status = McpJobStatus.Queued };
@@ -191,7 +227,7 @@ public class McpTrackedJobHandlerTests
         var principalFactory = new Mock<McpUserPrincipalFactory>(null, null);
         principalFactory
             .Setup(x => x.CreateAsync(It.IsAny<string>()))
-            .ReturnsAsync((string userId) => new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", userId)], "test")));
+            .ReturnsAsync((string userId) => userId == goneUserId ? null : new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", userId)], "test")));
 
         var services = new ServiceCollection()
             .AddTransient<CountingJob>()
