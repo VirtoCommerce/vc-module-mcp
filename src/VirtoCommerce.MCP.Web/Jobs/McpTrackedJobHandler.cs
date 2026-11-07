@@ -37,34 +37,7 @@ public class McpTrackedJobHandler(
             return;
         }
 
-        // A job canceled while it waited in the queue does not start.
-        if (job.Status != McpJobStatus.Queued)
-        {
-            return;
-        }
-
-        // A job whose user, or the requester of its approved change, no longer exists or is locked does not start, as
-        // the approval of a change does not.
-        var users = await GetUsersAsync(job);
-        if (users == null)
-        {
-            await CancelQueuedJobAsync(job, "Not started: the account it runs for no longer exists or is locked.");
-            return;
-        }
-
-        // Switching the tool off stops its queued jobs too, not only its new calls.
-        if (toolAvailabilityService != null && await IsToolDisabledAsync(job, users))
-        {
-            await CancelQueuedJobAsync(job, $"Not started: tool '{job.ToolName}' was switched off by the administrator.");
-            return;
-        }
-
-        job.Status = McpJobStatus.Running;
-        job.EngineJobId = context.JobId;
-        job.StartedDate = timeProvider.GetUtcNow().UtcDateTime;
-
-        // A cancel that saved Canceled after the job was read wins: the job does not start.
-        if (!await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued))
+        if (!await TryStartAsync(job, context.JobId))
         {
             return;
         }
@@ -109,6 +82,39 @@ public class McpTrackedJobHandler(
             await jobService.SaveChangesAsync([job]);
             McpDiagnostics.RecordJob(job.Status);
         }
+    }
+
+    // Marks the queued job running, or leaves it when it must not start; false when it does not start.
+    private async Task<bool> TryStartAsync(McpJob job, string engineJobId)
+    {
+        // A job canceled while it waited in the queue does not start.
+        if (job.Status != McpJobStatus.Queued)
+        {
+            return false;
+        }
+
+        // A job whose user, or the requester of its approved change, no longer exists or is locked does not start, as
+        // the approval of a change does not.
+        var users = await GetUsersAsync(job);
+        if (users == null)
+        {
+            await CancelQueuedJobAsync(job, "Not started: the account it runs for no longer exists or is locked.");
+            return false;
+        }
+
+        // Switching the tool off stops its queued jobs too, not only its new calls.
+        if (toolAvailabilityService != null && await IsToolDisabledAsync(job, users))
+        {
+            await CancelQueuedJobAsync(job, $"Not started: tool '{job.ToolName}' was switched off by the administrator.");
+            return false;
+        }
+
+        job.Status = McpJobStatus.Running;
+        job.EngineJobId = engineJobId;
+        job.StartedDate = timeProvider.GetUtcNow().UtcDateTime;
+
+        // A cancel that saved Canceled after the job was read wins: the job does not start.
+        return await jobService.TryChangeStatusAsync(job, McpJobStatus.Queued);
     }
 
     // The users of the job: the user it runs as and, for an approved change, its requester. Null when one of them no
