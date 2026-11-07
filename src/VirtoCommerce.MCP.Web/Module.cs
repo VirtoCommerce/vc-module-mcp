@@ -39,8 +39,6 @@ namespace VirtoCommerce.MCP.Web;
 
 public class Module : IModule, IHasConfiguration
 {
-    private const string VendorPortalAccessPermission = "vendor_portal:access";
-
     public ManifestModuleInfo ModuleInfo { get; set; }
     public IConfiguration Configuration { get; set; }
 
@@ -144,15 +142,6 @@ public class Module : IModule, IHasConfiguration
                 "and return its id. Such a change is applied only after another user with the mcp:approve permission approves it.",
             RequireAuthenticatedUser = true,
             ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
-        });
-
-        serviceCollection.AddMcpScope(new McpScope
-        {
-            Name = McpScopes.Vendor,
-            Title = "Virto Commerce Vendor Portal",
-            Instructions = "Tools for vendor portal users. Every call acts as the signed-in user and sees only their own seller's data.",
-            RequireAuthenticatedUser = true,
-            Permissions = [VendorPortalAccessPermission],
         });
     }
 

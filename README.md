@@ -28,7 +28,7 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
 ## Connect an AI agent
 
 > [!NOTE]
-> The steps below are an example, with the back-office endpoint `/admin/mcp`. The MCP module is the infrastructure: on its own it serves only its approval and job tools. The tools an agent works with, and every scope besides `admin` and `vendor`, are registered by other modules. See [UCP](https://github.com/VirtoCommerce/vc-module-ucp) for a buyer scope, `/ucp/mcp`, with its shopping tools, and the [Samples](#samples) for back-office tools (marketing, content); to write your own, see the [Developer guide](#developer-guide).
+> The steps below are an example, with the back-office endpoint `/admin/mcp`. The MCP module is the infrastructure: on its own it serves only its approval and job tools. The tools an agent works with, and every scope besides `admin`, are registered by other modules. See [UCP](https://github.com/VirtoCommerce/vc-module-ucp) for a buyer scope, `/ucp/mcp`, with its shopping tools, and the [Samples](#samples) for back-office tools (marketing, content); to write your own, see the [Developer guide](#developer-guide).
 
 You need two things from your administrator: the **endpoint URL** and the agent's **client id**.
 
@@ -352,7 +352,7 @@ A scope is an MCP surface for one kind of agent. Only the tools, prompts and res
 | Scope | Endpoint | Registered by | Who connects |
 | --- | --- | --- | --- |
 | `admin` | `/admin/mcp` | this module | signed-in platform users; each sees the tools their permissions allow |
-| `vendor` | `/vendor/mcp` | this module | vendor portal users with the `vendor_portal:access` permission (defined by the marketplace vendor module; without it the scope refuses everyone) |
+| `vendor` | `/vendor/mcp` | the vendor portal module (not yet; this module no longer registers it) | vendor portal users with the `vendor_portal:access` permission |
 | `ucp` | `/ucp/mcp` | the UCP module, from its VCST-6155 version ([Moving UCP to the MCP module](docs/ucp-migration.md)); switching the scope off turns all of UCP off; earlier UCP versions map the endpoint themselves (see [Coexistence](#coexistence-with-modules-that-host-their-own-mcp-endpoint)) | buyers and shopping agents |
 
 Every request is stateless: the scope and the user are resolved per HTTP request, so replicas need no session affinity and one deployment serves all scopes side by side.
@@ -395,7 +395,7 @@ The MCP endpoints check that a token was issued for them. The rest of the platfo
 - Changes are approved in scopes with approval only (`McpScope.ApprovalPermission`; `admin` by default). In any other scope, a call to a tool marked `[McpRequiresApproval]` is refused and audited as `Error`, and the tool is reported as an error in the log at startup. So is such a tool without `[McpScope]`, because on endpoints without a scope its calls are not held for approval.
 - An approved change runs to the end and its result is recorded, even if the approver's client disconnects.
 
-Changes are reviewed in the back office or with the first four tools below, present in every scope with approval; the two job tools are in the `admin` and `vendor` scopes. An approver of a scope works with every change of that scope; any other user sees and withdraws only the changes they requested.
+Changes are reviewed in the back office or with the first four tools below, present in every scope with approval; the two job tools are in the `admin` scope, and in the `vendor` scope where the vendor portal module registers it. An approver of a scope works with every change of that scope; any other user sees and withdraws only the changes they requested.
 
 | Tool | Purpose | Who |
 | --- | --- | --- |

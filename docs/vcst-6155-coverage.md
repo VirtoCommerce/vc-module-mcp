@@ -8,7 +8,7 @@ How the module and the samples answer the story [VCST-6155](https://virtocommerc
 | --- | --- |
 | A dedicated module that hosts all MCP infrastructure and removes duplication across modules | This module. UCP moved to it in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`) of `vc-module-ucp`, verified on a local platform ([Moving UCP to the MCP module](ucp-migration.md)) |
 | Declarative registration of tools, resources, prompts | `AddMcpTools*`, `AddMcpPrompts*`, `AddMcpResources*` with `[McpScope]`; [Adding tools to a scope](../README.md#add-tools-to-a-scope) |
-| Scopes: storefront, admin, vendor, custom | `AddMcpScope`; `admin` and `vendor` built in, `ucp` registered by the UCP module; [Scopes](../README.md#scopes) |
+| Scopes: storefront, admin, vendor, custom | `AddMcpScope`; `admin` built in, `ucp` registered by the UCP module, `vendor` to be registered by the vendor portal module; [Scopes](../README.md#scopes) |
 | Scope from the request domain (primary proposal) or the URL path (alternative) | Both: `/{scope}/mcp` on any host, and `/mcp` on the hosts of `MCP:Scopes:{scope}:Hosts` |
 | Anonymous, authenticated and permission-protected tools, checked before execution | Anonymous scopes; `[McpRequiresUser]`; `[Authorize]` and `[McpPermission]`, checked before the tool runs |
 | Marketer bounded by store permission scopes, enforced inside each tool | `[McpPermission]` and `GetMcpPermissionGrant`; refusals with `McpForbiddenException`, audited as `Forbidden` |
