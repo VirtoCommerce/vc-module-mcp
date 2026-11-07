@@ -1,0 +1,130 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "AI エージェント（MCP）",
+      "APPROVALS": "エージェントの承認",
+      "AUDIT": "エージェント監査ログ",
+      "TOOLS": "エージェントツール",
+      "AGENTS": "接続済みエージェント",
+      "COUNTER": "確認待ちの変更が {count} 件あります"
+    },
+    "APPROVALS": {
+      "TITLE": "エージェントの承認",
+      "EMPTY": "確認待ちの項目はありません",
+      "EMPTY_HINT": "承認が必要な変更をエージェントが依頼すると、ここに表示されます。",
+      "NOT_APPROVER": "どの MCP スコープでも、エージェントの変更を確認する権限がありません。"
+    },
+    "APPROVAL": {
+      "TITLE": "エージェントによる変更",
+      "WHAT_CHANGES": "変更内容",
+      "WHAT_CHANGED": "変更された内容",
+      "NO_DIFF": "ツールは変更を差分として示していません。下の引数とプレビューを確認してください。",
+      "WARNINGS": "承認前に確認",
+      "NOTES": "プレビューのメモ",
+      "REQUEST": "リクエスト",
+      "ARGUMENTS": "引数",
+      "PREVIEW": "ドライランのプレビュー",
+      "RESULT": "結果",
+      "COMMENT": "コメント",
+      "COMMENT_PLACEHOLDER": "依頼者と監査ログ向けの任意のメモ",
+      "REVIEW": "確認",
+      "FIELD": "フィールド",
+      "FROM": "現在",
+      "TO": "変更後",
+      "OBJECT": "オブジェクト",
+      "APPROVED": "承認して適用済み",
+      "APPROVED_FAILED": "承認されましたが、ツールが失敗しました：結果を確認してください",
+      "REJECTED": "却下済み"
+    },
+    "AUDIT": {
+      "TITLE": "エージェント監査ログ",
+      "DETAILS": "ツール呼び出し",
+      "EMPTY": "ツール呼び出しが見つかりません",
+      "SEARCH": "ツール名またはトレース ID",
+      "TRACE_HINT": "この ID で、監視ツールのトレースとログを検索できます。",
+      "OPEN_CHANGE": "変更を開く"
+    },
+    "TOOLS": {
+      "TITLE": "エージェントツール",
+      "EMPTY": "ツールがありません",
+      "SCOPES": "スコープ",
+      "SCOPE_ON": "エージェントはこのスコープを使用できます",
+      "SCOPE_OFF_HINT": "このスコープのすべてのツールがオフです",
+      "SWITCHED_ON": "{name} をオンにしました",
+      "SWITCHED_OFF": "{name} をオフにしました",
+      "OFF_BY_SCOPE": "オフ：スコープがオフです",
+      "KIND_READ": "読み取り",
+      "KIND_WRITE": "書き込み",
+      "KIND_APPROVAL": "承認",
+      "CONFIRM_OFF_SCOPE": "{scope} スコープのすべてのツールをオフにしますか？ オンに戻すまで、エージェントにはエラーが返されます。"
+    },
+    "AGENTS": {
+      "TITLE": "接続済みエージェント",
+      "EMPTY": "接続されているエージェントはありません",
+      "EMPTY_HINT": "ユーザーが Claude などからエージェントにサインインすると、ここに表示されます。",
+      "DISCONNECT": "切断",
+      "CONFIRM_DISCONNECT": "{user} の {agent} を切断しますか？ 次のリクエストは拒否され、再接続するにはユーザーが再度サインインする必要があります。",
+      "DISCONNECTED": "{agent} を切断しました",
+      "CONNECTED": "接続日時",
+      "LAST_USED": "最終使用",
+      "SESSIONS": "アクティブなサインイン",
+      "ENDPOINT": "MCP エンドポイント",
+      "SEARCH": "エージェント、クライアント ID、ユーザー"
+    },
+    "FIELDS": {
+      "TOOL": "ツール",
+      "SCOPE": "スコープ",
+      "STATUS": "ステータス",
+      "OUTCOME": "実行結果",
+      "REQUESTED_BY": "依頼者",
+      "REQUESTED_AT": "依頼日時",
+      "EXPIRES": "有効期限",
+      "REVIEWED_BY": "確認者",
+      "REVIEWED_AT": "確認日時",
+      "USER": "ユーザー",
+      "CLIENT": "クライアント",
+      "DATE": "日時",
+      "DURATION": "所要時間（ミリ秒）",
+      "ERROR": "エラー",
+      "TRACE_ID": "トレース ID",
+      "KIND": "種類",
+      "ENABLED": "有効",
+      "DESCRIPTION": "説明"
+    },
+    "STATUS": {
+      "Pending": "保留中",
+      "Approved": "承認済み",
+      "Applied": "適用済み",
+      "Failed": "失敗",
+      "Rejected": "却下済み",
+      "Expired": "期限切れ"
+    },
+    "OUTCOME": {
+      "Succeeded": "成功",
+      "Failed": "失敗",
+      "Error": "エラー",
+      "Forbidden": "禁止",
+      "PendingApproval": "承認待ち",
+      "Declined": "ユーザーが拒否",
+      "Canceled": "完了前にキャンセル",
+      "Disabled": "オフ"
+    },
+    "TOOLBAR": {
+      "REFRESH": "更新",
+      "APPROVE": "承認",
+      "REJECT": "却下",
+      "ENABLE_SCOPE": "スコープをオンにする",
+      "DISABLE_SCOPE": "スコープをオフにする"
+    },
+    "ALERTS": {
+      "APPROVE": "この変更を承認しますか？ ツールはあなたの権限ですぐに実行されます。",
+      "REJECT": "この変更を却下しますか？ 実行されることはありません。",
+      "LOAD_FAILED": "読み込めませんでした：{message}"
+    },
+    "SEARCH": {
+      "TOOLS": "エージェントツール",
+      "AGENTS": "接続済みエージェント",
+      "OFF": "オフ"
+    }
+  }
+}

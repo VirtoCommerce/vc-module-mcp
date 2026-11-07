@@ -1,0 +1,2427 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Moq;
+using OpenIddict.Abstractions;
+using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Attributes;
+using VirtoCommerce.MCP.Core.Diagnostics;
+using VirtoCommerce.MCP.Core.Extensions;
+using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Data.Services;
+using VirtoCommerce.MCP.Web.Extensions;
+using VirtoCommerce.MCP.Web.Filters;
+using VirtoCommerce.MCP.Web.Services;
+using VirtoCommerce.MCP.Web.Tools;
+using VirtoCommerce.Platform.Core.Security;
+using VirtoCommerce.Platform.Core.Settings;
+using Xunit;
+
+namespace VirtoCommerce.MCP.Tests.Endpoints;
+
+[Trait("Category", "Unit")]
+public sealed class McpScopedEndpointTests : IAsyncLifetime
+{
+    private const string Origin = "http://localhost";
+    private const string AgentClientId = "agent-app";
+    private const string WritePermission = "test:write";
+    private const string PartnerScope = "partner";
+    private const string ScopedPermission = "test:scoped";
+    private const string StoreScopeType = "TestStoreSelectedScope";
+    private const string ShopScope = "shop";
+    private const string CategoryScope = "category";
+    private const string CategoryApprovePermission = "category:approve";
+    private const string ShopHost = "shop.example.test";
+    private const string GatedScope = "gated";
+    private const string ConfirmScope = "confirm";
+    private const string BrandedScope = "branded";
+    private const string BrandedOrigin = "https://branded.example.test";
+    private const string AllowedBrowserOrigin = "https://inspector.example.test";
+    private const string OtherEndpointPath = "/other";
+
+    private static readonly string[] _readerTools = ["canceled_tool", "interrupted_tool", "read_tool", "static_tool"];
+    private static readonly string[] _writerTools = ["canceled_tool", "conditional_tool", "interrupted_tool", "read_tool", "static_tool", "submit_contact_tool", "submit_tool", "write_tool"];
+    private static readonly string[] _policyPermissions = [McpPermissions.Approve, WritePermission, CategoryApprovePermission];
+
+    private readonly ConcurrentBag<McpAuditEntry> _auditEntries = [];
+
+    private readonly List<string> _requesterPermissions = [WritePermission];
+
+    private bool _requesterExists = true;
+    private readonly HashSet<string> _toolSwitchedOffForUsers = [];
+    private readonly ConcurrentBag<McpPendingChange> _submittedChanges = [];
+    private readonly ConcurrentBag<(McpPendingChange Change, string Result, bool Succeeded)> _completedChanges = [];
+    private readonly Mock<IMcpApprovalService> _approvalService = new();
+    private readonly Mock<ISettingsManager> _settingsManager = new();
+    private readonly ConcurrentBag<McpPendingChangeSearchCriteria> _searchCriteria = [];
+    private readonly ConcurrentDictionary<string, McpJob> _jobs = new();
+    private IHost _host;
+    private HttpClient _client;
+
+    public async ValueTask InitializeAsync()
+    {
+        TestTools.Reset();
+        ConfirmTools.Reset();
+        PartnerTools.Reset();
+
+        UseIdentityClaimTypes();
+
+        _host = await new HostBuilder()
+            .ConfigureWebHost(webHost => webHost
+                .UseTestServer()
+                .ConfigureServices(ConfigureServices)
+                .Configure(ConfigurePipeline))
+            .StartAsync();
+
+        _client = _host.GetTestClient();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _client.Dispose();
+        await _host.StopAsync();
+        _host.Dispose();
+    }
+
+    [Fact]
+    public async Task Request_Should_ReturnABearerChallengeWithResourceMetadata_When_Anonymous()
+    {
+        // Act
+        var response = await PostAsync(token: null, ToolsList());
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var challenge = response.Headers.WwwAuthenticate.ToString();
+        Assert.Contains($"resource_metadata=\"{Origin}/.well-known/oauth-protected-resource/admin/mcp\"", challenge);
+        Assert.DoesNotContain("error=", challenge);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunAModuleFilter_InItsScopeOnly_And_AuditItsResult()
+    {
+        // Act
+        var partner = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId = "c1", email = "a@b.c" }), $"/{PartnerScope}/mcp");
+        var admin = await CallAsync(Token(), ToolsCall("static_tool", new { }));
+
+        // Assert
+        Assert.Equal(PartnerScope, partner["result"]?["_meta"]?["filtered_in"]?.GetValue<string>());
+        Assert.Null(admin["result"]?["_meta"]?["filtered_in"]);
+        Assert.Equal(McpAuditOutcome.Failed, Assert.Single(_auditEntries, x => x.ToolName == "sensitive_tool").Outcome);
+    }
+
+    [Fact]
+    public async Task Endpoints_Should_BeMappedPerScope_So_TheRouteNamesTheScope()
+    {
+        // Act: the first request builds the branch with the MCP endpoints
+        await PostAsync(token: null, ToolsList());
+        var routes = _host.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Select(x => x.RoutePattern.RawText)
+            .ToList();
+
+        // Assert: traces name a request after its route, so a template would hide the scope
+        Assert.Contains(routes, x => x.TrimEnd('/') == "/admin/mcp");
+        Assert.Contains(routes, x => x.TrimEnd('/') == "/mcp");
+        Assert.DoesNotContain(routes, x => x.Contains("{scopeName}"));
+    }
+
+    [Fact]
+    public async Task Request_Should_RejectAToken_When_ItWasIssuedForAnotherResource()
+    {
+        // Act
+        var response = await PostAsync(Token(audience: $"{Origin}/ucp/mcp"), ToolsList());
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("error=\"invalid_token\"", response.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Request_Should_BeForbidden_When_TheUserLacksTheScopePermission()
+    {
+        // Act
+        var response = await PostAsync(Token(audience: $"{Origin}/{GatedScope}/mcp"), ToolsList(), $"/{GatedScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeServed_When_TheUserHasTheScopePermission()
+    {
+        // Act
+        var response = await PostAsync(Token(audience: $"{Origin}/{GatedScope}/mcp", permissions: [WritePermission]), ToolsList(), $"/{GatedScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeServed_When_TheScopeRequiresOnlyASignedInUser()
+    {
+        // Act
+        var response = await PostAsync(Token(), ToolsList());
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_TreatAToolWithoutDeclaredAccessAsUnknown_When_TheScopeRequiresASignedInUser()
+    {
+        // Act
+        var list = await CallAsync(Token(permissions: [WritePermission, McpPermissions.Approve]), ToolsList());
+        var result = await CallAsync(Token(permissions: [WritePermission, McpPermissions.Approve]), ToolsCall("undeclared_tool", new { }));
+
+        // Assert
+        Assert.DoesNotContain("undeclared_tool", ToolNames(list));
+        Assert.True(IsError(result));
+        Assert.Equal(0, UndeclaredTools.Executions);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeForbidden_When_TheScopePermissionIsNotRegistered()
+    {
+        // Act
+        var response = await PostAsync(Token(audience: $"{Origin}/vendor/mcp", permissions: ["vendor_portal:access"]), ToolsList(), "/vendor/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_ShowOnlyTheScopeToolsTheUserMayCall()
+    {
+        // Act
+        var reader = await CallAsync(Token(), ToolsList());
+        var writer = await CallAsync(Token(permissions: [WritePermission]), ToolsList());
+
+        // Assert
+        Assert.Equal(_readerTools.Concat(AuthorTools).Order(), ToolNames(reader));
+        Assert.Equal(_writerTools.Concat(AuthorTools).Order(), ToolNames(writer));
+    }
+
+    [Fact]
+    public async Task Initialize_Should_ReportTheScopeServerInfo()
+    {
+        // Act
+        var result = await CallAsync(Token(), Request("initialize", new
+        {
+            protocolVersion = "2025-06-18",
+            capabilities = new { },
+            clientInfo = new { name = "test", version = "1.0" },
+        }));
+
+        // Assert
+        Assert.Equal("Test back office", result["result"]!["serverInfo"]!["name"]!.GetValue<string>());
+        Assert.Equal("Admin instructions", result["result"]!["instructions"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RefuseTheCall_When_TheUserLacksTheToolPermission()
+    {
+        // Act
+        var result = await CallAsync(Token(), ToolsCall("write_tool", new { }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Equal(0, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AskTheUserInTheChat_And_RunTheTool_When_TheUserConfirms()
+    {
+        // Arrange
+        var questions = new List<ElicitRequestParams>();
+        await using var client = await ConnectAsync(ConfirmScope, (request, _) =>
+        {
+            questions.Add(request);
+            return ValueTask.FromResult(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement> { ["confirm"] = JsonSerializer.SerializeToElement(true) },
+            });
+        });
+
+        // Act
+        var result = await client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotEqual(true, result.IsError);
+        var question = Assert.Single(questions);
+        Assert.Equal("Delete draft d1 of ***?", question.Message);
+        Assert.Equal(1, ConfirmTools.Executions);
+        Assert.Equal(McpAuditOutcome.Succeeded, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Theory]
+    [InlineData("decline", true)]
+    [InlineData("cancel", true)]
+    [InlineData("accept", false)]
+    public async Task ToolsCall_Should_NotRunTheTool_And_AuditItAsDeclined_When_TheUserDoesNotConfirm(string action, bool confirm)
+    {
+        // Arrange
+        await using var client = await ConnectAsync(ConfirmScope, (_, _) => ValueTask.FromResult(new ElicitResult
+        {
+            Action = action,
+            Content = action == "accept" ? new Dictionary<string, JsonElement> { ["confirm"] = JsonSerializer.SerializeToElement(confirm) } : null,
+        }));
+
+        // Act
+        var result = await client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.True(result.IsError);
+        Assert.Contains("did not confirm", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        Assert.Equal(0, ConfirmTools.Executions);
+        Assert.Equal(McpAuditOutcome.Declined, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_DescribeTheCall_When_TheToolGivesNoMessage()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(ConfirmScope, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "accept" });
+        });
+
+        // Act
+        await client.CallToolAsync("archive_all", new Dictionary<string, object> { ["olderThanDays"] = 30 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal($"Run \"archive_all\"?{Environment.NewLine}olderThanDays: 30", question);
+        Assert.Equal(1, ConfirmTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunTheToolWithoutAsking_When_TheClientCannotAskTheUser()
+    {
+        // Act: a client of an earlier protocol revision, which a stateless server cannot ask
+        var result = await CallAsync(Token(audience: $"{Origin}/{ConfirmScope}/mcp"), ToolsCall("delete_draft", new { draftId = "d1", email = "a@b.c" }), $"/{ConfirmScope}/mcp");
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Equal(1, ConfirmTools.Executions);
+        Assert.Equal(McpAuditOutcome.Succeeded, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_And_AuditItAsDeclined_When_TheClientCannotAskTheUser()
+    {
+        // Act: approval needs a person's confirmation, so a client that cannot ask is sent to the back office
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("back office", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        Assert.Empty(_completedChanges);
+        Assert.Equal(McpAuditOutcome.Declined, Assert.Single(_auditEntries).Outcome);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("forged")]
+    [InlineData("hash")]
+    [InlineData("replayed")]
+    public async Task ToolsCall_Should_AskAgain_When_TheAnswerComesWithAStateTheServerDidNotIssueForIt(string kind)
+    {
+        // Arrange: the client answers "confirm" with a state the server did not issue for this question
+        var questions = 0;
+        string issuedState = null;
+        var handler = new RequestStateRewriter(_host.GetTestServer().CreateHandler(), state =>
+        {
+            if (kind == "replayed")
+            {
+                // The first answer goes through with its own state; later questions get that used state back.
+                issuedState ??= state;
+                return issuedState;
+            }
+
+            return kind == "forged"
+                ? "mcp-confirm:" + Convert.ToBase64String(Encoding.UTF8.GetBytes("made up"))
+                : "mcp-confirm:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("delete_draft\n{}")));
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = _client.BaseAddress };
+        await using var client = await ConnectAsync(ConfirmScope, (_, _) =>
+        {
+            Interlocked.Increment(ref questions);
+            return ValueTask.FromResult(new ElicitResult { Action = "accept" });
+        }, httpClient: httpClient);
+
+        // Act
+        if (kind == "replayed")
+        {
+            await client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+                cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        var executionsBefore = ConfirmTools.Executions;
+        await Assert.ThrowsAnyAsync<Exception>(() => client.CallToolAsync("delete_draft", new Dictionary<string, object> { ["draftId"] = "d1", ["email"] = "a@b.c" },
+            cancellationToken: TestContext.Current.CancellationToken).AsTask());
+
+        // Assert: the server keeps asking instead of running the tool
+        Assert.Equal(executionsBefore, ConfirmTools.Executions);
+        Assert.True(questions > 1);
+    }
+
+    [Fact]
+    public async Task Request_Should_UseTheScopesOwnChallengeWriterAndOrigin_And_LeaveOtherScopesAlone()
+    {
+        // Act
+        var branded = await PostAsync(null, ToolsList(), $"/{BrandedScope}/mcp");
+        var admin = await PostAsync(null, ToolsList());
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, branded.StatusCode);
+        Assert.Contains("branded_sign_in", await branded.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains($"realm=\"{BrandedOrigin}\"", branded.Headers.WwwAuthenticate.ToString());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, admin.StatusCode);
+        Assert.DoesNotContain("branded_sign_in", await admin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains($"realm=\"{Origin}\"", admin.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Request_Should_BeForbidden_When_ABrowserPageOfAnotherOriginCallsTheScope()
+    {
+        // Act: a page that DNS rebinding pointed at the server sends its own Host and Origin
+        var rebound = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", host: "evil.example.test", origin: "http://evil.example.test");
+        var otherOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: "http://evil.example.test");
+        var opaqueOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: "null");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, rebound.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, otherOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, opaqueOrigin.StatusCode);
+        Assert.DoesNotContain("\"tools\"", await otherOrigin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Request_Should_PassTheOriginCheck_When_TheOriginIsTheScopesOrAllowedOrNotSent()
+    {
+        // Act
+        var ownOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: Origin);
+        var allowedOrigin = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp", origin: AllowedBrowserOrigin);
+        var serverSideClient = await PostAsync(null, ToolsList(), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, ownOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, allowedOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, serverSideClient.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Should_CheckTheOriginAgainstTheScopesOwnOrigin()
+    {
+        // Act: the branded scope resolves its own origin; the module's origin is not that scope's
+        var brandedOrigin = await PostAsync(null, ToolsList(), $"/{BrandedScope}/mcp", origin: BrandedOrigin);
+        var moduleOrigin = await PostAsync(null, ToolsList(), $"/{BrandedScope}/mcp", origin: Origin);
+
+        // Assert: past the origin check, the scope asks for a sign-in
+        Assert.Equal(HttpStatusCode.Unauthorized, brandedOrigin.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, moduleOrigin.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Should_LeaveOtherEndpointsOfThePipelineAlone()
+    {
+        // Act: a bearer token the MCP steps would refuse, sent to an endpoint that is not MCP
+        using var request = new HttpRequestMessage(HttpMethod.Get, OtherEndpointPath);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token(audience: "https://elsewhere.example.test/api"));
+        var response = await _client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("other", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_TreatAToolOfAnotherScopeAsUnknown()
+    {
+        // Act
+        var result = await CallAsync(Token(), ToolsCall("unscoped_tool", new { }));
+
+        // Assert
+        Assert.True(IsError(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RefuseTheCall_When_ARequiredArgumentIsMissing()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Equal(0, TestTools.Executions);
+        Assert.Equal(McpAuditOutcome.Error, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_CallAToolOfAStaticClass()
+    {
+        // Act
+        var result = await CallAsync(Token(), ToolsCall("static_tool", new { }));
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Equal("static", Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditTheCall()
+    {
+        // Act
+        await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { value = "x" }));
+
+        // Assert
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpScopes.Admin, entry.ScopeName);
+        Assert.Equal("write_tool", entry.ToolName);
+        Assert.Equal("user-1", entry.UserId);
+        Assert.Equal(McpAuditOutcome.Succeeded, entry.Outcome);
+        Assert.Contains("\"value\":\"x\"", entry.Arguments);
+        Assert.Equal(1, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_TraceTheCall_And_LinkTheAuditEntryToTheTrace()
+    {
+        // Arrange
+        var activities = new ConcurrentBag<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == McpDiagnostics.ActivitySourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        // Act
+        await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { value = "x" }));
+
+        // Assert
+        var activity = Assert.Single(activities, x => (string)x.GetTagItem(McpDiagnostics.ToolTag) == "write_tool");
+        Assert.Equal(McpScopes.Admin, activity.GetTagItem(McpDiagnostics.ScopeTag));
+        Assert.Equal(McpAuditOutcome.Succeeded, activity.GetTagItem(McpDiagnostics.OutcomeTag));
+        Assert.Equal(activity.TraceId.ToString(), Assert.Single(_auditEntries).TraceId);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_SubmitTheChangeWithADryRunPreview_When_TheToolRequiresApproval()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_tool", new { promotionId = "p1" }));
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Contains("pending_approval", Text(result));
+        Assert.Contains("change-1", Text(result));
+        Assert.Equal(1, TestTools.DryRuns);
+        Assert.Equal(0, TestTools.Executions);
+
+        var change = Assert.Single(_submittedChanges);
+        Assert.Equal("submit_tool", change.ToolName);
+        Assert.Equal("user-1", change.RequestedByUserId);
+        Assert.Contains("\"promotionId\":\"p1\"", change.Arguments);
+        Assert.DoesNotContain("dryRun", change.Arguments);
+        Assert.Contains("would activate p1", change.Preview);
+
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.PendingApproval, entry.Outcome);
+        Assert.Equal("change-1", entry.PendingChangeId);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_ExecuteTheStoredCallOnce()
+    {
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(1, TestTools.Executions);
+        Assert.Equal(1, TestTools.DryRuns); // the requester's access is checked again with a dry run before the change runs
+        Assert.Equal(2, AdminCallCounterFilter.CallsOf("submit_tool")); // the scope's call filters run around both
+
+        var completed = Assert.Single(_completedChanges);
+        Assert.True(completed.Succeeded);
+        Assert.Contains("activated p2", completed.Result);
+        Assert.Equal("user-1", completed.Change.ReviewedByUserId);
+
+        var execution = Assert.Single(_auditEntries, x => x.ToolName == "submit_tool");
+        Assert.Equal(StoredChange.Id, execution.PendingChangeId);
+        Assert.Equal(McpAuditOutcome.Succeeded, execution.Outcome);
+        Assert.Contains("\"promotionId\":\"p2\"", execution.Arguments);
+
+        var approval = Assert.Single(_auditEntries, x => x.ToolName == ModuleConstants.ToolNames.ApprovePendingChange);
+        Assert.Equal(StoredChange.Id, approval.PendingChangeId);
+        Assert.Equal(McpAuditOutcome.Succeeded, approval.Outcome);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_AuditARefusalAsFailed_And_LinkItToTheChange()
+    {
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = "missing" }));
+
+        // Assert
+        Assert.True(IsError(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Failed, entry.Outcome);
+        Assert.Equal("missing", entry.PendingChangeId);
+        Assert.Contains("was not found", entry.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task GetPendingChange_Should_LinkItsAuditEntryToTheChange()
+    {
+        // Act
+        await CallAsync(
+            Token(permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Succeeded, entry.Outcome);
+        Assert.Equal(StoredChange.Id, entry.PendingChangeId);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheApproverMayNotRunTheTool()
+    {
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("not allowed to run tool 'submit_tool'", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunADryRunRightAway_When_TheToolRequiresApproval()
+    {
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [WritePermission]),
+            ToolsCall("submit_tool", new { promotionId = "p1", dryRun = true }));
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Contains("would activate p1", Text(result));
+        Assert.Equal(1, TestTools.DryRuns);
+        Assert.Equal(0, TestTools.Executions);
+        Assert.Empty(_submittedChanges);
+        Assert.Equal(McpAuditOutcome.Succeeded, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditARefusedCallAsForbidden()
+    {
+        // Act
+        await CallAsync(Token(), ToolsCall("submit_tool", new { promotionId = "p1" }));
+
+        // Assert
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Forbidden, entry.Outcome);
+        Assert.Empty(_submittedChanges);
+        Assert.Equal(0, TestTools.DryRuns);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_RecordTheChangeAsFailed_When_TheToolIsCanceledWhileRunning()
+    {
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = CanceledChange.Id }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        var completed = Assert.Single(_completedChanges);
+        Assert.Equal(CanceledChange.Id, completed.Change.Id);
+        Assert.False(completed.Succeeded);
+        Assert.Equal(McpAuditOutcome.Error, Assert.Single(_auditEntries, x => x.ToolName == "canceled_tool").Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_HideTheApproveTool_When_TheUserLacksTheApprovePermission()
+    {
+        // Act
+        var approver = await CallAsync(Token(permissions: [McpPermissions.Approve]), ToolsList());
+        var operatorUser = await CallAsync(Token(), ToolsList());
+
+        // Assert
+        Assert.Contains(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(approver));
+        Assert.DoesNotContain(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(operatorUser));
+        Assert.Subset(ToolNames(operatorUser).ToHashSet(), AuthorTools.ToHashSet());
+    }
+
+    [Fact]
+    public async Task GetPendingChange_Should_ReturnTheRequestersOwnChange_When_TheRequesterIsNotAnApprover()
+    {
+        // Act
+        var result = await CallAsync(Token(user: StoredChange.RequestedByUserId),
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Contains("submit_tool", Text(result));
+    }
+
+    [Fact]
+    public async Task GetPendingChange_Should_ReportAnotherUsersChangeAsNotFound_When_TheUserIsNotAnApprover()
+    {
+        // Act
+        var result = await CallAsync(Token(),
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("was not found", Text(result));
+    }
+
+    [Fact]
+    public async Task RejectPendingChange_Should_LetTheRequesterWithdrawTheirChange_Without_TheApprovePermission()
+    {
+        // Act
+        var result = await CallAsync(Token(user: StoredChange.RequestedByUserId),
+            ToolsCall(ModuleConstants.ToolNames.RejectPendingChange, new { change_id = StoredChange.Id, reason = "Not needed" }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        _approvalService.Verify(x => x.RejectAsync(StoredChange.Id, StoredChange.RequestedByUserId, It.IsAny<string>(), "Not needed"), Times.Once);
+    }
+
+    [Fact]
+    public async Task RejectPendingChange_Should_Refuse_When_TheUserIsNeitherTheRequesterNorAnApprover()
+    {
+        // Act
+        var result = await CallAsync(Token(),
+            ToolsCall(ModuleConstants.ToolNames.RejectPendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        _approvalService.Verify(x => x.RejectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(false, "user-1")]
+    [InlineData(true, null)]
+    public async Task ListPendingChanges_Should_ListOnlyTheUsersOwnChanges_When_TheUserIsNotAnApprover(bool approver, string expectedRequester)
+    {
+        // Arrange
+        string[] permissions = approver ? [McpPermissions.Approve] : [];
+
+        // Act
+        var result = await CallAsync(Token(permissions: permissions), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(expectedRequester, Assert.Single(_searchCriteria).RequestedByUserId);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeRefused_When_TheTokenHasNoUser()
+    {
+        // Act
+        var response = await PostAsync(Token(user: ""), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("error=\"invalid_token\"", response.Headers.WwwAuthenticate.ToString());
+        Assert.Empty(_searchCriteria);
+    }
+
+    [Theory]
+    [InlineData("client_id")]
+    [InlineData("azp")]
+    [InlineData("oi_prst")]
+    public async Task Request_Should_BeRefused_When_TheTokenIdentifiesTheClientInsteadOfAUser(string clientClaimType)
+    {
+        // Act: a client-credentials token, whose subject is the client itself
+        var response = await PostAsync(ClientToken("agent-app", clientClaimType, McpPermissions.Approve), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("identifies the MCP client", response.Headers.WwwAuthenticate.ToString());
+        Assert.Empty(_searchCriteria);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeRefused_When_TheTokenWasIssuedWithNoClient()
+    {
+        // Act
+        var response = await PostAsync(TokenWithoutClient(McpPermissions.Approve), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("not issued to an MCP client", response.Headers.WwwAuthenticate.ToString());
+        Assert.Empty(_searchCriteria);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeRefusedWith413_When_TheBodyIsLargerThanTheLimit()
+    {
+        // Act: an anonymous request, so nothing else stops it before the body is read
+        var response = await PostAsync(token: null, ToolsCall("search_products", new { query = new string('x', 1024 * 1024) }), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_ChallengeAnAnonymousUser_When_TheToolNameIsWrittenInAnotherCase()
+    {
+        // Arrange: the MCP server reads the parameters ignoring case
+        var parameters = new Dictionary<string, object> { ["Name"] = "get_my_orders", ["Arguments"] = new { } };
+
+        // Act
+        var response = await PostAsync(token: null, Request("tools/call", parameters), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_ChallengeAnAnonymousUser_When_TheRequestAlsoNamesAToolThatRequiresAUser()
+    {
+        // Arrange: two names that differ in case only; the server may bind either
+        var body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"search_products\",\"Name\":\"get_my_orders\",\"arguments\":{}}}";
+
+        // Act
+        var response = await PostAsync(token: null, JsonNode.Parse(body), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditTheCallAsCanceled_When_ItIsCanceledWhileRunning()
+    {
+        // Act
+        await Record.ExceptionAsync(() => PostAsync(Token(), ToolsCall("interrupted_tool", new { })));
+
+        // Assert
+        var entry = Assert.Single(_auditEntries, x => x.ToolName == "interrupted_tool");
+        Assert.Equal(McpAuditOutcome.Canceled, entry.Outcome);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PromptsAndResources_Should_BeListed_Only_To_UsersWithTheirPermission(bool hasPermission)
+    {
+        // Arrange
+        var token = hasPermission ? Token(permissions: WritePermission) : Token();
+
+        // Act
+        var prompts = await CallAsync(token, Request("prompts/list", new { }));
+        var resources = await CallAsync(token, Request("resources/list", new { }));
+
+        // Assert
+        var promptNames = prompts["result"]!["prompts"]!.AsArray().Select(x => x!["name"]!.GetValue<string>()).ToArray();
+        var resourceUris = resources["result"]!["resources"]!.AsArray().Select(x => x!["uri"]!.GetValue<string>()).ToArray();
+        Assert.Equal(hasPermission, promptNames.Contains("pricing_review"));
+        Assert.Equal(hasPermission, resourceUris.Contains("test://pricing"));
+        Assert.Contains("open_review", promptNames);
+    }
+
+    [Fact]
+    public async Task PromptsAndResources_Should_BeRefused_To_AUserWithoutTheirPermission()
+    {
+        // Act
+        var prompt = await CallAsync(Token(), Request("prompts/get", new { name = "pricing_review" }));
+        var resource = await CallAsync(Token(), Request("resources/read", new { uri = "test://pricing" }));
+        var permittedPrompt = await CallAsync(Token(permissions: WritePermission), Request("prompts/get", new { name = "pricing_review" }));
+
+        // Assert
+        Assert.NotNull(prompt["error"]);
+        Assert.NotNull(resource["error"]);
+        Assert.Null(permittedPrompt["error"]);
+    }
+
+    [Fact]
+    public async Task Request_Should_BeServed_When_TheTokenNamesAClientAndAUser()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: McpPermissions.Approve) + "#client_id=agent-app", ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_NotExposeInjectedServices_InTheInputSchema()
+    {
+        // Act
+        var result = await CallAsync(Token(), ToolsList());
+
+        // Assert
+        var tool = result["result"]!["tools"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == ModuleConstants.ToolNames.ListPendingChanges);
+        var properties = tool!["inputSchema"]!["properties"]!.AsObject().Select(x => x.Key).ToList();
+        Assert.Contains("take", properties);
+        Assert.DoesNotContain(properties, x => x.Contains("Resolver", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(null, 20)]
+    [InlineData(500, 50)]
+    public async Task ListPendingChanges_Should_UseTheDefaultPageSize_And_CapIt(int? take, int expectedTake)
+    {
+        // Act
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.ListPendingChanges, new { take }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(expectedTake, Assert.Single(_searchCriteria).Take);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RefuseAChangeThatNeedsApproval_When_TheScopeHasNoApprovalTools()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("partner_submit_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("approval, which is not available in the 'partner' scope", Text(result));
+        Assert.Empty(_submittedChanges);
+        Assert.Equal(0, PartnerTools.Executions);
+        Assert.Equal(McpAuditOutcome.Error, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditAnUnexpectedExceptionAsError()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("failing_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Error, entry.Outcome);
+        Assert.Equal(FailingTools.UnexpectedMessage, entry.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditARefusalOfTheToolAsFailed_With_ItsOwnMessage()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("refusing_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Failed, entry.Outcome);
+        Assert.Equal(FailingTools.RefusalMessage, entry.ErrorMessage);
+        Assert.Equal(FailingTools.RefusalMessage, Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_KeepTheErrorTextOutOfTheSdkSpan_When_TheToolReturnsAnError()
+    {
+        // Arrange
+        var activities = new ConcurrentBag<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == McpDiagnostics.SdkActivitySourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("refusing_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert: the agent still gets the text, the span only a fixed description
+        Assert.Equal(FailingTools.RefusalMessage, Text(result));
+        var span = Assert.Single(activities, x => x.DisplayName.Contains("refusing_tool"));
+        Assert.Equal(System.Diagnostics.ActivityStatusCode.Error, span.Status);
+        Assert.Equal(McpActivityStatusFilter.ErrorStatusDescription, span.StatusDescription);
+    }
+
+    [Fact]
+    public async Task GetPendingChange_Should_ShowWhatTheToolReturned_As_ThePreview()
+    {
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = PreviewChange.Id }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        var details = JsonNode.Parse(Text(result));
+        Assert.Equal("p5", details!["preview"]!["object_id"]!.GetValue<string>());
+        Assert.Equal("would activate", details["preview"]!["action"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_HideADisabledTool()
+    {
+        // Arrange
+        DisableTools("read_tool");
+
+        // Act
+        var result = await CallAsync(Token(), ToolsList());
+
+        // Assert
+        Assert.DoesNotContain("read_tool", ToolNames(result));
+        Assert.Contains("static_tool", ToolNames(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RefuseADisabledTool_And_AuditItAsDisabled()
+    {
+        // Arrange
+        DisableTools("admin/read_tool");
+
+        // Act
+        var result = await CallAsync(Token(), ToolsCall("read_tool", new { }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("disabled by the administrator", Text(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Disabled, entry.Outcome);
+        Assert.Null(entry.Arguments);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheToolIsDisabled()
+    {
+        // Arrange
+        DisableTools("submit_tool");
+
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("disabled by the administrator", Text(result));
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_MaskSensitiveArgumentsInTheAudit()
+    {
+        // Act
+        await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId = "c1", email = "a@b.c" }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        var entry = Assert.Single(_auditEntries);
+        Assert.Contains("\"contactId\":\"c1\"", entry.Arguments);
+        Assert.Contains("\"email\":\"***\"", entry.Arguments);
+        Assert.DoesNotContain("a@b.c", entry.Arguments);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_StoreATruncationMarker_When_TheArgumentsAreTooLongForTheAudit()
+    {
+        // Arrange
+        var contactId = new string('x', 40 * 1024);
+
+        // Act
+        await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("sensitive_tool", new { contactId, email = "a@b.c" }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        using var arguments = JsonDocument.Parse(Assert.Single(_auditEntries).Arguments);
+        Assert.True(arguments.RootElement.GetProperty("truncated").GetBoolean());
+        Assert.True(arguments.RootElement.GetProperty("length").GetInt32() > 40 * 1024);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_KeepTheSensitiveArgumentsOfASubmittedChange_Only_ForItsExecution()
+    {
+        // Act
+        await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_contact_tool", new { contactId = "c1", email = "a@b.c" }));
+
+        // Assert
+        var change = Assert.Single(_submittedChanges);
+        Assert.Equal(["email"], change.SensitiveArgumentPaths);
+        Assert.Contains("a@b.c", change.Arguments);
+        Assert.DoesNotContain("a@b.c", Assert.Single(_auditEntries).Arguments);
+    }
+
+    [Fact]
+    public async Task GetPendingChange_Should_MaskSensitiveArguments()
+    {
+        // Act
+        var result = await CallAsync(
+            Token(permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.GetPendingChange, new { change_id = SensitiveChange.Id }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.DoesNotContain("a@b.c", Text(result));
+        Assert.Contains("***", Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_AnswerWithPlainJson_When_TheClientAcceptsJsonOnly()
+    {
+        // Act
+        var response = await PostAsync(Token(), ToolsList(), acceptEventStream: false);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("read_tool", ToolNames(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_BeNotAcceptable_When_TheClientAcceptsJsonOnly()
+    {
+        // Act
+        var response = await PostAsync(Token(), ToolsCall("read_tool", new { }), acceptEventStream: false);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_ReturnAToolError_NotAProtocolError_When_ARequiredArgumentIsMissing()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { }));
+
+        // Assert
+        Assert.Null(result["error"]);
+        Assert.True(result["result"]!["isError"]!.GetValue<bool>());
+        Assert.Contains("Argument 'value' is required.", Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_AuditAResourceRefusalAsForbidden()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsCall("forbidden_tool", new { }), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Forbidden, entry.Outcome);
+        Assert.Equal(FailingTools.ForbiddenMessage, entry.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_ListToolsThatRequireAUser_To_AnonymousUsers_But_NotPermissionTools()
+    {
+        // Act
+        var result = await CallAsync(token: null, ToolsList(), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(["get_my_orders", "get_my_wishlist", "search_products"], ToolNames(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunAnOpenTool_For_AnAnonymousUser()
+    {
+        // Act
+        var result = await CallAsync(token: null, ToolsCall("search_products", new { }), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Equal("products", Text(result));
+    }
+
+    [Theory]
+    [InlineData("get_my_orders")]
+    [InlineData("get_my_wishlist")]
+    [InlineData("get_my_prices")]
+    public async Task ToolsCall_Should_ChallengeAnAnonymousUser_When_TheToolRequiresAUser(string toolName)
+    {
+        // Act
+        var response = await PostAsync(token: null, ToolsCall(toolName, new { }), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var challenge = response.Headers.WwwAuthenticate.ToString();
+        Assert.Contains($"resource_metadata=\"{Origin}/.well-known/oauth-protected-resource/{ShopScope}/mcp\"", challenge);
+        Assert.DoesNotContain("error=", challenge);
+        Assert.Contains(toolName, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RunAToolThatRequiresAUser_For_ASignedInUser()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{ShopScope}/mcp"), ToolsCall("get_my_orders", new { }), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.False(IsError(result));
+        Assert.Equal("orders", Text(result));
+    }
+
+    [Fact]
+    public async Task Initialize_Should_ReportTheScopeVersion_When_TheScopeSetsIt()
+    {
+        // Act
+        var result = await CallAsync(token: null, Request("initialize", new
+        {
+            protocolVersion = "2025-06-18",
+            capabilities = new { },
+            clientInfo = new { name = "test", version = "1.0" },
+        }), $"/{ShopScope}/mcp");
+
+        // Assert
+        Assert.Equal("Test shop", result["result"]!["serverInfo"]!["name"]!.GetValue<string>());
+        Assert.Equal("2.5", result["result"]!["serverInfo"]!["version"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Request_Should_ServeTheScopeOfTheHost_At_TheMcpPath()
+    {
+        // Act
+        var result = await CallAsync(token: null, ToolsList(), "/mcp", host: ShopHost);
+
+        // Assert
+        Assert.Equal(["get_my_orders", "get_my_wishlist", "search_products"], ToolNames(result));
+    }
+
+    [Fact]
+    public async Task Request_Should_ChallengeWithTheHostResource_At_TheMcpPathOfTheHost()
+    {
+        // Act
+        var response = await PostAsync(token: null, ToolsCall("get_my_orders", new { }), "/mcp", host: ShopHost);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains($"resource_metadata=\"http://{ShopHost}/.well-known/oauth-protected-resource/mcp\"", response.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Request_Should_RejectATokenOfThePathResource_At_TheMcpPathOfTheHost()
+    {
+        // Act
+        var response = await PostAsync(Token(audience: $"http://{ShopHost}/{ShopScope}/mcp"), ToolsList(), "/mcp", host: ShopHost);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("error=\"invalid_token\"", response.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Request_Should_NotServeTheMcpPath_On_AHostWithoutAScope()
+    {
+        // Act
+        var response = await PostAsync(token: null, ToolsList(), "/mcp");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("user-1", null, false, true)]
+    [InlineData("requester", "user-1", false, true)]
+    [InlineData("someone", "requester", true, true)]
+    [InlineData("someone", "requester", false, false)]
+    public async Task GetJobStatus_Should_ShowAJob_Only_ToItsUsersAndApprovers(string jobUserId, string requestedByUserId, bool approver, bool expectedVisible)
+    {
+        // Arrange
+        AddJob("job-1", McpScopes.Admin, jobUserId, requestedByUserId);
+        string[] permissions = approver ? [McpPermissions.Approve] : [];
+
+        // Act
+        var result = await CallAsync(Token(permissions: permissions), ToolsCall(ModuleConstants.ToolNames.GetJobStatus, new { job_id = "job-1" }));
+
+        // Assert
+        Assert.Equal(expectedVisible, !IsError(result));
+        if (expectedVisible)
+        {
+            Assert.Contains("\"percent\":25", Text(result));
+        }
+    }
+
+    [Theory]
+    [InlineData(10, false)]
+    [InlineData(500, true)]
+    public async Task ToolsCall_Should_HoldTheCallForApproval_Only_When_TheConditionSaysSo(int count, bool expectedPending)
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("conditional_tool", new { count }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(expectedPending, Text(result).Contains("pending_approval"));
+        Assert.Equal(expectedPending ? 0 : 1, TestTools.Executions);
+        Assert.Equal(expectedPending ? McpAuditOutcome.PendingApproval : McpAuditOutcome.Succeeded, Assert.Single(_auditEntries).Outcome);
+    }
+
+    [Fact]
+    public async Task ToolsList_Should_OfferTheApprovalTools_Only_InScopesWithApproval()
+    {
+        // Act
+        var category = await CallAsync(Token(audience: $"{Origin}/{CategoryScope}/mcp"), ToolsList(), $"/{CategoryScope}/mcp");
+        var categoryApprover = await CallAsync(Token(audience: $"{Origin}/{CategoryScope}/mcp", permissions: CategoryApprovePermission), ToolsList(), $"/{CategoryScope}/mcp");
+        var partner = await CallAsync(Token(audience: $"{Origin}/{PartnerScope}/mcp"), ToolsList(), $"/{PartnerScope}/mcp");
+
+        // Assert
+        Assert.Contains(ModuleConstants.ToolNames.ListPendingChanges, ToolNames(category));
+        Assert.DoesNotContain(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(category));
+        Assert.Contains(ModuleConstants.ToolNames.ApprovePendingChange, ToolNames(categoryApprover));
+        Assert.DoesNotContain(ModuleConstants.ToolNames.ListPendingChanges, ToolNames(partner));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_HoldAChange_In_ACustomScopeWithApproval()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{CategoryScope}/mcp"), ToolsCall("publish_category", new { categoryId = "c1" }), $"/{CategoryScope}/mcp");
+
+        // Assert
+        Assert.Contains("pending_approval", Text(result));
+        Assert.Equal(CategoryScope, Assert.Single(_submittedChanges).ScopeName);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheRequesterMayNoLongerRunTheTool()
+    {
+        // Arrange: the approver may run the tool, the requester no longer may
+        _requesterPermissions.Clear();
+
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("no longer allowed to run tool 'submit_tool'", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheToolIsSwitchedOffForTheRequester()
+    {
+        // Arrange: a replacement of the tool switches turns the tool off for the requester only
+        _toolSwitchedOffForUsers.Add("requester");
+
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("switched off for its requester", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_When_TheRequesterNoLongerExists()
+    {
+        // Arrange
+        _requesterExists = false;
+
+        // Act
+        var result = await ConfirmedCallAsync(
+            Token(permissions: [McpPermissions.Approve, WritePermission]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("no longer exists or is locked", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_Refuse_AToolThatRequiresApproval_But_HasNoDryRun()
+    {
+        // Act
+        var result = await CallAsync(Token(audience: $"{Origin}/{CategoryScope}/mcp"), ToolsCall("publish_category_now", new { categoryId = "c1" }), $"/{CategoryScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("has no dry run", Text(result));
+        Assert.Empty(_submittedChanges);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_ShowTheChange_In_TheConfirmation()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(McpScopes.Admin, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "decline" });
+        }, Token(permissions: [McpPermissions.Approve, WritePermission]));
+
+        // Act
+        await client.CallToolAsync(ModuleConstants.ToolNames.ApprovePendingChange, new Dictionary<string, object> { ["change_id"] = StoredChange.Id },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("Tool: submit_tool", question);
+        Assert.Contains("promotionId: p2", question);
+        Assert.Equal(0, TestTools.Executions);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_NotShowAChangeOfAnotherScope_In_TheConfirmation()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(McpScopes.Admin, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "decline" });
+        }, Token(permissions: [McpPermissions.Approve, WritePermission]));
+
+        // Act: the id of a change of the category scope, called in the admin scope
+        await client.CallToolAsync(ModuleConstants.ToolNames.ApprovePendingChange, new Dictionary<string, object> { ["change_id"] = CategoryChange.Id },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(question);
+        Assert.DoesNotContain("Tool:", question);
+        Assert.DoesNotContain("p6", question);
+    }
+
+    [Fact]
+    public async Task ApprovePendingChange_Should_Refuse_AnApproverOfAnotherScope()
+    {
+        // Act: an admin approver calls the approve tool in the category scope, where approvers need category:approve
+        var result = await ConfirmedCallAsync(
+            Token(audience: $"{Origin}/{CategoryScope}/mcp", permissions: [McpPermissions.Approve]),
+            ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }),
+            $"/{CategoryScope}/mcp");
+
+        // Assert
+        Assert.True(IsError(result));
+        _approvalService.Verify(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelJob_Should_CancelAQueuedJob_So_ItNeverStarts()
+    {
+        // Arrange
+        AddJob("job-3", McpScopes.Admin, "user-1");
+        _jobs["job-3"].Status = McpJobStatus.Queued;
+
+        // Act
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.CancelJob, new { job_id = "job-3" }));
+
+        // Assert
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(McpJobStatus.Canceled, _jobs["job-3"].Status);
+    }
+
+    [Fact]
+    public async Task CancelJob_Should_Refuse_When_TheEngineCannotStopARunningJob()
+    {
+        // Arrange
+        AddJob("job-4", McpScopes.Admin, "user-1");
+
+        // Act
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.CancelJob, new { job_id = "job-4" }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("cannot stop it", Text(result));
+        Assert.Equal(McpJobStatus.Running, _jobs["job-4"].Status);
+    }
+
+    [Fact]
+    public async Task GetJobStatus_Should_NotShowAJobOfAnotherScope()
+    {
+        // Arrange
+        AddJob("job-2", McpScopes.Vendor, "user-1");
+
+        // Act
+        var result = await CallAsync(Token(), ToolsCall(ModuleConstants.ToolNames.GetJobStatus, new { job_id = "job-2" }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains("was not found", Text(result));
+    }
+
+    [Theory]
+    [InlineData(ScopedPermission, "all stores")]
+    [InlineData(ScopedPermission + "|[{\"Type\":\"" + StoreScopeType + "\",\"Scope\":\"B2B-store\"},{\"Type\":\"OtherScope\",\"Scope\":\"x\"}]", "B2B-store")]
+    public async Task ToolsCall_Should_RunAPermissionTool_With_TheGrantedStores(string permissionClaim, string expected)
+    {
+        // Act
+        var list = await CallAsync(Token(permissions: [permissionClaim]), ToolsList());
+        var result = await CallAsync(Token(permissions: [permissionClaim]), ToolsCall("scoped_tool", new { }));
+
+        // Assert
+        Assert.Contains("scoped_tool", ToolNames(list));
+        Assert.False(IsError(result), Text(result));
+        Assert.Equal(expected, Text(result));
+    }
+
+    [Fact]
+    public async Task ToolsCall_Should_RefuseAPermissionTool_And_AuditItAsForbidden_When_ThePermissionIsNotGranted()
+    {
+        // Act
+        var list = await CallAsync(Token(), ToolsList());
+        var result = await CallAsync(Token(), ToolsCall("scoped_tool", new { }));
+
+        // Assert
+        Assert.DoesNotContain("scoped_tool", ToolNames(list));
+        Assert.True(IsError(result));
+        Assert.Equal(McpAuditOutcome.Forbidden, Assert.Single(_auditEntries).Outcome);
+    }
+
+    private static void UseIdentityClaimTypes()
+    {
+        ClaimsPrincipalExtensions.UserIdClaimTypes = ["sub", ClaimTypes.NameIdentifier];
+        ClaimsPrincipalExtensions.UserNameClaimTypes = ["name"];
+    }
+
+    // The platform's pipeline, with the MCP module's steps where the platform calls its module hooks
+    private static void ConfigurePipeline(IApplicationBuilder app)
+    {
+        app.UseRouting();
+        app.UseMcpScopeRequests(); // IPlatformStartup.ConfigureAfterRouting
+        app.UseAuthentication();
+        app.UseMcpScopeAuthentication(); // IPlatformStartup.ConfigureAfterAuthentication
+        app.UseAuthorization();
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapGet(OtherEndpointPath, () => "other");
+            endpoints.MapMcpScopes(); // IModule.PostInitialize
+        });
+    }
+
+    private void ConfigureServices(IServiceCollection services)
+    {
+        services.AddRouting();
+        services.AddSingleton<TimeProvider>(new TestTimeProvider());
+        services.AddLogging();
+        services.AddHttpContextAccessor();
+        services.AddMemoryCache();
+        services.AddAuthentication(TestAuthenticationHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, null);
+        services.AddAuthorization(options =>
+        {
+            foreach (var permission in _policyPermissions)
+            {
+                options.AddPolicy(permission, policy => policy.RequireClaim("permission", permission));
+            }
+        });
+
+        services.Configure<McpOptions>(options =>
+        {
+            options.PublicOrigin = Origin;
+            options.Scopes[ShopScope] = new McpScopeOptions { Hosts = [ShopHost], AllowedOrigins = [AllowedBrowserOrigin] };
+        });
+        services.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
+        services.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        services.AddTransient<IMcpOriginValidator, McpOriginValidator>();
+        services.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
+        services.AddTransient<IMcpTokenValidator, ActiveTokenValidator>();
+        services.AddTransient<McpConnectedAgentService, TestConnectedAgentService>();
+        services.AddTransient<McpAgentTokenClassifier>();
+        services.AddTransient<McpChallengeWriter>();
+        services.AddTransient<McpToolAuthorizationService>();
+        services.AddTransient<McpAuditWriter>();
+        services.AddTransient<IMcpToolAvailabilityService>(_ => new PerUserToolAvailabilityService(_settingsManager.Object, _toolSwitchedOffForUsers));
+        services.AddTransient<McpPendingChangeExecutor>();
+        services.AddTransient<McpUserPrincipalFactory>(_ => new TestUserPrincipalFactory(CreateUserPrincipal));
+        services.AddScoped<McpCallToolFilter>();
+        services.AddSingleton(Mock.Of<IOpenIddictTokenManager>());
+        services.AddSingleton(_settingsManager.Object);
+        services.AddSingleton(CreateAuditEntryService());
+        services.AddSingleton(CreateApprovalService());
+        services.AddSingleton(CreatePendingChangeService());
+        services.AddSingleton(CreatePendingChangeSearchService());
+        services.AddSingleton(CreateJobService());
+
+        services.AddMcpScope(new McpScope
+        {
+            Name = McpScopes.Admin,
+            Title = "Test back office",
+            Instructions = "Admin instructions",
+            RequireAuthenticatedUser = true,
+            ApprovalPermission = McpPermissions.Approve,
+        });
+
+        // A custom scope with approval and an approver permission of its own.
+        services.AddMcpScope(new McpScope
+        {
+            Name = CategoryScope,
+            RequireAuthenticatedUser = true,
+            ApprovalPermission = CategoryApprovePermission,
+        });
+
+        services.AddMcpScope(new McpScope
+        {
+            Name = McpScopes.Vendor,
+            RequireAuthenticatedUser = true,
+            Permissions = ["vendor_portal:access"],
+        });
+
+        services.AddMcpScope(new McpScope
+        {
+            Name = PartnerScope,
+            RequireAuthenticatedUser = true,
+        });
+
+        services.AddMcpScope(new McpScope
+        {
+            Name = ConfirmScope,
+            RequireAuthenticatedUser = true,
+        });
+
+        // A scope that only users with a permission may open.
+        services.AddMcpScope(new McpScope
+        {
+            Name = GatedScope,
+            RequireAuthenticatedUser = true,
+            Permissions = [WritePermission],
+        });
+
+        // A scope that declares its own challenge bodies and origin; other scopes keep the module's.
+        services.AddMcpScope(new McpScope { Name = BrandedScope, RequireAuthenticatedUser = true }, scope => scope
+            .WithChallengeWriter<BrandedChallengeWriter>()
+            .WithPublicOriginResolver<BrandedOriginResolver>());
+
+        services.AddMcpScope(new McpScope
+        {
+            Name = ShopScope,
+            Title = "Test shop",
+            Version = "2.5",
+            RequireAuthenticatedUser = false,
+        });
+
+        services.AddScopedMcpServer();
+        services.AddMcpCallToolFilter<PartnerMarkerFilter>(PartnerScope);
+        services.AddMcpCallToolFilter<AdminCallCounterFilter>(McpScopes.Admin);
+        services.AddMcpTools<TestTools>();
+        services.AddMcpTools([typeof(UnscopedTools), typeof(StaticTools), typeof(UndeclaredTools)]);
+        services.AddMcpTools<CanceledTools>();
+        services.AddMcpPrompts([typeof(PermissionPrompts)]);
+        services.AddMcpResources([typeof(PermissionResources)]);
+        services.AddMcpTools([typeof(ConfirmTools)]);
+        services.AddMcpTools([typeof(ScopedPermissionTools)]);
+        services.AddMcpTools<McpApprovalTools>();
+        services.AddMcpTools<McpJobTools>();
+        services.AddMcpTools([typeof(PartnerTools), typeof(FailingTools), typeof(SensitiveTools), typeof(ShopTools), typeof(CategoryTools), typeof(GatedSearchTools)]);
+    }
+
+    private void DisableTools(string value)
+    {
+        var setting = ModuleConstants.Settings.Tools.Disabled;
+        _settingsManager
+            .Setup(x => x.GetObjectSettingAsync(setting.Name, null, null))
+            .ReturnsAsync(new ObjectSettingEntry { Name = setting.Name, Value = value });
+    }
+
+    private IMcpAuditEntryService CreateAuditEntryService()
+    {
+        var service = new Mock<IMcpAuditEntryService>();
+        service
+            .Setup(x => x.SaveChangesAsync(It.IsAny<IList<McpAuditEntry>>()))
+            .Callback<IList<McpAuditEntry>>(entries => entries.ToList().ForEach(_auditEntries.Add))
+            .Returns(Task.CompletedTask);
+
+        return service.Object;
+    }
+
+    private IMcpApprovalService CreateApprovalService()
+    {
+        _approvalService
+            .Setup(x => x.CanReviewAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<McpPendingChange>()))
+            .ReturnsAsync(true);
+
+        _approvalService
+            .Setup(x => x.SubmitAsync(It.IsAny<McpPendingChange>()))
+            .ReturnsAsync((McpPendingChange change) =>
+            {
+                change.Id = "change-1";
+                change.ExpirationDate = DateTime.UtcNow.AddHours(1);
+                _submittedChanges.Add(change);
+                return change;
+            });
+
+        _approvalService
+            .Setup(x => x.ApproveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync((string changeId, string reviewerUserId, string _, string _) =>
+            {
+                var change = (McpPendingChange)StoredChanges.Single(x => x.Id == changeId).Clone();
+                change.Status = McpPendingChangeStatus.Approved;
+                change.ReviewedByUserId = reviewerUserId;
+                return change;
+            });
+
+        _approvalService
+            .Setup(x => x.CompleteAsync(It.IsAny<McpPendingChange>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .ReturnsAsync((McpPendingChange change, string result, bool succeeded) =>
+            {
+                _completedChanges.Add((change, result, succeeded));
+                change.Status = succeeded ? McpPendingChangeStatus.Applied : McpPendingChangeStatus.Failed;
+                change.Result = result;
+                return change;
+            });
+
+        _approvalService
+            .Setup(x => x.RejectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync((string changeId, string reviewerUserId, string _, string reason) =>
+            {
+                var change = (McpPendingChange)StoredChanges.Single(x => x.Id == changeId).Clone();
+                change.Status = McpPendingChangeStatus.Rejected;
+                change.ReviewedByUserId = reviewerUserId;
+                change.ReviewComment = reason;
+                return change;
+            });
+
+        return _approvalService.Object;
+    }
+
+    private IMcpPendingChangeSearchService CreatePendingChangeSearchService()
+    {
+        var service = new Mock<IMcpPendingChangeSearchService>();
+        service
+            .Setup(x => x.SearchAsync(It.IsAny<McpPendingChangeSearchCriteria>(), It.IsAny<bool>()))
+            .ReturnsAsync((McpPendingChangeSearchCriteria criteria, bool _) =>
+            {
+                _searchCriteria.Add(criteria);
+                return new McpPendingChangeSearchResult { Results = [] };
+            });
+
+        return service.Object;
+    }
+
+    private IMcpJobService CreateJobService()
+    {
+        var service = new Mock<IMcpJobService>();
+        service
+            .Setup(x => x.SaveChangesAsync(It.IsAny<IList<McpJob>>()))
+            .Callback<IList<McpJob>>(jobs => jobs.ToList().ForEach(job => _jobs[job.Id] = job))
+            .Returns(Task.CompletedTask);
+        service
+            .Setup(x => x.TryChangeStatusAsync(It.IsAny<McpJob>(), It.IsAny<string>()))
+            .ReturnsAsync((McpJob job, string expectedStatus) =>
+            {
+                if (_jobs[job.Id].Status != expectedStatus)
+                {
+                    return false;
+                }
+
+                _jobs[job.Id] = job;
+                return true;
+            });
+        service
+            .Setup(x => x.GetAsync(It.IsAny<IList<string>>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .ReturnsAsync((IList<string> ids, string _, bool _) => ids
+                .Where(_jobs.ContainsKey)
+                .Select(id => (McpJob)_jobs[id].Clone())
+                .ToList());
+
+        return service.Object;
+    }
+
+    private void AddJob(string id, string scopeName, string userId, string requestedByUserId = null)
+    {
+        _jobs[id] = new McpJob
+        {
+            Id = id,
+            ScopeName = scopeName,
+            ToolName = "generate_coupons",
+            Title = "Generate coupons",
+            Status = McpJobStatus.Running,
+            UserId = userId,
+            RequestedByUserId = requestedByUserId,
+            ProcessedCount = 250,
+            TotalCount = 1000,
+        };
+    }
+
+    private static IMcpPendingChangeService CreatePendingChangeService()
+    {
+        var service = new Mock<IMcpPendingChangeService>();
+        service
+            .Setup(x => x.GetAsync(It.IsAny<IList<string>>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .ReturnsAsync((IList<string> ids, string _, bool _) => StoredChanges
+                .Where(x => ids.Contains(x.Id))
+                .Select(x => (McpPendingChange)x.Clone())
+                .ToList());
+
+        return service.Object;
+    }
+
+    private static McpPendingChange StoredChange { get; } = CreateStoredChange("change-2", "submit_tool", "{\"promotionId\":\"p2\"}");
+
+    private static McpPendingChange CanceledChange { get; } = CreateStoredChange("change-3", "canceled_tool", "{}");
+
+    private static McpPendingChange SensitiveChange { get; } = CreateSensitiveChange();
+
+    private static McpPendingChange PreviewChange { get; } = CreatePreviewChange();
+
+    private static McpPendingChange CategoryChange { get; } = CreateCategoryChange();
+
+    private static McpPendingChange[] StoredChanges => [StoredChange, CanceledChange, SensitiveChange, PreviewChange, CategoryChange];
+
+    private static McpPendingChange CreateCategoryChange()
+    {
+        var change = CreateStoredChange("change-6", "submit_tool", "{\"promotionId\":\"p6\"}");
+        change.ScopeName = CategoryScope;
+
+        return change;
+    }
+
+    private static McpPendingChange CreatePreviewChange()
+    {
+        var change = CreateStoredChange("change-5", "submit_tool", "{\"promotionId\":\"p5\"}");
+        change.Preview = "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"action\\\":\\\"would activate\\\",\\\"object_id\\\":\\\"p5\\\"}\"}]}";
+
+        return change;
+    }
+
+    private static McpPendingChange CreateSensitiveChange()
+    {
+        var change = CreateStoredChange("change-4", "submit_contact_tool", "{\"contactId\":\"c1\",\"email\":\"a@b.c\"}");
+        change.SensitiveArgumentPaths = ["email"];
+
+        return change;
+    }
+
+    // The requester of a stored change as the platform would sign them in: with the permissions the test leaves them.
+    private ClaimsPrincipal CreateUserPrincipal(string userId)
+    {
+        if (!_requesterExists || string.IsNullOrEmpty(userId))
+        {
+            return null;
+        }
+
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, userId), new("sub", userId) };
+        claims.AddRange(_requesterPermissions.Select(x => new Claim("permission", x)));
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Identity.Application"));
+    }
+
+    private static McpPendingChange CreateStoredChange(string id, string toolName, string arguments)
+    {
+        return new McpPendingChange
+        {
+            Id = id,
+            ScopeName = McpScopes.Admin,
+            ToolName = toolName,
+            Arguments = arguments,
+            Status = McpPendingChangeStatus.Pending,
+            RequestedByUserId = "requester",
+            ExpirationDate = DateTime.UtcNow.AddHours(1),
+        };
+    }
+
+    private async Task<HttpResponseMessage> PostAsync(string token, object body, string path = "/admin/mcp", bool acceptEventStream = true, string host = null, string origin = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+        };
+        if (host != null)
+        {
+            request.Headers.Host = host;
+        }
+
+        if (origin != null)
+        {
+            request.Headers.Add("Origin", origin);
+        }
+
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (acceptEventStream)
+        {
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        }
+
+        if (token != null)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return await _client.SendAsync(request, TestContext.Current.CancellationToken);
+    }
+
+    private async Task<JsonNode> CallAsync(string token, object body, string path = "/admin/mcp", string host = null)
+    {
+        var response = await PostAsync(token, body, path, host: host);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var data = payload
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.StartsWith("data:", StringComparison.Ordinal))
+            .Select(line => line["data:".Length..].Trim())
+            .LastOrDefault() ?? payload;
+
+        return JsonNode.Parse(data);
+    }
+
+    // A call from an MCP client that asks the user, who confirms it; returned as the JSON-RPC response of a raw call
+    private async Task<JsonNode> ConfirmedCallAsync(string token, object body, string path = "/admin/mcp")
+    {
+        var request = JsonSerializer.SerializeToNode(body)!["params"]!;
+        var arguments = request["arguments"]!.AsObject().ToDictionary(x => x.Key, x => (object)x.Value!.Deserialize<JsonElement>());
+        var scope = path.Trim('/').Split('/')[0];
+
+        await using var client = await ConnectAsync(scope, (_, _) => ValueTask.FromResult(new ElicitResult { Action = "accept" }), token);
+        var result = await client.CallToolAsync(request["name"]!.GetValue<string>(), arguments, cancellationToken: TestContext.Current.CancellationToken);
+
+        return new JsonObject { ["result"] = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions) };
+    }
+
+    // An MCP client of the 2026-07-28 revision, which asks the user with the given handler
+    private async Task<McpClient> ConnectAsync(string scope, Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>> elicitation, string token = null, HttpClient httpClient = null)
+    {
+        var transport = new HttpClientTransport(
+            new HttpClientTransportOptions
+            {
+                Endpoint = new Uri($"{Origin}/{scope}/mcp"),
+                TransportMode = HttpTransportMode.StreamableHttp,
+                AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + (token ?? Token(audience: $"{Origin}/{scope}/mcp")) },
+            },
+            httpClient ?? _client,
+            ownsHttpClient: false);
+
+        return await McpClient.CreateAsync(
+            transport,
+            new McpClientOptions
+            {
+                ProtocolVersion = "2026-07-28",
+                Handlers = new McpClientHandlers { ElicitationHandler = elicitation },
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    private static object ToolsList() => Request("tools/list", new { });
+
+    private static object ToolsCall(string name, object arguments) => Request("tools/call", new { name, arguments });
+
+    private static object Request(string method, object parameters) => new { jsonrpc = "2.0", id = 1, method, @params = parameters };
+
+    private static string[] ToolNames(JsonNode response)
+    {
+        return response["result"]!["tools"]!.AsArray().Select(x => x!["name"]!.GetValue<string>()).Order().ToArray();
+    }
+
+    private static bool IsError(JsonNode response)
+    {
+        return response["error"] != null || response["result"]?["isError"]?.GetValue<bool>() == true;
+    }
+
+    private static string Text(JsonNode response)
+    {
+        return string.Join("\n", response["result"]!["content"]!.AsArray().Select(x => x!["text"]?.GetValue<string>()));
+    }
+
+    private static string Token(string audience = $"{Origin}/admin/mcp", string user = "user-1", params string[] permissions)
+    {
+        return $"{user}|{audience}|{string.Join(';', permissions)}";
+    }
+
+    // A token issued with no client, as the password grant of an anonymous client issues it
+    private static string TokenWithoutClient(params string[] permissions)
+    {
+        return Token(permissions: permissions) + "#email=user-1@example.com";
+    }
+
+    // A client-credentials token: the client id is the subject, and the claim of the given type names the client too.
+    private static string ClientToken(string clientId, string clientClaimType, params string[] permissions)
+    {
+        return Token(user: clientId, permissions: permissions) + $"#{clientClaimType}={clientId}";
+    }
+
+    private static string[] AuthorTools =>
+        [ModuleConstants.ToolNames.CancelJob, ModuleConstants.ToolNames.GetJobStatus, ModuleConstants.ToolNames.GetPendingChange, ModuleConstants.ToolNames.ListPendingChanges, ModuleConstants.ToolNames.RejectPendingChange];
+
+    private static class McpPermissions
+    {
+        public const string Approve = ModuleConstants.Security.Permissions.Approve;
+    }
+
+    // A replacement of the tool switches that turns every tool off for some users, on top of the configured switches
+    private sealed class PerUserToolAvailabilityService(ISettingsManager settingsManager, ISet<string> userIds) : McpToolAvailabilityService(settingsManager)
+    {
+        public override async Task<bool> IsDisabledAsync(McpToolAvailabilityContext context)
+        {
+            return userIds.Contains(context.User?.FindFirst("sub")?.Value ?? string.Empty) || await base.IsDisabledAsync(context);
+        }
+    }
+
+    private sealed class TestUserPrincipalFactory(Func<string, ClaimsPrincipal> create) : McpUserPrincipalFactory(null, null)
+    {
+        public override Task<ClaimsPrincipal> CreateAsync(string userId) => Task.FromResult(create(userId));
+    }
+
+    // The agent's client application is the one registered for an MCP resource
+    private sealed class TestConnectedAgentService() : McpConnectedAgentService(null, null, null, null, null)
+    {
+        public override Task<bool> IsAgentClientAsync(string clientId) => Task.FromResult(clientId == AgentClientId);
+    }
+
+    private sealed class BrandedChallengeWriter : McpChallengeWriter
+    {
+        protected override object GetChallengeBody(McpChallenge challenge)
+        {
+            return new { code = "branded_sign_in", message = challenge.ErrorDescription };
+        }
+    }
+
+    private sealed class BrandedOriginResolver(IOptions<McpOptions> options) : McpPublicOriginResolver(options)
+    {
+        public override Task<string> GetOriginAsync(HttpContext context, McpScope scope)
+        {
+            return Task.FromResult(BrandedOrigin);
+        }
+    }
+
+    // Replaces the state the client sends back with its answer, as a client that makes up or reuses states would.
+    private sealed class RequestStateRewriter(HttpMessageHandler inner, Func<string, string> rewrite) : DelegatingHandler(inner)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content != null)
+            {
+                var body = JsonNode.Parse(await request.Content.ReadAsStringAsync(cancellationToken));
+                if (body?["params"] is JsonObject parameters && parameters["requestState"] is JsonValue state)
+                {
+                    parameters["requestState"] = rewrite(state.GetValue<string>());
+                    var content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+                    foreach (var header in request.Content.Headers.Where(x => x.Key != "Content-Type" && x.Key != "Content-Length"))
+                    {
+                        content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                    }
+
+                    request.Content = content;
+                }
+            }
+
+            return await base.SendAsync(request, cancellationToken);
+        }
+    }
+
+    private sealed class TestAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
+    {
+        public const string SchemeName = "Test";
+
+        public TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+            : base(options, logger, encoder)
+        {
+        }
+
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            var header = Request.Headers.Authorization.ToString();
+            if (!header.StartsWith("Bearer ", StringComparison.Ordinal))
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+
+            // user|audience|permission;permission[#claimType=value]; without a claim, the token names the agent's client
+            var token = header["Bearer ".Length..].Split('#', 2);
+            var parts = token[0].Split('|', 3);
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, parts[0]),
+                new("sub", parts[0]),
+                new("aud", parts[1]),
+            };
+            claims.AddRange(parts[2].Split(';', StringSplitOptions.RemoveEmptyEntries).Select(x => new Claim("permission", x)));
+            if (token.Length > 1 && token[1].Split('=', 2) is [var claimType, var claimValue])
+            {
+                claims.Add(new Claim(claimType, claimValue));
+            }
+            else
+            {
+                claims.Add(new Claim("client_id", AgentClientId));
+            }
+
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
+            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));
+        }
+    }
+
+    private sealed class ActiveTokenValidator : McpTokenValidator
+    {
+        public ActiveTokenValidator(IOpenIddictTokenManager tokenManager)
+            : base(tokenManager)
+        {
+        }
+
+        public override Task<bool> IsActiveAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
+        public override async Task<ClaimsPrincipal> AuthenticateAsync(HttpContext context)
+        {
+            var result = await context.AuthenticateAsync(TestAuthenticationHandler.SchemeName);
+            return result.Succeeded ? result.Principal : null;
+        }
+    }
+
+    [McpServerToolType]
+    [McpScope(McpScopes.Admin)]
+    public sealed class TestTools
+    {
+        private static int _dryRuns;
+        private static int _executions;
+
+        public static int DryRuns => _dryRuns;
+
+        public static int Executions => _executions;
+
+        public static void Reset()
+        {
+            _dryRuns = 0;
+            _executions = 0;
+            AdminCallCounterFilter.Reset();
+        }
+
+        [McpServerTool(Name = "read_tool"), Description("Reads.")]
+        [McpAnyUser]
+        public static string ReadTool() => "read";
+
+        [McpServerTool(Name = "write_tool"), Description("Writes.")]
+        [Authorize(WritePermission)]
+        public static string WriteTool(string value)
+        {
+            Interlocked.Increment(ref _executions);
+            return $"wrote {value}";
+        }
+
+        [McpServerTool(Name = "submit_contact_tool"), Description("Changes the email of a contact after approval.")]
+        [Authorize(WritePermission)]
+        [McpRequiresApproval]
+        public static string SubmitContactTool(string contactId, [McpSensitive] string email, bool dryRun = false) =>
+            dryRun ? $"would update {contactId}" : $"updated {contactId}";
+
+        [McpServerTool(Name = "conditional_tool"), Description("Generates coupons; more than 100 need approval.")]
+        [Authorize(WritePermission)]
+        [McpRequiresApproval(Condition = nameof(NeedsApproval))]
+        public static string ConditionalTool(int count, bool dryRun = false)
+        {
+            if (dryRun)
+            {
+                return $"would generate {count}";
+            }
+
+            Interlocked.Increment(ref _executions);
+            return $"generated {count}";
+        }
+
+        public static bool NeedsApproval(IReadOnlyDictionary<string, JsonElement> arguments)
+        {
+            return arguments.TryGetValue("count", out var count) && count.GetInt32() > 100;
+        }
+
+        [McpServerTool(Name = "submit_tool"), Description("Activates a promotion after approval.")]
+        [Authorize(WritePermission)]
+        [McpRequiresApproval]
+        public static string SubmitTool(string promotionId, bool dryRun = false)
+        {
+            if (dryRun)
+            {
+                Interlocked.Increment(ref _dryRuns);
+                return $"would activate {promotionId}";
+            }
+
+            Interlocked.Increment(ref _executions);
+            return $"activated {promotionId}";
+        }
+    }
+
+    [McpServerToolType]
+    [McpScope(McpScopes.Admin)]
+    public static class ScopedPermissionTools
+    {
+        [McpServerTool(Name = "scoped_tool"), Description("Needs a permission that may be limited to stores.")]
+        [McpPermission(ScopedPermission)]
+        public static string ScopedTool(RequestContext<CallToolRequestParams> context)
+        {
+            var grant = context.User.GetMcpPermissionGrant(ScopedPermission);
+            return grant.IsGlobal ? "all stores" : string.Join(",", grant.GetScopeValues(StoreScopeType));
+        }
+    }
+
+    [McpServerToolType]
+    [McpScope(McpScopes.Admin)]
+    [McpAnyUser]
+    public sealed class CanceledTools
+    {
+        [McpServerTool(Name = "canceled_tool"), Description("Gets canceled while it runs.")]
+        [McpRequiresApproval]
+        public static string CanceledTool(bool dryRun = false) => dryRun ? "would run" : throw new OperationCanceledException();
+
+        [McpServerTool(Name = "interrupted_tool"), Description("Gets canceled while it runs, without approval.")]
+        public static string InterruptedTool() => throw new OperationCanceledException();
+    }
+
+    [McpServerToolType]
+    [McpScope(McpScopes.Admin)]
+    [McpAnyUser]
+    public static class StaticTools
+    {
+        [McpServerTool(Name = "static_tool"), Description("Declared in a static class, as SDK tools usually are.")]
+        public static string StaticTool() => "static";
+    }
+
+    [McpServerToolType]
+    [McpScope(ConfirmScope)]
+    [McpAnyUser]
+    public static class ConfirmTools
+    {
+        private static int _executions;
+
+        public static int Executions => _executions;
+
+        public static void Reset()
+        {
+            _executions = 0;
+        }
+
+        [McpServerTool(Name = "delete_draft"), Description("Deletes a draft.")]
+        [McpRequiresConfirmation("Delete draft {draftId} of {email}?")]
+        public static string DeleteDraft(string draftId, [McpSensitive] string email)
+        {
+            Interlocked.Increment(ref _executions);
+            return $"deleted {draftId}";
+        }
+
+        [McpServerTool(Name = "archive_all"), Description("Archives old drafts.")]
+        [McpRequiresConfirmation]
+        public static string ArchiveAll(int olderThanDays)
+        {
+            Interlocked.Increment(ref _executions);
+            return $"archived {olderThanDays}";
+        }
+    }
+
+    [McpServerToolType]
+    [McpScope(McpScopes.Admin)]
+    public static class UndeclaredTools
+    {
+        private static int _executions;
+
+        public static int Executions => _executions;
+
+        [McpServerTool(Name = "undeclared_tool"), Description("Declares no permission, so a scope with signed-in users does not serve it.")]
+        public static string UndeclaredTool()
+        {
+            Interlocked.Increment(ref _executions);
+            return "undeclared";
+        }
+    }
+
+    [McpServerToolType]
+    [McpScope(PartnerScope)]
+    [McpAnyUser]
+    public static class PartnerTools
+    {
+        private static int _executions;
+
+        public static int Executions => _executions;
+
+        public static void Reset()
+        {
+            _executions = 0;
+        }
+
+        [McpServerTool(Name = "partner_submit_tool"), Description("Requires approval in a scope without the approval tools.")]
+        [McpRequiresApproval]
+        public static string PartnerSubmitTool(bool dryRun = false)
+        {
+            if (dryRun)
+            {
+                return "would submit";
+            }
+
+            Interlocked.Increment(ref _executions);
+            return "submitted";
+        }
+    }
+
+    [McpServerToolType]
+    [McpScope(PartnerScope)]
+    [McpAnyUser]
+    public static class SensitiveTools
+    {
+        [McpServerTool(Name = "sensitive_tool"), Description("Takes a sensitive argument.")]
+        public static string SensitiveTool(string contactId, [McpSensitive] string email) => $"ok {contactId}";
+    }
+
+    [McpServerToolType]
+    [McpScope(PartnerScope)]
+    [McpAnyUser]
+    public static class FailingTools
+    {
+        public const string UnexpectedMessage = "The database is not available.";
+        public const string RefusalMessage = "Promotion 'p1' was not found.";
+
+        [McpServerTool(Name = "failing_tool"), Description("Fails with an unexpected exception.")]
+        public static string FailingTool() => throw new InvalidOperationException(UnexpectedMessage);
+
+        [McpServerTool(Name = "refusing_tool"), Description("Refuses the request.")]
+        public static string RefusingTool() => throw new McpException(RefusalMessage);
+
+        public const string ForbiddenMessage = "Promotion p1 belongs to a store the user does not manage.";
+
+        [McpServerTool(Name = "forbidden_tool"), Description("Refuses a resource the user may not manage.")]
+        public static string ForbiddenTool() => throw new McpForbiddenException(ForbiddenMessage);
+    }
+
+    [McpServerToolType]
+    [McpScope(CategoryScope)]
+    [McpAnyUser]
+    public static class CategoryTools
+    {
+        [McpServerTool(Name = "publish_category"), Description("Publishes a category after approval.")]
+        [McpRequiresApproval]
+        public static string PublishCategory(string categoryId, bool dryRun = false) => dryRun ? $"would publish {categoryId}" : $"published {categoryId}";
+
+        [McpServerTool(Name = "publish_category_now"), Description("Requires approval but has no dry run.")]
+        [McpRequiresApproval]
+        public static string PublishCategoryNow(string categoryId) => $"published {categoryId}";
+    }
+
+    [McpServerToolType]
+    [McpScope(ShopScope)]
+    public static class ShopTools
+    {
+        [McpServerTool(Name = "search_products"), Description("Open to everyone.")]
+        public static string SearchProducts() => "products";
+
+        [McpServerTool(Name = "get_my_orders"), Description("Listed to everyone, needs a signed-in buyer.")]
+        [McpRequiresUser]
+        public static string GetMyOrders() => "orders";
+
+        [McpServerTool(Name = "get_my_wishlist"), Description("Every signed-in user.")]
+        [McpAnyUser]
+        public static string GetMyWishlist() => "wishlist";
+
+        [McpServerTool(Name = "get_my_prices"), Description("Needs a permission.")]
+        [Authorize(WritePermission)]
+        public static string GetMyPrices() => "prices";
+    }
+
+    // A tool of another scope with the name of the shop's open tool, that needs a user there.
+    [McpServerToolType]
+    [McpScope(GatedScope)]
+    public static class GatedSearchTools
+    {
+        [McpServerTool(Name = "search_products"), Description("Needs a signed-in user in this scope.")]
+        [McpRequiresUser]
+        public static string SearchProducts() => "gated products";
+    }
+
+    [McpServerPromptType]
+    [McpScope(McpScopes.Admin)]
+    public static class PermissionPrompts
+    {
+        [McpServerPrompt(Name = "pricing_review"), Description("Needs a permission.")]
+        [McpPermission(WritePermission)]
+        public static string PricingReview() => "Review the prices.";
+
+        [McpServerPrompt(Name = "open_review"), Description("Open to every user of the scope.")]
+        public static string OpenReview() => "Review the week.";
+    }
+
+    [McpServerResourceType]
+    [McpScope(McpScopes.Admin)]
+    public static class PermissionResources
+    {
+        [McpServerResource(UriTemplate = "test://pricing", Name = "pricing"), Description("Needs a permission.")]
+        [McpPermission(WritePermission)]
+        public static string Pricing() => "prices";
+    }
+
+    [McpServerToolType]
+    public static class UnscopedTools
+    {
+        [McpServerTool(Name = "unscoped_tool"), Description("Not on any scope.")]
+        public static string UnscopedTool() => "unscoped";
+    }
+
+    // A module filter of the admin scope that counts the calls it sees
+    public sealed class AdminCallCounterFilter : IMcpCallToolFilter
+    {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _calls = new();
+
+        public static int CallsOf(string toolName) => _calls.GetValueOrDefault(toolName);
+
+        public static void Reset() => _calls.Clear();
+
+        public ValueTask<CallToolResult> InvokeAsync(
+            McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+            RequestContext<CallToolRequestParams> context,
+            CancellationToken cancellationToken)
+        {
+            _calls.AddOrUpdate(context.Params?.Name ?? string.Empty, 1, (_, count) => count + 1);
+
+            return next(context, cancellationToken);
+        }
+    }
+
+    // A module filter of the partner scope: marks the result, and turns it into a tool error to show that the audit
+    // records what the filter returns.
+    public sealed class PartnerMarkerFilter(IHttpContextAccessor httpContextAccessor) : IMcpCallToolFilter
+    {
+        public async ValueTask<CallToolResult> InvokeAsync(
+            McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+            RequestContext<CallToolRequestParams> context,
+            CancellationToken cancellationToken)
+        {
+            var result = await next(context, cancellationToken);
+            result.Meta ??= [];
+            result.Meta["filtered_in"] = httpContextAccessor.HttpContext.GetMcpScope()?.Name;
+            result.IsError = context.Params?.Name == "sensitive_tool" ? true : result.IsError;
+
+            return result;
+        }
+    }
+}
