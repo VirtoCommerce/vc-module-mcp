@@ -1,0 +1,647 @@
+<title>Agent Self-Registration (VCST-6639)</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column with wide tables and diagrams that scroll inside their own frames; a sticky contents rail on wide screens. */
+:root {
+  --paper: #f7f8f6;
+  --sheet: #ffffff;
+  --ink: #1b2230;
+  --muted: #5b6577;
+  --rule: #dfe3e8;
+  --accent: #c2410c;
+  --accent-soft: #fbeee6;
+  --new: #1f7a4d; --new-bg: #e5f3ec;
+  --chg: #9a6200; --chg-bg: #fbf1dc;
+  --use: #3d5a80; --use-bg: #e8eef6;
+  --opt: #6b4fa0; --opt-bg: #efeaf7;
+  --code-bg: #f0f2f4;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #12161d; --sheet: #181d26; --ink: #e6e9ef; --muted: #9aa4b5; --rule: #2a313d;
+  --accent: #f08a4b; --accent-soft: #2c1f17;
+  --new: #6fd3a0; --new-bg: #16302a; --chg: #f0c060; --chg-bg: #33291a;
+  --use: #9cbbe6; --use-bg: #1b2738; --opt: #c3a8f0; --opt-bg: #261e36; --code-bg: #1f2530;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --paper: #12161d; --sheet: #181d26; --ink: #e6e9ef; --muted: #9aa4b5; --rule: #2a313d;
+  --accent: #f08a4b; --accent-soft: #2c1f17;
+  --new: #6fd3a0; --new-bg: #16302a; --chg: #f0c060; --chg-bg: #33291a;
+  --use: #9cbbe6; --use-bg: #1b2738; --opt: #c3a8f0; --opt-bg: #261e36; --code-bg: #1f2530;
+  color-scheme: dark; }
+
+body { background: var(--paper); color: var(--ink); font: 400 15.5px/1.6 var(--f-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; } nav.toc { position: static !important; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 13.5px; }
+nav.toc b { display: block; font: 600 11px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 4px 0 4px 10px; border-left: 2px solid var(--rule); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--ink); border-left-color: var(--accent); outline: none; }
+main { min-width: 0; }
+header.doc { border-bottom: 1px solid var(--rule); padding-bottom: 24px; margin-bottom: 8px; }
+.eyebrow { font: 600 12px/1 var(--f-mono); letter-spacing: .06em; color: var(--accent); }
+h1 { font: 700 clamp(30px, 4.4vw, 44px)/1.08 var(--f-display); margin: 12px 0 14px; text-wrap: balance; letter-spacing: -.01em; }
+.lede { max-width: 68ch; color: var(--muted); font-size: 17px; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 16px; font: 400 12.5px/1.4 var(--f-mono); color: var(--muted); }
+section { padding-top: 36px; }
+h2 { font: 700 26px/1.15 var(--f-display); margin: 0 0 14px; text-wrap: balance; }
+h3 { font: 600 17px/1.3 var(--f-body); margin: 26px 0 8px; }
+p, li { max-width: 74ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px; padding-left: 22px; }
+li { margin: 4px 0; }
+a { color: var(--accent); }
+code { font: 500 .88em var(--f-mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 16px 0; max-width: 78ch; }
+.callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+.verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0; }
+.verdict { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+.verdict h4 { margin: 0 0 6px; font: 600 15px/1.3 var(--f-body); }
+.verdict .level { font: 600 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; }
+.verdict p { margin: 6px 0 0; font-size: 14.5px; color: var(--muted); }
+.lvl-high { color: var(--new); } .lvl-med { color: var(--chg); }
+.tbl { overflow-x: auto; margin: 14px 0 18px; border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font: 600 11.5px/1.3 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--paper); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.cls { font-family: var(--f-mono); font-size: 12.8px; white-space: nowrap; }
+td.repo { white-space: nowrap; font-weight: 600; }
+.tag { display: inline-block; font: 600 10.5px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
+.t-new { color: var(--new); background: var(--new-bg); } .t-chg { color: var(--chg); background: var(--chg-bg); }
+.t-use { color: var(--use); background: var(--use-bg); } .t-opt { color: var(--opt); background: var(--opt-bg); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin: 6px 0 4px; }
+.diagram { overflow-x: auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; margin: 14px 0 18px; }
+pre.code { overflow-x: auto; background: var(--code-bg); border-radius: 8px; padding: 14px 16px; font: 400 12.8px/1.55 var(--f-mono); margin: 12px 0 16px; }
+.decisions { counter-reset: d; list-style: none; padding: 0; }
+.decisions li { counter-increment: d; position: relative; padding: 12px 14px 12px 52px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; margin: 10px 0; max-width: 80ch; }
+.decisions li::before { content: "D" counter(d); position: absolute; left: 14px; top: 12px; font: 700 13px/1.6 var(--f-mono); color: var(--accent); }
+.src { font-size: 13px; color: var(--muted); }
+.src li { word-break: break-all; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <b>Contents</b>
+  <a href="#summary">Summary</a>
+  <a href="#story">What VCST-6639 asks</a>
+  <a href="#market">How others do it</a>
+  <a href="#relevance">UCP and storefront</a>
+  <a href="#flow">Flows</a>
+  <a href="#components">Components</a>
+  <a href="#platform">Platform design</a>
+  <a href="#security">Security</a>
+  <a href="#config">Configuration</a>
+  <a href="#phases">Phases and tests</a>
+  <a href="#decisions">Decisions</a>
+  <a href="#sources">Sources</a>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">VCST-6639 · Reference architecture · draft 1 · 2026-11-06</div>
+  <h1>AI agents connect with the MCP URL only</h1>
+  <p class="lede">Client ID Metadata Documents (CIMD), consent and least privilege on the platform's OpenIddict server, so that Claude, ChatGPT and IDE agents reach <code>/admin/mcp</code> and <code>/ucp/mcp</code> without an administrator registering each one.</p>
+  <div class="meta"><span>vc-platform 3.1095 · OpenIddict 7.7.2</span><span>vc-module-mcp (PR #1)</span><span>vc-module-ucp (PR #13)</span><span>vc-frontend</span><span>Admin Shell 3.1094 · classic Manager 3.1096</span></div>
+</header>
+
+<section id="summary">
+  <h2>Summary</h2>
+  <p>Today an agent can sign in only after an administrator registers it in <b>Security → OAuth applications</b> (VCST-6641). That works for a company's own agents. It does not scale to hosted clients: a merchant cannot pre-register claude.ai or ChatGPT for every store, and a buyer cannot ask a store to do it at all.</p>
+  <p>The MCP authorization specification (2026-07-28) makes Client ID Metadata Documents the way a client identifies itself to a server it has never met. Pre-registration stays as the fallback. Dynamic Client Registration (RFC 7591) is now deprecated. With CIMD the <code>client_id</code> is an <code>https</code> URL. The authorization server fetches the JSON document at that URL and takes the client's name and redirect URIs from it.</p>
+  <p>Claude Code, claude.ai, ChatGPT and VS Code already send CIMD. No commerce platform accepts it yet, and OpenIddict does not support it.</p>
+  <div class="callout">
+    <p><b>Recommendation.</b> Implement CIMD in <b>vc-platform</b> as a client resolver in front of OpenIddict's client validation. On first use it turns a metadata document into an ordinary OpenIddict application: public, PKCE S256, explicit consent, code and refresh-token grants, and only the MCP resources the platform lists. Everything downstream works unchanged: tokens, stored authorizations, <b>Connected agents</b>, <b>Disconnect</b>, audit, and the MCP token rules.</p>
+    <p>The MCP module decides, per scope, whether self-registered clients may connect at all: <code>Allowlist</code> or <code>Open</code>. The UCP module needs no code. The storefront gains a branded consent page for buyers in phase 2. Dynamic registration is left out, since the specification has deprecated it.</p>
+  </div>
+  <div class="verdicts">
+    <div class="verdict"><span class="level lvl-high">High relevance</span><h4>Back office · <code>/admin/mcp</code></h4><p>Marketers connect Claude Desktop, claude.ai or ChatGPT by pasting the URL. The administrator keeps control through consent, allowlists and Disconnect.</p></div>
+    <div class="verdict"><span class="level lvl-high">High relevance</span><h4>Buyers · <code>/ucp/mcp</code></h4><p>Shopping assistants are hosted products that cannot be pre-registered per store. Without self-registration, <code>link_buyer_identity</code> works only for clients the merchant registered by hand.</p></div>
+    <div class="verdict"><span class="level lvl-med">Medium relevance</span><h4>Storefront (vc-frontend)</h4><p>Buyers already sign in through <code>/oauth/authorize</code>. The consent screen they then see is the platform's unbranded Razor page. It needs a storefront version, plus a place where buyers can revoke an assistant.</p></div>
+  </div>
+</section>
+
+<section id="story">
+  <h2>What VCST-6639 asks</h2>
+  <ol>
+    <li><b>CIMD:</b> accept an <code>https</code> URL as <code>client_id</code> at <code>/connect/authorize</code> and <code>/connect/token</code>. Validate the document: <code>client_id</code> equals the URL, plus <code>redirect_uris</code>, <code>client_name</code> and <code>token_endpoint_auth_method: none</code>. Treat the client as public with PKCE S256, match redirect URIs exactly, cache the document, and advertise <code>client_id_metadata_document_supported</code>.</li>
+    <li><b>SSRF protection</b> for the fetch: <code>https</code> only; no private, loopback or link-local addresses; limits on size, time and redirects; an optional host allowlist.</li>
+    <li><b>Explicit consent</b> naming the client, its host, the user and the MCP resource. The decision is stored and can be revoked.</li>
+    <li><b>Least privilege:</b> only <code>authorization_code</code> and <code>refresh_token</code>, the <code>code</code> response type and the requested <code>rsrc:</code>. The request to stop adding extra defaults in <code>OAuthAppsController</code> is <b>already done</b> by VCST-6641: <code>POST /api/platform/oauthapps</code> now stores exactly the fields sent.</li>
+    <li><b>Dynamic client registration</b> (RFC 7591) as an option, off by default.</li>
+    <li><b>Tests and documentation.</b></li>
+  </ol>
+  <p>Acceptance runs end to end. These must work:</p>
+  <ul>
+    <li><code>claude mcp add --transport http virto https://&lt;host&gt;/admin/mcp</code> without <code>--client-id</code>;</li>
+    <li>a claude.ai connector added with only the URL;</li>
+    <li><b>Deny</b> returns <code>access_denied</code>;</li>
+    <li>private-address, mismatching or unlisted-redirect documents are refused;</li>
+    <li>tokens work only at their own MCP endpoint;</li>
+    <li>revoking the authorization stops the agent;</li>
+    <li>clients registered by an administrator keep working.</li>
+  </ul>
+</section>
+
+<section id="market">
+  <h2>How other commerce platforms connect agents</h2>
+  <h3>Where the specifications are</h3>
+  <ul>
+    <li><b>MCP authorization 2026-07-28</b> (current) [1][3]:
+      <ul>
+        <li>Client ID Metadata Documents are <b>SHOULD</b> for both authorization servers and clients.</li>
+        <li>Dynamic client registration is <b>MAY and marked deprecated</b>: "new implementations should use Client ID Metadata Documents instead". In 2025-11-25 it was still plain MAY [4].</li>
+        <li>Clients try a pre-registered client first, then CIMD when the server advertises <code>client_id_metadata_document_supported</code>, then DCR.</li>
+      </ul>
+    </li>
+    <li><b>Security considerations</b> [5]: the server <b>MUST clearly display the redirect URI hostname</b> during authorization and SHOULD warn when every redirect URI is localhost.</li>
+    <li><b>IETF draft-ietf-oauth-client-id-metadata-document-03</b>, 2 Nov 2026 [6][7]:
+      <ul>
+        <li>fetch: no redirects, no special-use IPs, about 5 KB maximum;</li>
+        <li>cache: a minimum and a maximum cache time, errors never cached, the last good document kept when a fetch fails;</li>
+        <li>redirect URIs: exact match, except <b>loopback URIs match on any port</b>;</li>
+        <li>client authentication: no shared secrets; reject a <code>client_id</code> equal to the server's own issuer;</li>
+        <li>consent: <code>client_name</code> and <code>logo_uri</code> are unverified.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h3>AI clients</h3>
+  <p>Checked against each client's published document on 2026-11-06.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Client</th><th>CIMD</th><th>DCR</th><th>Pre-registered</th><th>Metadata URL and redirect</th></tr></thead>
+    <tbody>
+      <tr><td>Claude Code</td><td>Yes</td><td>Yes</td><td>Yes</td><td><code>https://claude.ai/oauth/claude-code-client-metadata</code>; redirects <code>http://localhost/callback</code> and <code>http://127.0.0.1/callback</code> <b>without a port</b>; method <code>none</code> [11]</td></tr>
+      <tr><td>claude.ai, Desktop, mobile</td><td>Yes, <b>only if the server also lists <code>none</code></b> in <code>token_endpoint_auth_methods_supported</code>; otherwise DCR [8]</td><td>Yes</td><td>Yes (client ID and secret on the connector)</td><td>Callback <code>https://claude.ai/api/mcp/auth_callback</code>; metadata URL not published</td></tr>
+      <tr><td>ChatGPT</td><td>Yes, preferred [12]</td><td>Yes</td><td>Yes</td><td><code>https://chatgpt.com/oauth/client.json</code>; method <code>private_key_jwt</code> with <code>jwks_uri</code>, also lists <code>none</code> [13]</td></tr>
+      <tr><td>VS Code (Copilot)</td><td>Yes [14]</td><td>Yes</td><td>Yes, tried first</td><td><code>https://vscode.dev/oauth/client-metadata.json</code>; <code>http://127.0.0.1:33418/</code> and <code>https://vscode.dev/redirect</code> [16]</td></tr>
+      <tr><td>Cursor</td><td>No, "no timeline" [17]</td><td>Yes</td><td>Yes</td><td>—</td></tr>
+      <tr><td>Gemini CLI</td><td>No, closed as not planned [18]</td><td>Yes</td><td>Yes</td><td>—</td></tr>
+      <tr><td>MCP Inspector v2</td><td>Opt-in [20]</td><td>Yes</td><td>Yes</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <p>So the platform today rejects every one of these clients unless an administrator registers it first. Claude also needs <code>none</code> in the metadata before it even tries CIMD. Today the metadata lists only <code>client_secret_post</code>, <code>client_secret_basic</code> and <code>private_key_jwt</code>.</p>
+
+  <h3>Commerce platforms</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Platform</th><th>Back-office agents</th><th>Buyer agents</th></tr></thead>
+    <tbody>
+      <tr><td>Shopify</td><td>Dev MCP is local over stdio. No hosted admin MCP found (unconfirmed) [21].</td><td>Agents publish a UCP profile. There are three trust tiers: anonymous (catalog and cart); signed, with RFC 9421 signatures from the profile's keys (adds checkout); and token, with a Dev Dashboard credential (adds orders) [22][23]. Buyer-linked tokens use Shop as the IdP and need a <b>pre-registered app</b> [24]. Customer Account MCP: OAuth with PKCE and the app's <code>client_id</code> [25].</td></tr>
+      <tr><td>commercetools</td><td>Managed MCP, GA July 2026. Either an API client (client credentials) or <b>Identity sign-in</b>, which filters tools by the user's Merchant Center permissions [27][28][29].</td><td>Not documented.</td></tr>
+      <tr><td>BigCommerce</td><td>Not documented.</td><td>Hosted Storefront MCP per store, turned on by the merchant. Guests need no auth; signed-in shoppers use a storefront session token, not OAuth [30].</td></tr>
+      <tr><td>Salesforce Commerce</td><td>Hosted MCP needs a pre-created External Client App, then code with PKCE [31].</td><td>Shopper MCP (pilot): a SLAS guest or registered-shopper token with an agent scope [33].</td></tr>
+      <tr><td>Adobe Commerce, SAP</td><td>Announced; auth model unconfirmed [34][36].</td><td>Unconfirmed.</td></tr>
+      <tr><td>Stripe</td><td>Hosted <code>mcp.stripe.com</code>: OAuth with <b>DCR</b>, no CIMD flag. Per-environment consent, an admin switch for MCP access, revocable sessions, and human confirmation for money movement [37][38].</td><td>—</td></tr>
+      <tr><td>PayPal</td><td>Hosted <code>mcp.paypal.com</code>: DCR, <code>client_id_metadata_document_supported: false</code> [39].</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <p>No commerce platform documents CIMD today. Most require a pre-registered app (Shopify, Salesforce) or use DCR (Stripe, PayPal). Auth0, Okta, WorkOS, Stytch, Descope and Cloudflare already accept CIMD, and Keycloak has it as an experimental feature [45]–[55]. Okta makes the administrator allowlist each metadata URL first [47]. Virto would be the first commerce platform that lets any MCP client connect to the back office and to a store with nothing but the URL and the user's consent.</p>
+
+  <h3>Agentic commerce protocols</h3>
+  <ul>
+    <li><b>UCP 2026-08-25</b> [41][42]:
+      <ul>
+        <li>The calling platform is identified by a <b>profile URL</b>: the <code>UCP-Agent: profile="https://…"</code> header, or <code>meta["ucp-agent"]</code> over MCP. The business fetches it under the same rules as CIMD (https, no redirects, no special-use IPs). Keys in the profile allow RFC 9421 signatures "without prior registration".</li>
+        <li><b>Identity linking</b> is OAuth code with PKCE S256. The business MUST publish RFC 8414 metadata with <code>authorization_response_iss_parameter_supported: true</code>, scopes in <code>{capability}:{scope}</code> form, and revocation.</li>
+        <li>It <b>does not say how the platform gets a <code>client_id</code></b>. CIMD fills that gap, and a CIMD document and a UCP profile are the same idea: an agent known by an https URL with published metadata.</li>
+      </ul>
+    </li>
+    <li><b>ACP</b> (OpenAI and Stripe, beta): an API key plus request signatures; no buyer account linking. Nothing maps to CIMD [43][44].</li>
+  </ul>
+
+  <h3>OpenIddict</h3>
+  <ul>
+    <li><b>No CIMD support.</b> Issue #2552 is open; the maintainer will support it "once the specification is closer to adoption" [59]. Community PR #2416 was closed as too early. It built a <b>virtual application</b> (public, PKCE) when an https <code>client_id</code> was not in the store [60].</li>
+    <li><b>DCR</b> is planned for 8.0 previews [61].</li>
+    <li><b>ChatGPT's <code>private_key_jwt</code> assertions</b> are rejected by OpenIddict 7 by design (issue #2539). A custom handler can relax this [63].</li>
+  </ul>
+  <p>So Virto writes the resolver itself, in the platform, behind OpenIddict's event model.</p>
+</section>
+
+<section id="relevance">
+  <h2>Relevance for UCP and the storefront</h2>
+  <h3>Today's buyer sign-in (VCST-5378)</h3>
+  <p>A shopping assistant calls <code>/ucp/mcp</code> and gets <code>401</code>. The protected-resource metadata names the store's origin as the authorization server. The assistant then opens <code>/connect/authorize</code> on the storefront host.</p>
+  <p>With <code>Authorization:OAuthLoginPath</code> set, the platform redirects to the storefront page <code>/oauth/authorize</code> (<code>client-app/pages/auth/authorize.vue</code>). The buyer signs in there as usual. The page exchanges the storefront session for a short platform cookie through <code>POST /connect/session</code> and returns to <code>/connect/authorize</code>.</p>
+  <p>Up to this point the flow is the same for any client. Only the last step, finding the client, fails for an assistant nobody registered.</p>
+  <h3>What CIMD changes for buyers</h3>
+  <ul>
+    <li><b>Assistants connect to any store with no merchant setup.</b> The store's <code>/ucp/mcp</code> resource is already listed by the MCP module's <code>McpOAuthResourceProvider</code>.</li>
+    <li><b>Consent becomes a buyer-facing screen.</b> With implicit consent the buyer never saw which assistant they linked. A self-registered client must get explicit consent. Today that renders the platform's <code>Views/Shared/Authorize.cshtml</code> on the store's domain, with no store branding and only the application name and scope.</li>
+    <li><b>Buyers need to see and revoke linked assistants.</b> Back-office users have <b>Connected agents</b>. Buyers have <code>logout_buyer</code> only from inside the assistant.</li>
+    <li><b>UCP's own agent identity is separate.</b> UCP identifies the calling platform by its profile, and <code>identity_linking</code> is OAuth account linking. CIMD covers the OAuth half. The comparison above shows what the protocols say about the agent's identity.</li>
+  </ul>
+  <h3>Storefront work</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Item</th><th>Phase</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Consent page <code>/oauth/consent</code> (<code>pages/auth/consent.vue</code>) reached through a new <code>Authorization:OAuthConsentPath</code>, the same way as <code>OAuthLoginPath</code></td><td>2</td><td>A branded, localized screen that names the assistant, its host, the store and what it gets, with <b>Allow</b> and <b>Deny</b>.</td></tr>
+      <tr><td>Account page <b>Connected assistants</b>, with list and revoke</td><td>2</td><td>Buyer self-service revocation, the counterpart of <b>Connected agents</b>.</td></tr>
+      <tr><td><code>/oauth/authorize</code> bridge</td><td>unchanged</td><td>Already client-agnostic: it only checks that <code>returnUrl</code> is a local <code>/connect/authorize</code> URL.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Phase 1 can ship without these. The platform consent page works on the storefront host, it is just unbranded. A store can also keep buyers on implicit consent for clients it registered itself.</p>
+</section>
+
+<section id="flow">
+  <h2>Flows</h2>
+  <h3>First connection of a self-registered client</h3>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant A as Agent (Claude, ChatGPT)
+  participant M as MCP endpoint /admin/mcp or /ucp/mcp
+  participant P as Platform /connect/*
+  participant R as ClientMetadataDocumentResolver
+  participant D as Client metadata URL (https)
+  participant U as User browser
+  A->>M: tools/list (no token)
+  M-->>A: 401 + resource_metadata URL
+  A->>M: GET /.well-known/oauth-protected-resource/{scope}/mcp
+  M-->>A: resource, authorization_servers
+  A->>P: GET /.well-known/oauth-authorization-server
+  P-->>A: client_id_metadata_document_supported: true
+  A->>U: open /connect/authorize?client_id=https://client/meta.json&resource=…&code_challenge=…
+  U->>P: /connect/authorize
+  P->>R: resolve client_id (URL)
+  R->>D: GET (SSRF-guarded, size/time limits)
+  D-->>R: JSON metadata
+  R->>P: upsert OpenIddict application (public, PKCE, explicit, rsrc: allowed MCP resources)
+  P->>U: sign in (back office, or storefront /oauth/authorize)
+  P->>U: consent: client name, host, user, MCP endpoint
+  U->>P: Allow
+  P-->>U: redirect_uri?code=…
+  U-->>A: code
+  A->>P: POST /connect/token (client_id URL, code_verifier, resource)
+  P->>R: resolve (cached)
+  P-->>A: access + refresh token, aud = MCP resource
+  A->>M: tools/list (Bearer)
+  M-->>A: tools of the user's role
+  </pre></div>
+  <h3>Where the platform hooks in</h3>
+  <p>OpenIddict validates <code>client_id</code> in its request-validation pipeline by calling <code>IOpenIddictApplicationManager.FindByClientIdAsync</code>. A scoped event handler, ordered just before OpenIddict's own client validation, runs on the authorization, token and revocation requests. When <code>client_id</code> is an <code>https</code> URL, it resolves the document and creates or refreshes the application. OpenIddict's own checks then run unchanged:</p>
+  <ul>
+    <li>redirect URI match;</li>
+    <li>PKCE requirement;</li>
+    <li>grant, endpoint and <code>rsrc:</code> permissions;</li>
+    <li>the public-client rules.</li>
+  </ul>
+  <p>The handler runs on every request with a URL <code>client_id</code>, but it fetches only when the cached document has expired.</p>
+  <pre class="code">serverBuilder.AddEventHandler&lt;ValidateAuthorizationRequestContext&gt;(builder =&gt; builder
+    .UseScopedHandler&lt;ResolveClientMetadataDocument&lt;ValidateAuthorizationRequestContext&gt;&gt;()
+    .SetOrder(/* before OpenIddict's ValidateClientId handler; verify the descriptor name in OpenIddict 7.7 */ 0)
+    .SetType(OpenIddictServerHandlerType.Custom));
+// the same for ValidateTokenRequestContext and ValidateRevocationRequestContext
+serverBuilder.AddEventHandler&lt;HandleConfigurationRequestContext&gt;(builder =&gt; builder
+    .UseSingletonHandler&lt;AdvertiseClientMetadataDocumentSupport&gt;());   // client_id_metadata_document_supported, "none" auth method</pre>
+</section>
+
+<section id="components">
+  <h2>Components</h2>
+  <div class="legend"><span class="tag t-new">New</span> added <span class="tag t-chg">Changed</span> modified <span class="tag t-use">Used</span> reused as is <span class="tag t-opt">Optional</span> later or behind a setting</div>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph clients["AI clients"]
+    CC["Claude Code, Desktop, claude.ai"]
+    GPT["ChatGPT"]
+    IDE["VS Code"]
+  end
+  subgraph platform["vc-platform"]
+    MD["/.well-known/oauth-authorization-server"]:::chg
+    AC["AuthorizationController<br/>/connect/authorize, /connect/token"]:::chg
+    H["ResolveClientMetadataDocument<br/>OpenIddict handler"]:::new
+    RES["ClientMetadataDocumentResolver<br/>SSRF-guarded fetch, cache"]:::new
+    REG["SelfRegisteredClientService<br/>upsert OpenIddict application"]:::new
+    APPS[("OpenIddict applications,<br/>authorizations, tokens")]
+    OAP["OAuthAppsController"]:::chg
+    RP["IOAuthResourceProvider<br/>OAuthResource.SelfRegistration"]:::chg
+  end
+  subgraph mcp["vc-module-mcp"]
+    PRM["McpOAuthMetadataController"]
+    ORP["McpOAuthResourceProvider<br/>per-scope policy"]:::chg
+    TV["McpTokenValidator"]
+    CA["Connected agents"]:::chg
+  end
+  subgraph ucp["vc-module-ucp"]
+    U["/ucp/mcp tools<br/>link_buyer_identity"]
+  end
+  subgraph fe["vc-frontend"]
+    LOGIN["/oauth/authorize bridge"]
+    CONS["/oauth/consent page"]:::new
+    MYAPPS["Account: connected assistants"]:::new
+  end
+  subgraph admin["Admin Shell, classic Manager"]
+    UI["OAuth applications screen"]:::chg
+  end
+  clients --> PRM
+  clients --> MD
+  clients --> AC
+  AC --> H --> RES
+  H --> REG --> APPS
+  H --> RP
+  ORP -. implements .-> RP
+  AC --> LOGIN
+  AC --> CONS
+  MYAPPS --> APPS
+  TV --> APPS
+  CA --> APPS
+  UI --> OAP --> APPS
+  U --> TV
+  classDef new fill:#e5f3ec,stroke:#1f7a4d,color:#1b2230;
+  classDef chg fill:#fbf1dc,stroke:#9a6200,color:#1b2230;
+  </pre></div>
+
+  <h3>vc-platform</h3>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>Class or file</th><th>Project</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">ClientMetadataDocumentOptions</td><td>Platform.Core · Security</td><td>The <code>Authorization:ClientIdMetadataDocuments</code> section, bound into <code>AuthorizationOptions</code>. See <a href="#config">Configuration</a>.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">ClientMetadataDocument</td><td>Platform.Core · Security</td><td>The validated document: <code>client_id</code>, <code>client_name</code>, <code>client_uri</code>, <code>logo_uri</code>, <code>redirect_uris</code>, <code>token_endpoint_auth_method</code>, <code>grant_types</code>, <code>response_types</code>, <code>scope</code>, plus fetched-at and expires-at.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">IClientMetadataDocumentResolver</td><td>Platform.Core · Security</td><td><code>Task&lt;ClientMetadataDocumentResult&gt; ResolveAsync(string clientId, CancellationToken)</code>: a document or a refusal reason. A contract, so a host can add its own trust rules, such as a signed-metadata or allowlist service.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">ClientMetadataDocumentResolver</td><td>Platform.Security</td><td>Named <code>HttpClient</code> with a <code>SocketsHttpHandler.ConnectCallback</code> that checks the <b>connected</b> IP, so DNS rebinding is covered. It enforces https, no redirects (or at most one, to the same host), a 5 KB body cap, a 5 s timeout, and <code>application/json</code>. Validation rules are in <a href="#security">Security</a>. The cache uses <code>IPlatformMemoryCache</code> and honors <code>Cache-Control</code> within a minimum and maximum.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">SelfRegisteredClientService</td><td>Platform.Security</td><td>Turns a document into an OpenIddict application through <code>IOpenIddictApplicationManager</code>. Below the table: what it creates, what it refreshes, and where the registration source is kept.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">ResolveClientMetadataDocument&lt;TContext&gt;</td><td>Platform.Web · Security/OpenIddict</td><td>An OpenIddict server event handler for authorization, token and revocation requests. It calls the resolver and the client service, and rejects with <code>invalid_client</code> or <code>invalid_request</code> and a reason. It requires <code>resource</code>, and allows only resources whose <code>SelfRegistration</code> lets this client in. It matches loopback redirect URIs on any port.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">AdvertiseClientMetadataDocumentSupport</td><td>Platform.Web · Security/OpenIddict</td><td>A <code>HandleConfigurationRequestContext</code> handler. It adds <code>client_id_metadata_document_supported: true</code>, and adds <code>none</code> to <code>token_endpoint_auth_methods_supported</code> (today the metadata lists only secret and JWT methods).</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">Startup.cs</td><td>Platform.Web</td><td>Registers the handlers, the resolver, the named <code>HttpClient</code> and the options. Enables <code>SetRevocationEndpointUris("/connect/revoke")</code>, which UCP identity linking requires in the metadata.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">OAuthResource</td><td>Platform.Core · Security</td><td>Adds <code>SelfRegistration</code>: <code>Off</code>, <code>Allowlist</code> or <code>Open</code>, with <code>AllowedClients</code>. The resource's provider says whether self-registered clients may ask for it, so the MCP module decides this per scope.</td></tr>
+      <tr><td><span class="tag t-opt">Optional</span></td><td class="cls">ValidateClientAssertion handler</td><td>Platform.Web · Security/OpenIddict</td><td>Accepts <code>private_key_jwt</code> from a CIMD client with <code>jwks_uri</code> on the same host, for ChatGPT's preferred method (OpenIddict #2539). Not needed if ChatGPT falls back to <code>none</code> (D5).</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">AuthorizationController</td><td>Platform.Web</td><td><code>Authorize()</code> forces explicit consent for self-registered clients, whatever is stored. It asks again (<code>prompt=consent</code> semantics) when the document's <code>redirect_uris</code> or name changed since the stored authorization. It hands the consent view the client host, logo, resources and a self-registered flag. With <code>OAuthConsentPath</code> set, it redirects to the storefront consent page instead of rendering the view (phase 2). <code>Deny()</code> already returns <code>access_denied</code> through <code>Forbid</code>.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">AuthorizeViewModel · Views/Shared/Authorize.cshtml</td><td>Platform.Web</td><td>Adds client host, logo, a "not verified by this store" note for self-registered clients, the signed-in user, and the MCP endpoint names. Today the view shows only <code>ApplicationName</code> and <code>Scope</code>.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">GET/POST /connect/consent</td><td>Platform.Web · AuthorizationController</td><td>Phase 2. A JSON consent description and an antiforgery-protected accept or deny, for the storefront page. The same checks as <code>Accept()</code> and <code>Deny()</code>.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">OAuthAppsController</td><td>Platform.Web</td><td><code>SearchAsync</code> gets a "self-registered" filter. <code>SaveAsync</code> refuses edits to self-registered clients except blocking. Blocking a client keeps it in the list, so it cannot register again.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">EF migrations ×3 (SqlServer, PostgreSql, MySql)</td><td>Platform.Data.*</td><td><code>OpenIddictApplications.ClientId</code> is <code>nvarchar(100)</code>. Widen it to 400, or refuse longer URLs (D3).</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">SelfRegisteredClientCleanupJob</td><td>Platform.Web · BackgroundJobs</td><td>Deletes self-registered applications with no valid authorization or token after N days, so arbitrary URLs cannot fill the table.</td></tr>
+      <tr><td><span class="tag t-opt">Optional</span></td><td class="cls">ClientRegistrationController (POST /connect/register)</td><td>Platform.Web</td><td>RFC 7591, only for Cursor and Gemini CLI, which have no CIMD. Behind <code>Authorization:DynamicClientRegistration:Enabled = false</code>, with the same policy as CIMD. Deprecated by MCP 2026-07-28, so it is proposed not to build it (D4).</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">IOAuthResourceProvider · OAuthResourceContext</td><td>Platform.Core</td><td>The list of resources a self-registered client may request. MCP endpoints come from <code>McpOAuthResourceProvider</code>. <code>resource_server</code> and other APIs are never granted.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">/connect/session · OAuthLoginPath</td><td>Platform.Web</td><td>The storefront sign-in bridge, unchanged.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">VirtoOpenIddictEntityFrameworkCoreTokenStore · EnablePersistentStorageTokenValidation</td><td>Platform.Security</td><td>Revocation and token-store checks, unchanged.</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>What <code>SelfRegisteredClientService</code> creates</b> on the first sign-in:</p>
+  <ul>
+    <li>client id: the URL;</li>
+    <li><code>ClientType</code> public, <code>ConsentType</code> explicit, requirement <code>ft:pkce</code>;</li>
+    <li>permissions: the authorization, token, revocation and end-session endpoints, the <code>authorization_code</code> and <code>refresh_token</code> grants, response type <code>code</code>, and <code>rsrc:</code> for the allowed MCP resources only;</li>
+    <li><code>DisplayName</code> from <code>client_name</code>.</li>
+  </ul>
+  <p>When the document changes, the service refreshes the name and redirect URIs. It records the registration source in the application's <code>Properties</code> JSON (<code>vc:registration = "cimd"</code>, host, logo, last fetch), so no schema change is needed for it.</p>
+
+  <h3>vc-module-mcp</h3>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>Class or file</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">McpOAuthResourceProvider · McpScopeOptions</td><td>Already lists each scope's endpoint at its public origin and at <code>/mcp</code> of each host. It now also fills <code>SelfRegistration</code> from <code>MCP:Scopes:{scope}:SelfRegistration</code> and <code>…:AllowedClients</code>. Default: <code>admin</code> Allowlist (Claude Code, ChatGPT, VS Code); <code>ucp</code> Open; <code>vendor</code> Off.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">McpOAuthMetadataController</td><td>Protected resource metadata (RFC 9728). <code>authorization_servers</code> already points at the origin, and clients find the new metadata field there. No change.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">McpTokenValidator · McpAgentTokenClassifier</td><td>A token of a self-registered client carries <code>client_id</code> = URL and the MCP audience. The audience, client, user and token-store rules apply as for any client. Disconnect and <code>ValidateAgentTokensOnAllEndpoints</code> keep working.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">McpConnectedAgentService · ConnectedAgent model</td><td>Adds the registration source (administrator or self-registered), the client host and logo, from the application's properties.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">vue/src/modules/pages/agents-list.vue (classic blade too)</td><td>A "Self-registered" badge and the client host. Disconnect is unchanged. Adds a <b>Block</b> action that calls the platform.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">McpAuditWriter</td><td>Records <code>client_id</code> as today. A URL is longer but fits. The display name comes from the application.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">README · docs/demo.md</td><td>"Connect an AI agent": for CIMD-capable clients, no registration step. Keep the OAuth applications path for pre-registered clients.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>vc-module-ucp</h3>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>Class or file</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">UcpMcpPublicOriginResolver · /ucp/mcp scope</td><td>The resource is the store's origin plus <code>/ucp/mcp</code>. It must be in <code>Authorization:Resources</code>, and the MCP module lists it per store host. No change.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">UcpMcpIdentityTools (link_buyer_identity, logout_buyer)</td><td>Unchanged. <code>logout_buyer</code> revokes the stored authorization of whichever client is calling.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">UcpProfileService</td><td>The <code>identity_linking</code> capability notes that clients may identify with a metadata document, once the platform advertises it. The text follows the UCP spec's wording.</td></tr>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">UcpRestAuthenticationMiddleware</td><td>REST <code>/ucp/v1/*</code> takes the buyer from the same tokens, so it works for self-registered clients unchanged.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">README</td><td>Step 5 "Register the shopping assistant" becomes optional for CIMD-capable assistants.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>vc-frontend</h3>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>File</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-use">Used</span></td><td class="cls">client-app/pages/auth/authorize.vue</td><td>The <code>/oauth/authorize</code> sign-in bridge, unchanged.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">client-app/pages/auth/consent.vue + route</td><td>Phase 2. Loads <code>GET /connect/consent?returnUrl=…</code> and shows the assistant (name, host, logo, "not verified" note), the store, the signed-in buyer and organization, and what it can do. Posts Allow or Deny with the antiforgery token, then <code>location.replace</code>. Same <code>returnUrl</code> guard as <code>authorize.vue</code>.</td></tr>
+      <tr><td><span class="tag t-new">New</span></td><td class="cls">Account → Connected assistants</td><td>Phase 2. Lists and revokes the buyer's own authorizations through a small xAPI query and mutation in the profile experience API, which calls the platform authorization manager for the current user only.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">locales/*.json</td><td>Consent and assistants strings.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Admin Shell and classic Manager</h3>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>File</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">modules/platform/pages/security/oauth-apps.vue · oauth-app-details.vue</td><td>A "Self-registered" column or badge and filter. Details are read-only for self-registered clients except <b>Block</b> and <b>Delete</b>.</td></tr>
+      <tr><td><span class="tag t-chg">Changed</span></td><td class="cls">security/blades/oauthapps-list.js · oauthapps-detail.js</td><td>The same in the classic Manager.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="platform">
+  <h2>Platform design notes</h2>
+  <h3>Why materialize the client as an OpenIddict application</h3>
+  <p>The alternative is a virtual client: a custom <code>IOpenIddictApplicationStore</code> that answers for URL client ids from the cache. It leaves no rows behind, but it breaks what VCST-6155 and VCST-6641 built on:</p>
+  <ul>
+    <li>authorizations and tokens reference an application id;</li>
+    <li><b>Connected agents</b> lists applications with <code>rsrc:</code> permissions;</li>
+    <li><b>Disconnect</b> revokes by application;</li>
+    <li>the OAuth applications screen and audit show the application name.</li>
+  </ul>
+  <p>A real row keeps all of these working. The cleanup job and the blocked flag keep the table bounded.</p>
+  <h3>Consent rules</h3>
+  <ul>
+    <li><b>Self-registered clients always get explicit consent the first time</b>, per user and per resource set. An administrator can raise a known client to implicit consent by registering it under its URL.</li>
+    <li><b>The stored authorization is permanent</b> until revoked. It is invalidated when the document's redirect URIs change, or when a new resource is requested.</li>
+    <li><b>The screen shows the client host prominently</b> (from the <code>client_id</code> URL, not from <code>client_name</code>), because the name is self-asserted.</li>
+    <li><b>Deny</b> returns <code>access_denied</code> to the redirect URI, which <code>Deny()</code> already does.</li>
+  </ul>
+  <h3>Loopback redirect URIs are a requirement</h3>
+  <p>Claude Code's document lists <code>http://localhost/callback</code> and <code>http://127.0.0.1/callback</code> with <b>no port</b>, and it listens on a random one. The CIMD draft and RFC 8252 §7.3 say loopback redirects match on any port. OpenIddict matches redirect URIs exactly.</p>
+  <p>So the resolver handler compares the request's <code>redirect_uri</code> to the document ignoring the port, and only for loopback hosts. If it matches, it adds that exact URI to the application before OpenIddict validates it. Without this, Claude Code cannot connect.</p>
+  <p>A client whose redirect URIs are all loopback gets a warning on the consent screen.</p>
+  <h3>Revocation and UCP's metadata rules</h3>
+  <p>The platform's metadata has no <code>revocation_endpoint</code>: tokens are revoked through the platform's own <code>/revoke/token</code>. UCP identity linking requires a revocation endpoint in the metadata, and self-registered agents need a standard way to sign out. The platform enables OpenIddict's <code>/connect/revoke</code>.</p>
+  <p><code>authorization_response_iss_parameter_supported</code> is already <code>true</code>.</p>
+</section>
+
+<section id="security">
+  <h2>Security</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Threat</th><th>Control</th></tr></thead>
+    <tbody>
+      <tr><td>SSRF into the platform's network through the metadata URL</td><td><code>https</code> only. The <code>ConnectCallback</code> refuses private, loopback, link-local, CGNAT, multicast and IPv6 ULA addresses after DNS resolution, so DNS rebinding is covered. No redirects. 5 KB cap, 5 s timeout. An optional <code>AllowedHosts</code>, and a <code>BlockedHosts</code> list. Errors are not echoed to the caller.</td></tr>
+      <tr><td>Impersonating a known agent</td><td><code>client_id</code> must equal the fetched URL exactly, and must not equal the platform's own issuer. The consent screen shows the <code>client_id</code> host and the redirect URI host, as the MCP spec requires. <code>client_name</code> and <code>logo_uri</code> are marked unverified; logos are served through the platform, or left out in phase 1. Only the host's own document can name its redirect URIs. A secret-based <code>token_endpoint_auth_method</code> is refused.</td></tr>
+      <tr><td>Code interception</td><td>A public client with PKCE <b>S256</b> required (<code>plain</code> refused for these clients, though the metadata still lists it), exact redirect URI match, and <code>iss</code> in the authorization response.</td></tr>
+      <tr><td>Over-broad tokens</td><td>Only the code and refresh-token grants. <code>resource</code> is required and must be an MCP resource from <code>IOAuthResourceProvider</code>. The audience is that resource only. No <code>resource_server</code>, no <code>client_credentials</code>, no password grant.</td></tr>
+      <tr><td>Consent phishing</td><td>The URL host, the logo and a "not verified by this store" note on the screen. The administrator can block a host or use allowlist mode.</td></tr>
+      <tr><td>Table growth from arbitrary URLs</td><td>The application row is created only after a valid document and an authenticated user. Request rate limit per IP. Cleanup job for unused clients.</td></tr>
+      <tr><td>A stale or changed document</td><td>Cache with a minimum and maximum lifetime. Errors are never cached, and refetches are rate-limited. The last good document is kept when a fetch fails briefly. Refreshed on authorize and token requests after expiry. Re-consent when redirect URIs change.</td></tr>
+      <tr><td>A revoked agent keeps working</td><td>Already covered: the MCP token rules check the token store on every request, and <code>ValidateAgentTokensOnAllEndpoints</code> covers REST and GraphQL.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="config">
+  <h2>Configuration</h2>
+  <pre class="code">"Authorization": {
+  "Resources": [ "https://admin.example.com/admin/mcp", "https://store.example.com/ucp/mcp" ],
+  "ClientIdMetadataDocuments": {           // platform: how documents are fetched
+    "Enabled": true,                       // D1
+    "BlockedHosts": [],
+    "MaxDocumentSize": 5120,
+    "FetchTimeout": "00:00:05",
+    "MinCacheDuration": "00:05:00",
+    "MaxCacheDuration": "1.00:00:00",
+    "UnusedClientRetention": "30.00:00:00"
+  },
+  "OAuthLoginPath": "/oauth/authorize",
+  "OAuthConsentPath": "/oauth/consent"     // phase 2
+},
+"MCP": {                                   // MCP module: who may self-register, per scope
+  "Scopes": {
+    "admin":  { "SelfRegistration": "Allowlist",
+                "AllowedClients": [ "https://claude.ai/oauth/claude-code-client-metadata",
+                                    "https://chatgpt.com/oauth/client.json",
+                                    "https://vscode.dev/oauth/client-metadata.json" ] },
+    "ucp":    { "SelfRegistration": "Open" },
+    "vendor": { "SelfRegistration": "Off" }
+  }
+}</pre>
+  <p>An allowlist entry is a full metadata URL or a host (<code>claude.ai</code>). claude.ai's connector document is not published, so it is matched by host.</p>
+</section>
+
+<section id="phases">
+  <h2>Phases and tests</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Phase</th><th>Scope</th><th>Repos</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>CIMD resolver and handlers, metadata field, consent view, OAuth applications badge and filter, Connected agents badge, cleanup job, docs.</td><td>vc-platform, vc-module-mcp, Admin Shell, classic Manager</td></tr>
+      <tr><td>2</td><td>Storefront consent page through <code>OAuthConsentPath</code>, buyer <b>Connected assistants</b>, UCP profile wording.</td><td>vc-platform, vc-frontend, profile xAPI, vc-module-ucp</td></tr>
+      <tr><td>3, if needed</td><td><code>private_key_jwt</code> for ChatGPT (D5); binding a CIMD client to its UCP profile and RFC 9421 signatures, following Shopify's signed tier; DCR only if D4 changes.</td><td>vc-platform, vc-module-ucp</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Tests</h3>
+  <ul>
+    <li><b>Resolver unit tests:</b>
+      <ul>
+        <li>valid document;</li>
+        <li><code>client_id</code> mismatch;</li>
+        <li>missing <code>redirect_uris</code>;</li>
+        <li><code>token_endpoint_auth_method</code> other than <code>none</code>;</li>
+        <li>non-JSON body, oversized body, timeout;</li>
+        <li>redirect response;</li>
+        <li><code>http</code> URL;</li>
+        <li>a host that resolves to 10.x, 127.x, 169.254.x or ::1;</li>
+        <li>cache hit, expiry and <code>Cache-Control</code>.</li>
+      </ul>
+    </li>
+    <li><b>Handler tests:</b>
+      <ul>
+        <li>unknown URL client created; existing client refreshed; blocked client refused;</li>
+        <li>a resource outside the MCP list refused;</li>
+        <li>scope set to <code>Off</code> refused; client not on an <code>Allowlist</code> refused;</li>
+        <li>S256 required;</li>
+        <li>loopback redirect accepted on any port, non-loopback only exactly;</li>
+        <li><code>client_id</code> equal to the issuer refused.</li>
+      </ul>
+    </li>
+    <li><b>Controller tests:</b> explicit consent forced for self-registered clients; re-consent after a redirect URI change; Deny returns <code>access_denied</code>.</li>
+    <li><b>E2E on the demo platform:</b>
+      <ul>
+        <li>Claude Code without <code>--client-id</code>;</li>
+        <li>a claude.ai connector with the URL only;</li>
+        <li>ChatGPT, if it sends CIMD;</li>
+        <li>a fake metadata server for the negative cases;</li>
+        <li>Disconnect stops the agent;</li>
+        <li>the 27 UCP scenarios, with a self-registered client.</li>
+      </ul>
+    </li>
+  </ul>
+</section>
+
+<section id="decisions">
+  <h2>Decisions to make</h2>
+  <ol class="decisions">
+    <li><b>Defaults per scope.</b> Proposal: CIMD on. Back office in Allowlist mode with Claude Code, claude.ai, ChatGPT and VS Code, like Okta's model. Buyers Open. Vendor portal Off. Explicit consent always.</li>
+    <li><b>Client storage.</b> Proposal: materialize OpenIddict applications, so that tokens, Connected agents, Disconnect and audit keep working. The alternative is virtual applications, the pattern of OpenIddict PR #2416, which leaves no rows but needs those features reworked.</li>
+    <li><b><code>ClientId</code> length.</b> Proposal: widen <code>OpenIddictApplications.ClientId</code> from 100 to 400 characters with a migration on all three databases. The alternative is to refuse longer URLs. Today's known documents are 33 to 52 characters.</li>
+    <li><b>Dynamic client registration.</b> Proposal: do not build it. It is deprecated in MCP 2026-07-28, and Cursor and Gemini CLI can use a client registered in OAuth applications. The alternative is phase 3, behind a setting that is off by default.</li>
+    <li><b>ChatGPT's <code>private_key_jwt</code>.</b> Proposal: phase 1 with <code>none</code> only, and an E2E check that ChatGPT falls back to it. Add the client-assertion handler only if it does not.</li>
+    <li><b>Buyer consent.</b> Proposal: phase 1 on the platform page served on the storefront host, and the storefront page in phase 2. The alternative is both in phase 1.</li>
+  </ol>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <p class="src">Market research gathered on 2026-11-06. Items marked unconfirmed could not be sourced. The Claude Code, ChatGPT and VS Code metadata documents were fetched directly. Code references are to vc-platform <code>feat/VCST-6641</code>, vc-module-mcp <code>57ec72b</code>, vc-module-ucp <code>0cc03d5</code> and vc-frontend <code>dev</code>.</p>
+  <ol class="src">
+    <li>https://modelcontextprotocol.io/specification/latest/basic/authorization</li>
+    <li>https://modelcontextprotocol.io/specification/draft/changelog</li>
+    <li>https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration</li>
+    <li>https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization</li>
+    <li>https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations</li>
+    <li>https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/</li>
+    <li>https://www.ietf.org/archive/id/draft-ietf-oauth-client-id-metadata-document-03.html</li>
+    <li>https://claude.com/docs/connectors/building/authentication.md</li>
+    <li>https://claudeissues.com/issue/36861-docs-mcp-docs-missing-client-id-metadata-document-cimd-sep-991-oauth-support</li>
+    <li>https://zuplo.com/learn/mcp/compatibility</li>
+    <li>https://claude.ai/oauth/claude-code-client-metadata</li>
+    <li>https://developers.openai.com/apps-sdk/build/auth</li>
+    <li>https://chatgpt.com/oauth/client.json</li>
+    <li>https://den.dev/blog/cimd-vs-code-mcp/</li>
+    <li>https://zuplo.com/learn/mcp/compatibility/clients/vs-code.md</li>
+    <li>https://vscode.dev/oauth/client-metadata.json</li>
+    <li>https://forum.cursor.com/t/mcp-oauth-cimd-support-plans-and-timelines/148096</li>
+    <li>https://github.com/google-gemini/gemini-cli/issues/25724</li>
+    <li>https://zuplo.com/learn/mcp/compatibility/clients/gemini-cli</li>
+    <li>https://github.com/modelcontextprotocol/inspector/issues/2242</li>
+    <li>https://shopify.dev/docs/apps/build/devmcp</li>
+    <li>https://shopify.dev/docs/agents</li>
+    <li>https://shopify.dev/docs/agents/profiles/auth-and-rate-limiting</li>
+    <li>https://shopify.dev/docs/agents/profiles/buyer-linked-tokens.md</li>
+    <li>https://shopify.dev/docs/apps/build/customer-accounts-mcp</li>
+    <li>https://siliconangle.com/?p=727389</li>
+    <li>https://docs.commercetools.com/sdk/mcp/commerce-mcp</li>
+    <li>https://docs.commercetools.com/api/managed-mcp-servers-overview</li>
+    <li>https://docs.commercetools.com/merchant-center/managed-mcp-servers</li>
+    <li>https://docs.bigcommerce.com/developer/api-reference/mcp/overview</li>
+    <li>https://developer.salesforce.com/docs/platform/hosted-mcp-servers/guide</li>
+    <li>https://salesforcecommercecloud.github.io/b2c-developer-tooling/guide/index.md</li>
+    <li>https://developer.salesforce.com/docs/commerce/commerce-api/guide/agentic-mcp-shopper-tools-quick-start.html</li>
+    <li>https://www.paz.ai/blog/adobe-mcp-commerce-default-agent-protocol</li>
+    <li>https://packagist.org/packages/angeo/module-mcp-server</li>
+    <li>https://glama.ai/mcp/servers/commerce-cloud-integrations/sap-commerce-mcp-server</li>
+    <li>https://docs.stripe.com/mcp</li>
+    <li>https://access.stripe.com/.well-known/oauth-authorization-server/mcp</li>
+    <li>https://mcp.paypal.com/.well-known/oauth-authorization-server</li>
+    <li>https://docs.aigateway.cequence.ai/docs/remote-mcp-servers/paypal</li>
+    <li>https://ucp.dev/specification/overview/</li>
+    <li>https://ucp.dev/specification/common/identity-linking/</li>
+    <li>https://github.com/agentic-commerce-protocol/agentic-commerce-protocol</li>
+    <li>https://developers.openai.com/commerce/specs/checkout</li>
+    <li>https://auth0.com/docs/get-started/auth0-overview/create-applications/cimd-overview</li>
+    <li>https://auth0.com/ai/docs/mcp/guides/registering-your-mcp-client-application/manual-cimd-registration</li>
+    <li>https://developer.okta.com/docs/guides/ai-agent-cimd-registration/main/</li>
+    <li>https://techcommunity.microsoft.com/blog/azuredevcommunityblog/building-mcp-servers-with-entra-id-and-pre-authorized-clients/4508453</li>
+    <li>https://www.keycloak.org/2026/04/keycloak-2660-released</li>
+    <li>https://skycloak.io/blog/keycloak-cimd-mcp-authorization/</li>
+    <li>https://github.com/ory/hydra/issues/4134</li>
+    <li>https://workos.com/changelog/client-id-metadata-support-for-mcp-auth</li>
+    <li>https://stytch.com/docs/connected-apps/oauth-learn-more/client-types</li>
+    <li>https://docs.descope.com/agentic-identity-hub/mcp-servers/registration-methods</li>
+    <li>https://github.com/cloudflare/workers-oauth-provider/releases/tag/v0.2.2</li>
+    <li>https://docs.duendesoftware.com/identityserver/ai/</li>
+    <li>https://duendesoftware.com/products/capabilities/ai</li>
+    <li>https://github.com/openiddict/openiddict-core/releases</li>
+    <li>https://github.com/openiddict/openiddict-core/issues/2552</li>
+    <li>https://github.com/openiddict/openiddict-core/pull/2416</li>
+    <li>https://github.com/openiddict/openiddict-core/issues/2404</li>
+    <li>https://documentation.openiddict.com/introduction</li>
+    <li>https://github.com/openiddict/openiddict-core/issues/2539</li>
+  </ol>
+</section>
+</main>
+</div>
