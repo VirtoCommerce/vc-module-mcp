@@ -6,7 +6,7 @@ This page lists what moves, what stays, and the order of the work. File referenc
 
 ## Status
 
-Done in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`), on platform 3.1091.0. UCP builds against the `VirtoCommerce.MCP.Core` prerelease of this branch (`3.1000.0-alpha.{n}-vcst-6155-core-mcp-module`) and depends on the `VirtoCommerce.MCP` module of the same version. The branch:
+Done in VirtoCommerce/vc-module-ucp#13 (branch `feat/VCST-6155-mcp-sdk-2.3`), on platform 3.1096.0. UCP builds against the `VirtoCommerce.MCP.Core` prerelease of this branch (`3.1000.0-alpha.{n}-vcst-6155-core-mcp-module`) and depends on the `VirtoCommerce.MCP` module of the same version. The branch:
 
 - deletes the UCP copies of the MCP plumbing (about 1,000 lines of source) and registers the `ucp` scope together with what the scope does differently: `UcpMcpChallengeWriter`, `UcpMcpPublicOriginResolver` and `UcpMcpCallToolFilter`, declared with the scope (`AddMcpScope(scope, s => s.WithChallengeWriter<…>()…)`), so they apply to `/ucp/mcp` only and never check which scope they serve;
 - runs its call filter inside the MCP module's pipeline;

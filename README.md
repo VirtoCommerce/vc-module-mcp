@@ -84,7 +84,7 @@ Menu names in the agents change from release to release; if a step does not matc
 
 An administrator does this once per platform, and registers one OAuth client per kind of agent.
 
-1. **Install** `VirtoCommerce.MCP` (platform 3.1095.0 or later for the OAuth applications screen of step 3) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
+1. **Install** `VirtoCommerce.MCP` (platform 3.1096.0 or later) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
 1. **Allow tokens for the endpoint** in `appsettings.json`:
 
     ```json

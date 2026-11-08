@@ -4,7 +4,7 @@
     <SonarQubeTestProject>false</SonarQubeTestProject>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="VirtoCommerce.Platform.Data" Version="3.1095.0" />
+    <PackageReference Include="VirtoCommerce.Platform.Data" Version="3.1096.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />
