@@ -50,9 +50,7 @@ AbstractTypeFactory<DemoPromotion>.OverrideType<DemoPromotion, ContosoPromotion>
 serviceCollection.AddTransient<MarketingAnalytics, ContosoMarketingAnalytics>();
 
 // 3. Add tools, prompts and resources to the same MCP scope.
-serviceCollection.AddMcpToolsFromAssembly(typeof(Module).Assembly);
-serviceCollection.AddMcpPromptsFromAssembly(typeof(Module).Assembly);
-serviceCollection.AddMcpResourcesFromAssembly(typeof(Module).Assembly);
+serviceCollection.AddMcpCapabilities<Module>();
 ```
 
 - **Order.** `module.manifest` declares the dependency on `VirtoCommerce.MCP.MarketingSample`, so the platform initializes the extension after the sample and the registrations of the extension win.

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using VirtoCommerce.MCP.Core.Models;
@@ -68,48 +67,61 @@ public static class McpServiceCollectionExtensions
         return scope != null && (scopeName == McpScopes.Any || string.Equals(scope.Name, scopeName, StringComparison.OrdinalIgnoreCase));
     }
 
-    public static IServiceCollection AddMcpTools<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(
-        this IServiceCollection services,
-        JsonSerializerOptions serializerOptions = null)
+    // Registers every tool, prompt and resource of the assembly of TAssemblyMarker, an empty class of the module's MCP
+    // code (McpAssemblyMarker by convention). The [McpScope] of each type says which scopes serve it.
+    public static IServiceCollection AddMcpCapabilities<TAssemblyMarker>(this IServiceCollection services)
     {
-        services.AddMcpServer().WithTools<TToolType>(serializerOptions);
+        return services.AddMcpCapabilities(typeof(TAssemblyMarker).Assembly);
+    }
+
+    public static IServiceCollection AddMcpCapabilities(this IServiceCollection services, Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        return services
+            .AddMcpToolsFromAssembly(assembly)
+            .AddMcpPromptsFromAssembly(assembly)
+            .AddMcpResourcesFromAssembly(assembly);
+    }
+
+    // The tools, prompts and resources are serialized with McpSerialization.Options, the same for every module.
+    public static IServiceCollection AddMcpTools<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(this IServiceCollection services)
+    {
+        services.AddMcpServer().WithTools<TToolType>(McpSerialization.Options);
         return services;
     }
 
-    public static IServiceCollection AddMcpTools(this IServiceCollection services, IEnumerable<Type> toolTypes, JsonSerializerOptions serializerOptions = null)
+    public static IServiceCollection AddMcpTools(this IServiceCollection services, IEnumerable<Type> toolTypes)
     {
-        services.AddMcpServer().WithTools(toolTypes, serializerOptions);
+        services.AddMcpServer().WithTools(toolTypes, McpSerialization.Options);
         return services;
     }
 
-    public static IServiceCollection AddMcpToolsFromAssembly(this IServiceCollection services, Assembly assembly, JsonSerializerOptions serializerOptions = null)
+    public static IServiceCollection AddMcpToolsFromAssembly(this IServiceCollection services, Assembly assembly)
     {
-        services.AddMcpServer().WithToolsFromAssembly(assembly, serializerOptions);
+        services.AddMcpServer().WithToolsFromAssembly(assembly, McpSerialization.Options);
         return services;
     }
 
-    public static IServiceCollection AddMcpPrompts<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TPromptType>(
-        this IServiceCollection services,
-        JsonSerializerOptions serializerOptions = null)
+    public static IServiceCollection AddMcpPrompts<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TPromptType>(this IServiceCollection services)
     {
-        services.AddMcpServer().WithPrompts<TPromptType>(serializerOptions);
+        services.AddMcpServer().WithPrompts<TPromptType>(McpSerialization.Options);
         return services;
     }
 
-    public static IServiceCollection AddMcpPrompts(this IServiceCollection services, IEnumerable<Type> promptTypes, JsonSerializerOptions serializerOptions = null)
+    public static IServiceCollection AddMcpPrompts(this IServiceCollection services, IEnumerable<Type> promptTypes)
     {
-        services.AddMcpServer().WithPrompts(promptTypes, serializerOptions);
+        services.AddMcpServer().WithPrompts(promptTypes, McpSerialization.Options);
         return services;
     }
 
-    public static IServiceCollection AddMcpPromptsFromAssembly(this IServiceCollection services, Assembly assembly, JsonSerializerOptions serializerOptions = null)
+    public static IServiceCollection AddMcpPromptsFromAssembly(this IServiceCollection services, Assembly assembly)
     {
-        services.AddMcpServer().WithPromptsFromAssembly(assembly, serializerOptions);
+        services.AddMcpServer().WithPromptsFromAssembly(assembly, McpSerialization.Options);
         return services;
     }
 
-    public static IServiceCollection AddMcpResources<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TResourceType>(
-        this IServiceCollection services)
+    public static IServiceCollection AddMcpResources<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TResourceType>(this IServiceCollection services)
     {
         services.AddMcpServer().WithResources<TResourceType>();
         return services;

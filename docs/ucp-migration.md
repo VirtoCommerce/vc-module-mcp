@@ -38,7 +38,7 @@ Every row is already available in the MCP module, so the UCP code can be deleted
 | --- | --- | --- |
 | `UcpMcpStartup` and its `startupType` in `module.manifest`: the `/ucp/mcp` branch with routing, authentication and authorization | `MapMcpScopes()` in the platform pipeline, served at `/{scope}/mcp` | Register the `ucp` scope; UCP's startup keeps only its own steps: the gate, the store and the sign-in rule after routing, and after authentication the buyer of a REST request by the MCP token rules (`UcpRestAuthenticationMiddleware` with `IMcpTokenValidator`). |
 | Inline probe middleware in `UcpMcpStartup` (`tools/list` with `Accept: application/json` only) | `McpProbeCompatibilityMiddleware` | The MCP module also joins multi-line event data. |
-| `AddMcpServer().WithHttpTransport(Stateless = true)` in `Module.cs` | `AddScopedMcpServer()` | Register the tools with `AddMcpToolsFromAssembly(assembly, UcpMcpSerialization.Options)`. |
+| `AddMcpServer().WithHttpTransport(Stateless = true)` in `Module.cs` | `AddScopedMcpServer()` | Register the tools with `AddMcpCapabilities<McpAssemblyMarker>()`; they are serialized with the shared `McpSerialization.Options`. |
 | Server name and version | `McpScope.Title` and `McpScope.Version` | Set `Version = ModuleConstants.UcpVersion`. |
 | `ModuleConstants.McpInstructions` | `McpScope.Instructions` | Same text, plus the store-managed-addresses line when it is on (`BuildMcpInstructions`). |
 | `UcpOAuthMetadataController`, `UcpProtectedResourceMetadata` | `McpOAuthMetadataController` | Same route, fields and scopes. |
@@ -87,7 +87,7 @@ Not in either module, by design: rate limits and CORS. They belong to the API ga
         .WithChallengeWriter<UcpMcpChallengeWriter>()
         .WithPublicOriginResolver<UcpMcpPublicOriginResolver>()
         .WithCallToolFilter<UcpMcpCallToolFilter>());
-    serviceCollection.AddMcpToolsFromAssembly(typeof(UcpMcpCommerceTools).Assembly, UcpMcpSerialization.Options);
+    serviceCollection.AddMcpCapabilities<McpAssemblyMarker>(); // an empty class next to the UCP MCP tools
     ```
 
 4. **Mark the tools** with `[McpScope(ModuleConstants.McpScopeName)]`, `link_buyer_identity` with `[McpRequiresUser]`, and buyer personal data with `[McpSensitive]`.

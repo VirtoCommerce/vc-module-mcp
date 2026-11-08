@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
@@ -90,12 +89,11 @@ public class McpScopeBuilder
     // of the module this module depends on. The tools of TToolType are registered as AddMcpTools registers them, and the
     // replacement must be in the scope ([McpScope]). When several modules replace one tool, the last one loaded wins.
     public virtual McpScopeBuilder ReplaceTool<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(
-        string toolName,
-        JsonSerializerOptions serializerOptions = null)
+        string toolName)
     {
         ArgumentException.ThrowIfNullOrEmpty(toolName);
 
-        Services.AddMcpTools<TToolType>(serializerOptions);
+        Services.AddMcpTools<TToolType>();
         Services.AddSingleton(new McpToolOverride(Scope.Name, toolName, McpToolOverrideKind.Replace));
         return this;
     }

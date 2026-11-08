@@ -28,11 +28,9 @@ public class Module : IModule
         serviceCollection.AddBackgroundJob<DeactivateStaleCouponsJob, DeactivateStaleCouponsPayload>(triggerable: false);
         serviceCollection.AddBackgroundJob<CloneContentCampaignJob, CloneContentCampaignPayload>(triggerable: false);
 
-        // One line per primitive kind registers every tool, prompt and resource class of the assembly.
-        var assembly = typeof(Module).Assembly;
-        serviceCollection.AddMcpToolsFromAssembly(assembly);
-        serviceCollection.AddMcpPromptsFromAssembly(assembly);
-        serviceCollection.AddMcpResourcesFromAssembly(assembly);
+        // Every tool, prompt and resource class of the assembly. The tools live in the module project to keep the sample
+        // small; a module with an MCP project of its own passes an empty marker class of that project (McpAssemblyMarker).
+        serviceCollection.AddMcpCapabilities<Module>();
     }
 
     public void PostInitialize(IApplicationBuilder appBuilder)

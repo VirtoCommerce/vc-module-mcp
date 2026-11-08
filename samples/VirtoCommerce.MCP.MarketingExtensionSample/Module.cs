@@ -30,10 +30,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<MarketingAnalytics, ContosoMarketingAnalytics>();
 
         // 3. Add tools, prompts and resources to the same MCP scope.
-        var assembly = typeof(Module).Assembly;
-        serviceCollection.AddMcpToolsFromAssembly(assembly);
-        serviceCollection.AddMcpPromptsFromAssembly(assembly);
-        serviceCollection.AddMcpResourcesFromAssembly(assembly);
+        serviceCollection.AddMcpCapabilities<Module>();
     }
 
     public void PostInitialize(IApplicationBuilder appBuilder)

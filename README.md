@@ -453,7 +453,8 @@ public class PromotionTools
 serviceCollection.AddMcpTools<PromotionTools>();
 ```
 
-- `AddMcpPrompts<T>()` and `AddMcpResources<T>()` register prompts and resources the same way. A static class is registered with `AddMcpTools([typeof(MyTools)])`; every class of an assembly with `AddMcpToolsFromAssembly(assembly)`.
+- `AddMcpPrompts<T>()` and `AddMcpResources<T>()` register prompts and resources the same way. A static class is registered with `AddMcpTools([typeof(MyTools)])`. `AddMcpCapabilities<TAssemblyMarker>()` registers every tool, prompt and resource class of the assembly of `TAssemblyMarker`, an empty class of the module's MCP project (`McpAssemblyMarker` by convention).
+- Every tool, prompt and resource is serialized with `McpSerialization.Options`, the same for all modules: the MCP SDK's defaults with snake_case names, so an agent sees one convention in every tool. A module does not pass options of its own, and the options are read-only.
 - A primitive without `[McpScope]` is not exposed on any registered scope. Names must be unique within a scope; a duplicate is reported as an error in the log at startup.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission, before the tool runs.
 - In a scope that requires a signed-in user, every tool must say who may use it: `[Authorize]`, `[McpPermission]`, `[AllowAnonymous]`, or `[McpAnyUser]` for a tool every signed-in user may call because it checks access to its data itself. A tool that says none of them is not served in that scope, and a warning at startup names it, so a forgotten permission hides the tool instead of opening it to every user. Prompts and resources are not covered by this rule; protect them with `[Authorize]` or `[McpPermission]` when they return data. A prompt or resource whose `[McpPermission]` the user does not have is neither listed nor readable; prompts and resources are not audited and have no switch.
@@ -650,12 +651,13 @@ src/
   VirtoCommerce.Marketing.Core/
   VirtoCommerce.Marketing.Data/
   VirtoCommerce.Marketing.MCP/      tools, prompts, resources; references VirtoCommerce.MCP.Core
+    McpAssemblyMarker.cs            an empty class: AddMcpCapabilities<McpAssemblyMarker>() finds the project by it
     Tools/PromotionTools.cs
   VirtoCommerce.Marketing.Web/      Module.cs references the MCP project
 ```
 
 - Tools stay thin: they validate arguments and call the module's services, which keep the business logic. A service replaced through DI changes the tool too.
-- Register the project with one line in `Module.Initialize`: `serviceCollection.AddMcpToolsFromAssembly(typeof(PromotionTools).Assembly)`, and the same for prompts and resources.
+- Register the project with one line in `Module.Initialize`: `serviceCollection.AddMcpCapabilities<McpAssemblyMarker>()` registers its tools, prompts and resources.
 - Declare the dependency on `VirtoCommerce.MCP` in `module.manifest`.
 
 ## Package a connector for a solution
@@ -695,7 +697,7 @@ A partner project changes the behaviour of a module's tools with the platform's 
 | --- | --- |
 | A new field on a model | `AbstractTypeFactory<T>.OverrideType<T, TDerived>()` |
 | Company rules in existing tools | Register a derived service in place of the original one; the tools resolve it from DI |
-| New tools, prompts and resources next to the existing ones | `AddMcpToolsFromAssembly`, `AddMcpPromptsFromAssembly`, `AddMcpResourcesFromAssembly` with the same `[McpScope]` |
+| New tools, prompts and resources next to the existing ones | `AddMcpCapabilities<McpAssemblyMarker>()` with the same `[McpScope]` |
 | Settings of the extension | Options bound from configuration |
 | A tool that must not be used | **Agent tools** or `MCP.Tools.Disabled` |
 | Another implementation of a tool | `ConfigureMcpScope(scope, s => s.ReplaceTool<TToolType>(name))` |
