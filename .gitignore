@@ -337,3 +337,9 @@ ASALocalRun/
 .nuke
 dist/
 **/Properties/launchSettings.json
+
+# Local demo seed with generated test passwords (see docs/marketing-demo.md)
+*.local.json
+
+# Admin Shell plugin build output (built from src/VirtoCommerce.MCP.Web/vue)
+src/VirtoCommerce.MCP.Web/plugins/

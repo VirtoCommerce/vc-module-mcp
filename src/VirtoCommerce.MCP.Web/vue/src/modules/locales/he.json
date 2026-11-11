@@ -1,0 +1,130 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "סוכני AI (MCP)",
+      "APPROVALS": "אישורי סוכנים",
+      "AUDIT": "יומן ביקורת של סוכנים",
+      "TOOLS": "כלי סוכנים",
+      "AGENTS": "סוכנים מחוברים",
+      "COUNTER": "{count} שינויים ממתינים לבדיקתך"
+    },
+    "APPROVALS": {
+      "TITLE": "אישורי סוכנים",
+      "EMPTY": "אין דבר שממתין לבדיקתך",
+      "EMPTY_HINT": "כשסוכן מבקש לבצע שינוי שדורש אישור, הוא מופיע כאן.",
+      "NOT_APPROVER": "אין לך הרשאה לבדוק שינויים של סוכנים באף היקף MCP."
+    },
+    "APPROVAL": {
+      "TITLE": "שינוי של סוכן",
+      "WHAT_CHANGES": "מה ישתנה",
+      "WHAT_CHANGED": "מה השתנה",
+      "NO_DIFF": "הכלי לא תיאר את השינוי שלו כהפרש. יש לבדוק את הארגומנטים ואת התצוגה המקדימה שלהלן.",
+      "WARNINGS": "יש לבדוק לפני האישור",
+      "NOTES": "הערות מהתצוגה המקדימה",
+      "REQUEST": "בקשה",
+      "ARGUMENTS": "ארגומנטים",
+      "PREVIEW": "תצוגה מקדימה של הרצת ניסיון",
+      "RESULT": "תוצאה",
+      "COMMENT": "הערה",
+      "COMMENT_PLACEHOLDER": "הערה אופציונלית למבקש וליומן הביקורת",
+      "REVIEW": "בדיקה",
+      "FIELD": "שדה",
+      "FROM": "כעת",
+      "TO": "אחרי",
+      "OBJECT": "אובייקט",
+      "APPROVED": "אושר והוחל",
+      "APPROVED_FAILED": "אושר, אך הכלי נכשל: יש לעיין בתוצאה",
+      "REJECTED": "נדחה"
+    },
+    "AUDIT": {
+      "TITLE": "יומן ביקורת של סוכנים",
+      "DETAILS": "קריאה לכלי",
+      "EMPTY": "לא נמצאו קריאות לכלים",
+      "SEARCH": "שם כלי או מזהה מעקב",
+      "TRACE_HINT": "יש לחפש לפי מזהה זה במעקבים וביומנים של כלי הניטור.",
+      "OPEN_CHANGE": "פתיחת השינוי"
+    },
+    "TOOLS": {
+      "TITLE": "כלי סוכנים",
+      "EMPTY": "אין כלים",
+      "SCOPES": "היקפים",
+      "SCOPE_ON": "סוכנים יכולים להשתמש בהיקף זה",
+      "SCOPE_OFF_HINT": "כל הכלים של ההיקף כבויים",
+      "SWITCHED_ON": "{name} מופעל",
+      "SWITCHED_OFF": "{name} כבוי",
+      "OFF_BY_SCOPE": "כבוי: ההיקף כבוי",
+      "KIND_READ": "קריאה",
+      "KIND_WRITE": "כתיבה",
+      "KIND_APPROVAL": "אישור",
+      "CONFIRM_OFF_SCOPE": "לכבות את כל הכלים של ההיקף {scope}? הסוכנים יקבלו שגיאה עד שההיקף יופעל שוב."
+    },
+    "AGENTS": {
+      "TITLE": "סוכנים מחוברים",
+      "EMPTY": "אין סוכן מחובר",
+      "EMPTY_HINT": "סוכן מופיע כאן לאחר שמשתמש נכנס אליו, למשל מ-Claude.",
+      "DISCONNECT": "ניתוק",
+      "CONFIRM_DISCONNECT": "לנתק את {agent} עבור {user}? הבקשה הבאה שלו תידחה, והמשתמש יצטרך להיכנס שוב כדי להתחבר מחדש.",
+      "DISCONNECTED": "{agent} נותק",
+      "CONNECTED": "מועד החיבור",
+      "LAST_USED": "שימוש אחרון",
+      "SESSIONS": "כניסות פעילות",
+      "ENDPOINT": "נקודת קצה של MCP",
+      "SEARCH": "סוכן, מזהה לקוח או משתמש"
+    },
+    "FIELDS": {
+      "TOOL": "כלי",
+      "SCOPE": "היקף",
+      "STATUS": "סטטוס",
+      "OUTCOME": "תוצאת הרצה",
+      "REQUESTED_BY": "התבקש על ידי",
+      "REQUESTED_AT": "מועד הבקשה",
+      "EXPIRES": "תפוגה",
+      "REVIEWED_BY": "נבדק על ידי",
+      "REVIEWED_AT": "מועד הבדיקה",
+      "USER": "משתמש",
+      "CLIENT": "לקוח",
+      "DATE": "תאריך",
+      "DURATION": "משך, באלפיות שנייה",
+      "ERROR": "שגיאה",
+      "TRACE_ID": "מזהה מעקב",
+      "KIND": "סוג",
+      "ENABLED": "מופעל",
+      "DESCRIPTION": "תיאור"
+    },
+    "STATUS": {
+      "Pending": "ממתין",
+      "Approved": "אושר",
+      "Applied": "הוחל",
+      "Failed": "נכשל",
+      "Rejected": "נדחה",
+      "Expired": "פג תוקף"
+    },
+    "OUTCOME": {
+      "Succeeded": "הצליח",
+      "Failed": "נכשל",
+      "Error": "שגיאה",
+      "Forbidden": "אסור",
+      "PendingApproval": "ממתין לאישור",
+      "Declined": "נדחה על ידי המשתמש",
+      "Canceled": "בוטל לפני שהסתיים",
+      "Disabled": "כבוי"
+    },
+    "TOOLBAR": {
+      "REFRESH": "רענון",
+      "APPROVE": "אישור",
+      "REJECT": "דחייה",
+      "ENABLE_SCOPE": "הפעלת היקף",
+      "DISABLE_SCOPE": "כיבוי היקף"
+    },
+    "ALERTS": {
+      "APPROVE": "לאשר את השינוי? הכלי יופעל מיד בשמך.",
+      "REJECT": "לדחות את השינוי? הוא לא יופעל לעולם.",
+      "LOAD_FAILED": "הטעינה נכשלה: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "כלי סוכנים",
+      "AGENTS": "סוכנים מחוברים",
+      "OFF": "כבוי"
+    }
+  }
+}

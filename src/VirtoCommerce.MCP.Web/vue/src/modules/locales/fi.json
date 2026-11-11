@@ -1,0 +1,130 @@
+{
+  "MCP": {
+    "MENU": {
+      "ROOT": "Tekoälyagentit (MCP)",
+      "APPROVALS": "Agenttien hyväksynnät",
+      "AUDIT": "Agenttien auditointiloki",
+      "TOOLS": "Agenttien työkalut",
+      "AGENTS": "Yhdistetyt agentit",
+      "COUNTER": "{count} muutosta odottaa tarkistustasi"
+    },
+    "APPROVALS": {
+      "TITLE": "Agenttien hyväksynnät",
+      "EMPTY": "Mikään ei odota tarkistustasi",
+      "EMPTY_HINT": "Kun agentti pyytää muutosta, joka vaatii hyväksynnän, se näkyy tässä.",
+      "NOT_APPROVER": "Et tarkista agenttien muutoksia missään MCP-alueessa."
+    },
+    "APPROVAL": {
+      "TITLE": "Agentin tekemä muutos",
+      "WHAT_CHANGES": "Mikä muuttuu",
+      "WHAT_CHANGED": "Mikä muuttui",
+      "NO_DIFF": "Työkalu ei kuvannut muutostaan erona. Tarkista sen argumentit ja esikatselu alla.",
+      "WARNINGS": "Tarkista ennen hyväksymistä",
+      "NOTES": "Esikatselun huomautukset",
+      "REQUEST": "Pyyntö",
+      "ARGUMENTS": "Argumentit",
+      "PREVIEW": "Kuivaharjoituksen esikatselu",
+      "RESULT": "Tulos",
+      "COMMENT": "Kommentti",
+      "COMMENT_PLACEHOLDER": "Valinnainen huomautus pyytäjälle ja auditointilokiin",
+      "REVIEW": "Tarkistus",
+      "FIELD": "Kenttä",
+      "FROM": "Nyt",
+      "TO": "Jälkeen",
+      "OBJECT": "Objekti",
+      "APPROVED": "Hyväksytty ja otettu käyttöön",
+      "APPROVED_FAILED": "Hyväksytty, mutta työkalu epäonnistui: katso tulos",
+      "REJECTED": "Hylätty"
+    },
+    "AUDIT": {
+      "TITLE": "Agenttien auditointiloki",
+      "DETAILS": "Työkalukutsu",
+      "EMPTY": "Työkalukutsuja ei löytynyt",
+      "SEARCH": "Työkalun nimi tai jäljitystunnus",
+      "TRACE_HINT": "Hae valvontatyökalusi jäljitykset ja lokit tämän tunnuksen avulla.",
+      "OPEN_CHANGE": "Avaa muutos"
+    },
+    "TOOLS": {
+      "TITLE": "Agenttien työkalut",
+      "EMPTY": "Ei työkaluja",
+      "SCOPES": "Alueet",
+      "SCOPE_ON": "Agentit voivat käyttää tätä aluetta",
+      "SCOPE_OFF_HINT": "Kaikki alueen työkalut on kytketty pois päältä",
+      "SWITCHED_ON": "{name} on kytketty päälle",
+      "SWITCHED_OFF": "{name} on kytketty pois päältä",
+      "OFF_BY_SCOPE": "Pois: alue on kytketty pois päältä",
+      "KIND_READ": "Luku",
+      "KIND_WRITE": "Kirjoitus",
+      "KIND_APPROVAL": "Hyväksyntä",
+      "CONFIRM_OFF_SCOPE": "Kytketäänkö kaikki alueen {scope} työkalut pois päältä? Agentit saavat virheen, kunnes kytket ne takaisin päälle."
+    },
+    "AGENTS": {
+      "TITLE": "Yhdistetyt agentit",
+      "EMPTY": "Yhtään agenttia ei ole yhdistetty",
+      "EMPTY_HINT": "Agentti näkyy tässä, kun käyttäjä kirjautuu siihen, esimerkiksi Claudesta.",
+      "DISCONNECT": "Katkaise yhteys",
+      "CONFIRM_DISCONNECT": "Katkaistaanko agentin {agent} yhteys käyttäjälle {user}? Sen seuraava pyyntö hylätään, ja käyttäjä kirjautuu uudelleen yhdistääkseen sen.",
+      "DISCONNECTED": "Agentin {agent} yhteys on katkaistu",
+      "CONNECTED": "Yhdistetty",
+      "LAST_USED": "Viimeksi käytetty",
+      "SESSIONS": "Aktiiviset kirjautumiset",
+      "ENDPOINT": "MCP-päätepiste",
+      "SEARCH": "Agentti, asiakastunnus tai käyttäjä"
+    },
+    "FIELDS": {
+      "TOOL": "Työkalu",
+      "SCOPE": "Alue",
+      "STATUS": "Tila",
+      "OUTCOME": "Lopputulos",
+      "REQUESTED_BY": "Pyytäjä",
+      "REQUESTED_AT": "Pyydetty",
+      "EXPIRES": "Vanhenee",
+      "REVIEWED_BY": "Tarkistaja",
+      "REVIEWED_AT": "Tarkistettu",
+      "USER": "Käyttäjä",
+      "CLIENT": "Asiakas",
+      "DATE": "Päivämäärä",
+      "DURATION": "Kesto, ms",
+      "ERROR": "Virhe",
+      "TRACE_ID": "Jäljitystunnus",
+      "KIND": "Laji",
+      "ENABLED": "Käytössä",
+      "DESCRIPTION": "Kuvaus"
+    },
+    "STATUS": {
+      "Pending": "Odottaa",
+      "Approved": "Hyväksytty",
+      "Applied": "Toteutettu",
+      "Failed": "Epäonnistui",
+      "Rejected": "Hylätty",
+      "Expired": "Vanhentunut"
+    },
+    "OUTCOME": {
+      "Succeeded": "Onnistui",
+      "Failed": "Epäonnistui",
+      "Error": "Virhe",
+      "Forbidden": "Kielletty",
+      "PendingApproval": "Odottaa hyväksyntää",
+      "Declined": "Käyttäjä hylkäsi",
+      "Canceled": "Peruttu ennen valmistumista",
+      "Disabled": "Kytketty pois päältä"
+    },
+    "TOOLBAR": {
+      "REFRESH": "Päivitä",
+      "APPROVE": "Hyväksy",
+      "REJECT": "Hylkää",
+      "ENABLE_SCOPE": "Kytke alue päälle",
+      "DISABLE_SCOPE": "Kytke alue pois päältä"
+    },
+    "ALERTS": {
+      "APPROVE": "Hyväksytäänkö tämä muutos? Työkalu suoritetaan heti sinuna.",
+      "REJECT": "Hylätäänkö tämä muutos? Sitä ei suoriteta koskaan.",
+      "LOAD_FAILED": "Lataus epäonnistui: {message}"
+    },
+    "SEARCH": {
+      "TOOLS": "Agenttien työkalut",
+      "AGENTS": "Yhdistetyt agentit",
+      "OFF": "Pois"
+    }
+  }
+}

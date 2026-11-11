@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Model Context Protocol">
+  <title>Model Context Protocol</title>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="92%" y2="100%">
+      <stop offset="0%" stop-color="#A66BFF"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#3A1473" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <!-- Tile: AI / Intelligence PBC -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+
+  <!-- Glyph: the MCP server hub with an AI sparkle, connecting the agent to colorful tool nodes -->
+  <g transform="translate(64,64)" filter="url(#lift)">
+    <!-- Connections -->
+    <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round">
+      <line x1="0" y1="0" x2="-29" y2="-29"/>
+      <line x1="0" y1="0" x2="29" y2="-29"/>
+      <line x1="0" y1="0" x2="-29" y2="29"/>
+      <line x1="0" y1="0" x2="29" y2="29"/>
+    </g>
+
+    <!-- Tool nodes -->
+    <circle cx="-31" cy="-31" r="12" fill="#FFFFFF"/>
+    <circle cx="-31" cy="-31" r="7.5" fill="#3FD8B4"/>
+    <circle cx="31" cy="-31" r="12" fill="#FFFFFF"/>
+    <circle cx="31" cy="-31" r="7.5" fill="#FFC24D"/>
+    <circle cx="-31" cy="31" r="12" fill="#FFFFFF"/>
+    <circle cx="-31" cy="31" r="7.5" fill="#5FC8F5"/>
+    <circle cx="31" cy="31" r="12" fill="#FFFFFF"/>
+    <circle cx="31" cy="31" r="7.5" fill="#F87FAC"/>
+
+    <!-- Hub -->
+    <circle cx="0" cy="0" r="22" fill="#FFFFFF"/>
+
+    <!-- AI sparkle at the core -->
+    <path d="M0,-14 C1.6,-4.2 4.2,-1.6 14,0 C4.2,1.6 1.6,4.2 0,14 C-1.6,4.2 -4.2,1.6 -14,0 C-4.2,-1.6 -1.6,-4.2 0,-14 Z" fill="#7C3AED"/>
+    <path d="M10,-13 C10.5,-10.3 11.3,-9.5 14,-9 C11.3,-8.5 10.5,-7.7 10,-5 C9.5,-7.7 8.7,-8.5 6,-9 C8.7,-9.5 9.5,-10.3 10,-13 Z" fill="#FFC24D"/>
+  </g>
+</svg>
