@@ -10,11 +10,15 @@
   <description>Platform MCP infrastructure: scoped MCP endpoints for back-office and vendor agents, declarative registration of tools, prompts and resources, permission checks, change approval and audit.</description>
 
   <authors>
-    <author>VirtoCommerce</author>
+    <author>Oleg Zhuk</author>
   </authors>
   <owners>
     <owner>Virto Commerce</owner>
   </owners>
+
+  <groups>
+    <group>commerce</group>
+  </groups>
 
   <projectUrl>https://github.com/VirtoCommerce/vc-module-mcp</projectUrl>
   <iconUrl>Modules/$(VirtoCommerce.MCP)/Content/logo.svg</iconUrl>
