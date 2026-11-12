@@ -24,16 +24,20 @@ using VirtoCommerce.Platform.Core;
 
 namespace VirtoCommerce.MCP.Testing;
 
-// Calls the tools of a module in-process, as a given user, the way the MCP module serves them in a scope: the tools are
-// registered with the module's own AddMcpCapabilities, a user sees only the tools whose permissions they have, a call
-// that needs approval runs as a dry run and ends as PendingApproval, and McpForbiddenException ends as Forbidden.
-// It needs no platform, database or HTTP server: the test registers the services the tools use.
-//
-//   await using var harness = McpToolHarness.Create<McpAssemblyMarker>(services => services.AddSingleton(promotionStore));
-//   var visible = harness.GetVisibleToolNames(McpTestUser.WithPermissions("marketer", "marketing:read"));
-//   var result = await harness.CallAsync(marketer, "pause_promotion", new { promotion_id = "p1", dryRun = true });
-//
-// It reproduces the rules the module applies; it does not run the module's call filters, audit or approval storage.
+/// <summary>
+/// Calls the tools of a module in-process, as a given user, the way the MCP module serves them in a scope: the tools are
+/// registered with the module's own AddMcpCapabilities, a user sees only the tools whose permissions they have, a call
+/// that needs approval runs as a dry run and ends as PendingApproval, and McpForbiddenException ends as Forbidden.
+/// It needs no platform, database or HTTP server: the test registers the services the tools use.
+/// It reproduces the rules the module applies; it does not run the module's call filters, audit or approval storage.
+/// </summary>
+/// <example>
+/// <code>
+/// await using var harness = McpToolHarness.Create&lt;McpAssemblyMarker&gt;(services => services.AddSingleton(promotionStore));
+/// var visible = harness.GetVisibleToolNames(McpTestUser.WithPermissions("marketer", "marketing:read"));
+/// var result = await harness.CallAsync(marketer, "pause_promotion", new { promotion_id = "p1", dryRun = true });
+/// </code>
+/// </example>
 public sealed class McpToolHarness : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions _argumentOptions = new(JsonSerializerDefaults.General);

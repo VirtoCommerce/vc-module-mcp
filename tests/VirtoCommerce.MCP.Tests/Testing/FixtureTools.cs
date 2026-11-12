@@ -109,7 +109,7 @@ public sealed class FixtureTools(FixtureStore store)
     [McpServerTool(Name = "check_health", ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("Checks the items. Fails when there is nothing to check.")]
     [McpAnyUser]
-    public object CheckHealth([Description("Fail on purpose.")] bool fail = false)
+    public static object CheckHealth([Description("Fail on purpose.")] bool fail = false)
     {
         if (fail)
         {

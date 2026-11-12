@@ -6,18 +6,24 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
-using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 
 namespace VirtoCommerce.MCP.Testing;
 
-// Checks the tools of an assembly against the conventions of an MCP toolset, the way the agent will see them, in one
-// test:
-//   [Fact] public void Toolset_FollowsTheConventions() => McpToolsetConventions.Verify<McpAssemblyMarker>();
-// A deliberate exception is written down where it is made:
-//   McpToolsetConventions.Verify<McpAssemblyMarker>(x => x.Ignore(McpConventionRules.Paging, "list_regions", "a fixed list of 12"));
+/// <summary>
+/// Checks the tools of an assembly against the conventions of an MCP toolset, the way the agent will see them, in one
+/// test. A deliberate exception is written down where it is made, with its reason.
+/// </summary>
+/// <example>
+/// <code>
+/// [Fact]
+/// public void Toolset_FollowsTheConventions() =>
+///     McpToolsetConventions.Verify&lt;McpAssemblyMarker&gt;(x => x.Ignore(McpConventionRules.Paging, "list_regions", "a fixed list of 12"));
+/// </code>
+/// </example>
 public static partial class McpToolsetConventions
 {
     private static readonly string[] _readVerbs = ["get", "search", "list", "find", "explain", "analyze", "describe", "check", "track"];
@@ -85,23 +91,26 @@ public static partial class McpToolsetConventions
             .ToList();
     }
 
-    // The tool methods of the assembly, created the way the SDK creates them, so the names, annotations and metadata
-    // are the ones the agent and the MCP module see.
-    private static IEnumerable<(MethodInfo Method, McpServerTool Tool)> FindTools(IEnumerable<Type> types)
+    // The tools of the tool classes, registered by the SDK as the MCP module registers them (AddMcpTools), so the tool
+    // methods, names, annotations and metadata are the ones the agent and the MCP module see.
+    private static List<(MethodInfo Method, McpServerTool Tool)> FindTools(IEnumerable<Type> types)
     {
-        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-
-        foreach (var type in types.Where(x => x.GetCustomAttribute<McpServerToolTypeAttribute>() != null))
+        var toolTypes = types.Where(x => x.GetCustomAttribute<McpServerToolTypeAttribute>() != null).ToList();
+        if (toolTypes.Count == 0)
         {
-            foreach (var method in type.GetMethods(flags).Where(x => x.GetCustomAttribute<McpServerToolAttribute>() != null))
-            {
-                var tool = method.IsStatic
-                    ? McpServerTool.Create(method, target: null, new McpServerToolCreateOptions { SerializerOptions = McpSerialization.Options })
-                    : McpServerTool.Create(method, _ => null, new McpServerToolCreateOptions { SerializerOptions = McpSerialization.Options });
-
-                yield return (method, tool);
-            }
+            return [];
         }
+
+        // AddMcpTools takes IEnumerable<Type>: passed a List<Type>, the SDK's WithTools would bind to its generic overload
+        // that registers the list itself as one tool object, and find no tools.
+        var services = new ServiceCollection();
+        services.AddMcpTools(toolTypes);
+
+        using var provider = services.BuildServiceProvider();
+
+        return provider.GetServices<McpServerTool>()
+            .Select(tool => (Method: tool.Metadata.OfType<MethodInfo>().First(), Tool: tool))
+            .ToList();
     }
 
     private static IEnumerable<McpConventionViolation> CheckTool(MethodInfo method, McpServerTool tool)
@@ -204,12 +213,14 @@ public static partial class McpToolsetConventions
             yield break;
         }
 
-        foreach (var placeholder in PlaceholderRegex().Matches(message).Select(x => x.Groups[1].Value).Distinct(StringComparer.Ordinal))
+        var unknown = PlaceholderRegex().Matches(message)
+            .Select(x => x.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .Where(placeholder => parameters.All(x => !string.Equals(x.Name, placeholder, StringComparison.Ordinal)));
+
+        foreach (var placeholder in unknown)
         {
-            if (parameters.All(x => !string.Equals(x.Name, placeholder, StringComparison.Ordinal)))
-            {
-                yield return Violation(McpConventionRules.ConfirmationMessage, name, $"The confirmation message names '{{{placeholder}}}', which is not an argument of the tool.");
-            }
+            yield return Violation(McpConventionRules.ConfirmationMessage, name, $"The confirmation message names '{{{placeholder}}}', which is not an argument of the tool.");
         }
     }
 
@@ -327,7 +338,7 @@ public sealed class McpConventionOptions
     {
         ArgumentException.ThrowIfNullOrEmpty(rule);
         ArgumentException.ThrowIfNullOrEmpty(toolName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(reason, nameof(reason));
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
 
         _ignored.Add((rule, toolName, reason));
         return this;
