@@ -11,4 +11,10 @@
   <ItemGroup>
     <ProjectReference Include="..\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>
