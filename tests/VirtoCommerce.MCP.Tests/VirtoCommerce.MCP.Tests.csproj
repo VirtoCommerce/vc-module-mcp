@@ -24,5 +24,6 @@
     <ProjectReference Include="..\..\src\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />
     <ProjectReference Include="..\..\src\VirtoCommerce.MCP.Data\VirtoCommerce.MCP.Data.csproj" />
     <ProjectReference Include="..\..\src\VirtoCommerce.MCP.Web\VirtoCommerce.MCP.Web.csproj" />
+    <ProjectReference Include="..\..\src\VirtoCommerce.MCP.Testing\VirtoCommerce.MCP.Testing.csproj" />
   </ItemGroup>
 </Project>
