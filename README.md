@@ -150,7 +150,7 @@ An administrator does this once per platform, and registers one OAuth client per
 | The agent sees fewer tools than expected | Tools the user has no permission for are not listed; a tool switched off in **Agent tools** is not listed either |
 | claude.ai or ChatGPT cannot reach the endpoint | They connect from their own cloud: the endpoint must be reachable from the internet over HTTPS |
 
-To check a connection, ask the agent "What can you do in Virto Commerce?": **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agent. [Demo: an AI agent in the back office](docs/demo.md) walks through all of this on a local platform with Claude Code.
+To check a connection, ask the agent "What can you do in Virto Commerce?": **Configuration → AI agents (MCP) → Agent audit log** shows the call with the user and the client id, and **Connected agents** lists the agent. The [MCP Sample Module](samples/VirtoCommerce.MCP.SampleModule/README.md) walks through all of this on a local platform with Claude Code.
 
 ## Work with agents in the back office
 
@@ -353,7 +353,7 @@ A scope is an MCP surface for one kind of agent. Only the tools, prompts and res
 | --- | --- | --- | --- |
 | `admin` | `/admin/mcp` | this module | signed-in platform users; each sees the tools their permissions allow |
 | `vendor` | `/vendor/mcp` | the vendor portal module (not yet; this module no longer registers it) | vendor portal users with the `vendor_portal:access` permission |
-| `ucp` | `/ucp/mcp` | the UCP module, from its VCST-6155 version ([Moving UCP to the MCP module](docs/ucp-migration.md)); switching the scope off turns all of UCP off; earlier UCP versions map the endpoint themselves (see [Coexistence](#coexistence-with-modules-that-host-their-own-mcp-endpoint)) | buyers and shopping agents |
+| `ucp` | `/ucp/mcp` | the [UCP module](https://github.com/VirtoCommerce/vc-module-ucp), from version 3.1011.0; switching the scope off turns all of UCP off; earlier UCP versions map the endpoint themselves (see [Coexistence](#coexistence-with-modules-that-host-their-own-mcp-endpoint)) | buyers and shopping agents |
 
 Every request is stateless: the scope and the user are resolved per HTTP request, so replicas need no session affinity and one deployment serves all scopes side by side.
 
@@ -424,7 +424,7 @@ yarn build    # then copy ../plugins/admin-shell to modules/VirtoCommerce.MCP/pl
 
 ### Coexistence with modules that host their own MCP endpoint
 
-A module that maps its own MCP endpoint, as earlier UCP versions do at `/ucp/mcp`, shares the same MCP server. On such an endpoint, primitives marked with `[McpScope]` are removed, so scoped tools never appear where scopes are not enforced. [Moving UCP to the MCP module](docs/ucp-migration.md) describes what moves and what stays in UCP. Both modules must use the same version of the MCP SDK (2.3.0 for this module): the platform loads one copy of an assembly, the newest, for all modules.
+A module that maps its own MCP endpoint, as earlier UCP versions do at `/ucp/mcp`, shares the same MCP server. On such an endpoint, primitives marked with `[McpScope]` are removed, so scoped tools never appear where scopes are not enforced. [Upgrading from a version that hosted its own MCP endpoint](https://github.com/VirtoCommerce/vc-module-ucp#upgrading-from-a-version-that-hosted-its-own-mcp-endpoint) in the UCP README describes what moved and what stays in UCP. Both modules must use the same version of the MCP SDK (2.3.0 for this module): the platform loads one copy of an assembly, the newest, for all modules.
 
 ## Developer guide
 
@@ -545,7 +545,7 @@ public object SearchPromotions(RequestContext<CallToolRequestParams> context, st
 
 ### Design a toolset
 
-Give each role a toolset with five layers, in roughly this ratio:
+Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, prompts and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, time windows, and a test package that calls tools as a user and checks the conventions.
 
 | Layer | Count | What it is | The module helps with |
 | --- | --- | --- | --- |
@@ -804,11 +804,12 @@ Do not install the samples on a shared or production environment.
 
 ## Documentation
 
-* [Demo: an AI agent in the back office](docs/demo.md): Claude Code signs in to a local platform, calls tools, and a second user approves its change
-* [Marketing with an AI agent](docs/marketing-demo.md): a marketer's week with the marketing sample
-* [Moving UCP to the MCP module](docs/ucp-migration.md)
+* [Samples](samples/README.md): what each sample shows and where to start
+* [MCP Sample Module](samples/VirtoCommerce.MCP.SampleModule/README.md): a ten-minute demo; Claude Code signs in to a local platform, calls tools, and a second user approves its change
+* [MCP Marketing Sample](samples/VirtoCommerce.MCP.MarketingSample/README.md): a marketer's toolset and a week of work with it
+* [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, prompts and tests
+* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `McpTimeWindow`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
 * [UCP module](https://github.com/VirtoCommerce/vc-module-ucp): shopping assistants for buyers, served as the `ucp` scope
-* [VCST-6155: what is covered](docs/vcst-6155-coverage.md)
 * [View on GitHub](https://github.com/VirtoCommerce/vc-module-mcp/)
 
 ## References

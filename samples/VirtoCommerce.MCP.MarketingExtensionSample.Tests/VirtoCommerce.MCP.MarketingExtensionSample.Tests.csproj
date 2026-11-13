@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VirtoCommerce.MCP.MarketingExtensionSample\VirtoCommerce.MCP.MarketingExtensionSample.csproj" />
+    <ProjectReference Include="..\..\src\VirtoCommerce.MCP.Testing\VirtoCommerce.MCP.Testing.csproj" />
   </ItemGroup>
 </Project>

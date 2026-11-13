@@ -17,7 +17,7 @@ Nothing in the marketing sample is changed or copied: the extension uses its mod
 
 ## Setup
 
-1. Install the [marketing sample](../VirtoCommerce.MCP.MarketingSample/README.md) and its setup ([Marketing with an AI agent](../../docs/marketing-demo.md#set-it-up)).
+1. Install and set up the [marketing sample](../VirtoCommerce.MCP.MarketingSample/README.md#setup).
 2. Build this project and copy `module.manifest` and the `VirtoCommerce.MCP.MarketingExtensionSample.*` files from `bin/Debug/net10.0` into `modules/VirtoCommerce.MCP.MarketingExtensionSample/bin` of the platform (the manifest one level up, next to `bin`).
 3. Optionally change the rules in `appsettings.json`:
 
