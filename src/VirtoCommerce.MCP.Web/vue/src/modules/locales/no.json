@@ -69,7 +69,14 @@
       "LAST_USED": "Sist brukt",
       "SESSIONS": "Aktive pålogginger",
       "ENDPOINT": "MCP-endepunkt",
-      "SEARCH": "Agent, klient-ID eller bruker"
+      "SEARCH": "Agent, klient-ID eller bruker",
+      "REGISTRATION": "Registrering",
+      "REGISTRATIONS": {
+        "SELF": "Selvregistrert",
+        "ADMINISTRATOR": "Av en administrator",
+        "CLIENT_ID_METADATA_DOCUMENT": "Selvregistrert: metadatadokument",
+        "DYNAMIC_REGISTRATION": "Selvregistrert: dynamisk"
+      }
     },
     "FIELDS": {
       "TOOL": "Verktøy",

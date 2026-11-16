@@ -69,7 +69,14 @@
       "LAST_USED": "Ostatnio użyty",
       "SESSIONS": "Aktywne logowania",
       "ENDPOINT": "Punkt końcowy MCP",
-      "SEARCH": "Agent, identyfikator klienta lub użytkownik"
+      "SEARCH": "Agent, identyfikator klienta lub użytkownik",
+      "REGISTRATION": "Rejestracja",
+      "REGISTRATIONS": {
+        "SELF": "Zarejestrowany samodzielnie",
+        "ADMINISTRATOR": "Przez administratora",
+        "CLIENT_ID_METADATA_DOCUMENT": "Samodzielnie: dokument metadanych",
+        "DYNAMIC_REGISTRATION": "Samodzielnie: dynamicznie"
+      }
     },
     "FIELDS": {
       "TOOL": "Narzędzie",

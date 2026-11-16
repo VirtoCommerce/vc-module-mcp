@@ -37,4 +37,7 @@ public class McpScopeOptions
 
     // Origins of browser pages allowed to call this scope, besides MCP:AllowedOrigins and the scope's own origin.
     public IList<string> AllowedOrigins { get; set; } = [];
+
+    // Null keeps the scope's default (McpScope.AllowSelfRegisteredClients).
+    public bool? AllowSelfRegisteredClients { get; set; }
 }

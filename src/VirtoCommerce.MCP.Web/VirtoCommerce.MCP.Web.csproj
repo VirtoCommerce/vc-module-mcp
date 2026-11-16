@@ -29,7 +29,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
-    <PackageReference Include="VirtoCommerce.Platform.Security" Version="3.1096.0" />
+    <PackageReference Include="VirtoCommerce.Platform.Security" Version="3.1100.0-alpha.13467-vcst-6639-mcp-client-self-registration" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VirtoCommerce.MCP.Core\VirtoCommerce.MCP.Core.csproj" />

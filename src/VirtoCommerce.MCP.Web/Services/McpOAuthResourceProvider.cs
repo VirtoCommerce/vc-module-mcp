@@ -36,27 +36,30 @@ public class McpOAuthResourceProvider(
         {
             var originResolver = httpContext.RequestServices.GetMcpScopeService<IMcpPublicOriginResolver>(scope);
             var origin = await originResolver.GetOriginAsync(httpContext, scope);
+            options.Value.Scopes.TryGetValue(scope.Name, out var scopeOptions);
+            var allowSelfRegisteredClients = scopeOptions?.AllowSelfRegisteredClients ?? scope.AllowSelfRegisteredClients;
 
-            result.Add(CreateResource(scope, origin + scope.Path));
+            result.Add(CreateResource(scope, origin + scope.Path, allowSelfRegisteredClients));
 
-            if (options.Value.Scopes.TryGetValue(scope.Name, out var scopeOptions))
+            if (scopeOptions != null)
             {
                 result.AddRange(scopeOptions.Hosts
                     .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .Select(x => CreateResource(scope, GetHostOrigin(x.Trim(), httpContext) + McpScope.HostEndpointPath)));
+                    .Select(x => CreateResource(scope, GetHostOrigin(x.Trim(), httpContext) + McpScope.HostEndpointPath, allowSelfRegisteredClients)));
             }
         }
 
         return result;
     }
 
-    private static OAuthResource CreateResource(McpScope scope, string uri)
+    private static OAuthResource CreateResource(McpScope scope, string uri, bool allowSelfRegisteredClients)
     {
         return new OAuthResource
         {
             Uri = uri,
             Title = scope.Title ?? scope.Name,
             Kind = ResourceKind,
+            AllowSelfRegisteredClients = allowSelfRegisteredClients,
         };
     }
 

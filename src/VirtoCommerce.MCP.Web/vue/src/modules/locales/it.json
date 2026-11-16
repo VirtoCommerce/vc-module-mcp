@@ -69,7 +69,14 @@
       "LAST_USED": "Ultimo utilizzo",
       "SESSIONS": "Accessi attivi",
       "ENDPOINT": "Endpoint MCP",
-      "SEARCH": "Agente, ID client o utente"
+      "SEARCH": "Agente, ID client o utente",
+      "REGISTRATION": "Registrazione",
+      "REGISTRATIONS": {
+        "SELF": "Autoregistrato",
+        "ADMINISTRATOR": "Da un amministratore",
+        "CLIENT_ID_METADATA_DOCUMENT": "Autoregistrato: documento di metadati",
+        "DYNAMIC_REGISTRATION": "Autoregistrato: dinamico"
+      }
     },
     "FIELDS": {
       "TOOL": "Strumento",

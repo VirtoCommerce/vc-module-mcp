@@ -57,6 +57,40 @@ public class McpOAuthResourceProviderTests
         Assert.All(resources, x => Assert.Equal("ucp", x.Title));
     }
 
+    [Theory]
+    [InlineData(true, null, true)]
+    [InlineData(false, null, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    public async Task GetResourcesAsync_Should_AllowSelfRegisteredClients_AsTheScopeOrItsSettingSays(bool scopeDefault, bool? setting, bool expected)
+    {
+        // Arrange
+        var options = new McpOptions();
+        options.Scopes["ucp"] = new McpScopeOptions { Hosts = ["shop.example.com"], AllowSelfRegisteredClients = setting };
+        var provider = CreateProvider(options, new McpScope { Name = "ucp", AllowSelfRegisteredClients = scopeDefault });
+
+        // Act
+        var resources = await provider.GetResourcesAsync(new OAuthResourceContext { HttpContext = CreateContext(options) }, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(2, resources.Count);
+        Assert.All(resources, x => Assert.Equal(expected, x.AllowSelfRegisteredClients));
+    }
+
+    [Fact]
+    public async Task GetResourcesAsync_Should_AllowSelfRegisteredClients_ByDefault()
+    {
+        // Arrange
+        var options = new McpOptions();
+        var provider = CreateProvider(options, new McpScope { Name = "admin" });
+
+        // Act
+        var resources = await provider.GetResourcesAsync(new OAuthResourceContext { HttpContext = CreateContext(options) }, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.True(Assert.Single(resources).AllowSelfRegisteredClients);
+    }
+
     [Fact]
     public async Task GetResourcesAsync_Should_ListNothing_When_ThereIsNoRequest()
     {

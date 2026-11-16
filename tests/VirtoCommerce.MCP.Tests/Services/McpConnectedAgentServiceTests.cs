@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
@@ -11,6 +12,7 @@ using OpenIddict.Abstractions;
 using VirtoCommerce.MCP.Web.Models;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core.Security;
+using VirtoCommerce.Platform.Security.OpenIddict.ClientRegistration;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Services;
@@ -20,6 +22,7 @@ public class McpConnectedAgentServiceTests
 {
     private const string McpApp = "app-claude";
     private const string AdminApp = "app-admin-spa";
+    private const string SelfRegisteredApp = "app-cursor";
     private const string Marketer = "user-marketer";
     private const string Approver = "user-approver";
 
@@ -107,6 +110,36 @@ public class McpConnectedAgentServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_Should_TellHowTheClientRegistered()
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria());
+
+        // Assert
+        Assert.Equal("client_id_metadata_document", result.Results.Single(x => x.Id == "auth-cursor").RegistrationType);
+        Assert.All(result.Results.Where(x => x.Id != "auth-cursor"), x => Assert.Null(x.RegistrationType));
+    }
+
+    [Theory]
+    [InlineData(true, new[] { "auth-cursor" })]
+    [InlineData(false, new[] { "auth-marketer", "auth-approver" })]
+    [InlineData(null, new[] { "auth-cursor", "auth-marketer", "auth-approver" })]
+    public async Task SearchAsync_Should_FilterBySelfRegistration(bool? selfRegistered, string[] expected)
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria { SelfRegistered = selfRegistered });
+
+        // Assert
+        Assert.Equal(expected, result.Results.Select(x => x.Id));
+    }
+
+    [Fact]
     public async Task RevokeAsync_Should_SignTheAgentOut_When_TheUserRevokesTheirOwnAgent()
     {
         // Act
@@ -158,8 +191,24 @@ public class McpConnectedAgentServiceTests
         return new McpConnectedAgentService(_applications.Object, _authorizations.Object, _tokens.Object, _sessions.Object, () => _userManager.Object);
     }
 
+    // A client that registered itself with a client ID metadata document, the latest to connect
+    private void AddSelfRegisteredApp()
+    {
+        _applications.Setup(x => x.ListAsync(It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Returns(AsAsync<object>(McpApp, AdminApp, SelfRegisteredApp));
+
+        Application(SelfRegisteredApp, "https://cursor.com/oauth/client", "Cursor", "ept:authorization", "rsrc:https://admin.example.com/admin/mcp");
+        _applications.Setup(x => x.GetPropertiesAsync(SelfRegisteredApp, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty.Add(SelfRegisteredClientConstants.RegistrationProperty, JsonSerializer.SerializeToElement(SelfRegisteredClientConstants.ClientIdMetadataDocument)));
+
+        Authorization("auth-cursor", SelfRegisteredApp, Marketer, OpenIddictConstants.Statuses.Valid, _now.AddMinutes(-5));
+        _authorizations.Setup(x => x.FindByApplicationIdAsync(SelfRegisteredApp, It.IsAny<CancellationToken>()))
+            .Returns(AsAsync<object>("auth-cursor"));
+    }
+
     private void Application(string id, string clientId, string displayName, params string[] permissions)
     {
+        _applications.Setup(x => x.GetPropertiesAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty);
         _applications.Setup(x => x.FindByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(id);
         _applications.Setup(x => x.GetIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(id);
         _applications.Setup(x => x.GetClientIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(clientId);
