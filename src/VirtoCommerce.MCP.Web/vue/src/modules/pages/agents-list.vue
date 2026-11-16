@@ -193,7 +193,8 @@ const globalFilters = computed(() => [
 ]);
 
 function onFilter(event: { filters: Record<string, unknown> }) {
-  const registration = event.filters.registration;
+  const value = event.filters.registration;
+  const registration = Array.isArray(value) ? value[0] : value;
   selfRegistered.value = registration ? registration === "self" : undefined;
   if (pagination.skip) pagination.setPage(1);
   else load();

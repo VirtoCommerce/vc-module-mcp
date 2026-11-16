@@ -141,7 +141,7 @@ public class McpConnectedAgentService(
                     ClientName = clientName,
                     RegistrationType = registrationType,
                     UserId = subject,
-                    Resources = resources,
+                    Resources = registrationType == null ? resources : await GetConsentedResourcesAsync(authorization, resources),
                     ConnectedDate = (await authorizationManager.GetCreationDateAsync(authorization))?.UtcDateTime,
                 };
 
@@ -151,6 +151,14 @@ public class McpConnectedAgentService(
         }
 
         return agents;
+    }
+
+    // A self-registered agent's consent counts only for the endpoints it was given for
+    private async Task<IList<string>> GetConsentedResourcesAsync(object authorization, IList<string> resources)
+    {
+        var consented = await authorizationManager.GetConsentedResourcesAsync(authorization);
+
+        return consented.Count == 0 ? resources : resources.Intersect(consented, StringComparer.Ordinal).ToList();
     }
 
     private async Task SetTokenActivityAsync(McpConnectedAgent agent)

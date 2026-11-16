@@ -74,7 +74,7 @@ Add the server to `.vscode/mcp.json`, then choose **Start** above it. VS Code op
 
 **Other agents.** Any MCP client with the streamable HTTP transport and OAuth works the same way: give it the endpoint, and a client id if it does not identify itself with a client ID metadata document.
 
-**The consent page.** The first time, the platform asks you to allow the agent, once per agent and endpoint. An agent that registered itself is marked as such, with the site it comes from, for example *claude.ai*: allow it only if you are connecting that agent right now.
+**The consent page.** The first time, the platform asks you to allow the agent, once per agent and endpoint. An agent that registered itself is marked as such, with the site it comes from when it identifies itself with a client ID metadata document, for example *claude.ai*: allow it only if you are connecting that agent right now.
 
 **Try it.** The agent works as you: it sees only the tools you may use, in your stores. Ask for example:
 
