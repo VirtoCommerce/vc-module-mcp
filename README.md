@@ -11,7 +11,7 @@ An agent works as the signed-in user: it sees only the tools that user may use, 
 ## Key Features
 
 * **Scopes**: one MCP endpoint per kind of agent (`admin`, `vendor`, a buyer scope, your own), at `/{scope}/mcp` or at `/mcp` of a host of its own
-* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; agents that identify themselves with a client ID metadata document, such as Claude, connect with the endpoint URL alone; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The rest of the platform does not check the token's audience yet: see [What the token protects today](#what-the-token-protects-today)
+* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; agents that identify themselves with a client ID metadata document, such as Claude, connect with the endpoint URL alone, to the back office and to the scopes whose module allows it; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The rest of the platform does not check the token's audience yet: see [What the token protects today](#what-the-token-protects-today)
 * **Permissions**: `[Authorize]` for platform permissions, `[McpPermission]` for permissions limited to stores or sellers; tools the user may not use are not listed
 * **Confirmation in the chat**: `[McpRequiresConfirmation]` asks the user to confirm a risky call in the agent's chat before it runs (MCP elicitation), with clients that support it
 * **Approval with a diff**: `[McpRequiresApproval]` holds a call as a pending change with a dry-run preview until a second person approves it, always or only when a condition on the arguments says so; the requester's access is checked again when it is approved
@@ -145,7 +145,7 @@ An administrator does this once per platform. Agents that identify themselves wi
 An agent that identifies itself with a client ID metadata document uses the HTTPS URL of a JSON document it publishes as its client id, as the MCP authorization specification recommends. The platform fetches the document at the sign-in, checks it, and treats the agent as a public client with PKCE, explicit consent, the authorization code and refresh token grants, and tokens only for the MCP endpoint it names. The agent appears in **Security → OAuth applications** when a user first allows it, and in **Connected agents** like any other; both screens mark it *Self-registered* and filter by how the agent registered.
 
 * It is on by default. To allow only some sites, list them in `Authorization:ClientRegistration:ClientIdMetadataDocuments:AllowedHosts`, for example `claude.ai`; to turn it off, set `Enabled` there to `false`.
-* Per scope: `MCP:Scopes:{scope}:AllowSelfRegisteredClients` set to `false` leaves a scope, such as a buyer scope, to the agents an administrator registered. Without the setting, the scope's own default applies, `true` unless its module says otherwise.
+* Per scope: `MCP:Scopes:{scope}:AllowSelfRegisteredClients` set to `false` leaves a scope, such as a buyer scope, to the agents an administrator registered. Without the setting, the scope's own default applies: on for the back-office scope `admin`, off for the scopes of other modules unless their module turns it on.
 * The user consents once per agent and endpoint: consent to `/admin/mcp` is not consent to `/vendor/mcp`.
 * The platform fetches documents only over HTTPS from public addresses, so a client id can't make it reach its own network.
 * Dynamic client registration (RFC 7591), for agents that support it but not metadata documents, is off by default; turn it on with `Authorization:ClientRegistration:DynamicRegistration:Enabled`. Anyone can then register a client, which still gets only the access above.
@@ -239,7 +239,7 @@ Disconnect does not touch what the agent already handed over to the platform:
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from `MCP:Scopes:ucp:PublicOrigin`, otherwise from the URL of the request's store. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
 | `MCP:Scopes:{scope}:AllowedOrigins` | Origins of browser pages allowed to call this scope only. |
-| `MCP:Scopes:{scope}:AllowSelfRegisteredClients` | Whether agents that register themselves (client ID metadata document, dynamic registration) may connect to the scope with its URL only. Without it, the scope's own default applies (`McpScope.AllowSelfRegisteredClients`, `true` unless the module that registers the scope says otherwise); `false` leaves the scope to the agents an administrator registered, for example a buyer scope. See [Agents that register themselves](#agents-that-register-themselves). |
+| `MCP:Scopes:{scope}:AllowSelfRegisteredClients` | Whether agents that register themselves (client ID metadata document, dynamic registration) may connect to the scope with its URL only. Without it, the scope's own default applies (`McpScope.AllowSelfRegisteredClients`: `true` for `admin`, `false` unless the module that registers the scope turns it on); `false` leaves the scope to the agents an administrator registered, for example a buyer scope. See [Agents that register themselves](#agents-that-register-themselves). |
 
 Invalid origins stop the platform at startup: an origin is an absolute `http` or `https` address without a path, query or fragment.
 
@@ -490,7 +490,7 @@ serviceCollection.AddMcpScope(new McpScope
     RequireAuthenticatedUser = true,
     Permissions = ["catalog:access"],
     ApprovalPermission = "catalog:approve", // optional: turns approval on in the scope
-    AllowSelfRegisteredClients = true,       // default: agents connect with the URL only; MCP:Scopes:{scope}:AllowSelfRegisteredClients overrides it
+    AllowSelfRegisteredClients = true,       // optional: agents connect with the URL only; MCP:Scopes:{scope}:AllowSelfRegisteredClients overrides it
 });
 ```
 

@@ -26,8 +26,9 @@ public class McpScope
     public bool SupportsApproval => !string.IsNullOrEmpty(ApprovalPermission);
 
     // Agents that register themselves may connect with the scope's URL only; otherwise only the agents an administrator
-    // registered can. MCP:Scopes:{scope}:AllowSelfRegisteredClients overrides it.
-    public bool AllowSelfRegisteredClients { get; set; } = true;
+    // registered can. Off unless the module that registers the scope turns it on; MCP:Scopes:{scope}:AllowSelfRegisteredClients
+    // overrides it.
+    public bool AllowSelfRegisteredClients { get; set; }
 
     public string Path => $"/{Name}/mcp";
 

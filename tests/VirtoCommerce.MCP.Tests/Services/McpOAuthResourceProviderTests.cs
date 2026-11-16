@@ -78,17 +78,17 @@ public class McpOAuthResourceProviderTests
     }
 
     [Fact]
-    public async Task GetResourcesAsync_Should_AllowSelfRegisteredClients_ByDefault()
+    public async Task GetResourcesAsync_Should_NotAllowSelfRegisteredClients_ByDefault()
     {
         // Arrange
         var options = new McpOptions();
-        var provider = CreateProvider(options, new McpScope { Name = "admin" });
+        var provider = CreateProvider(options, new McpScope { Name = "vendor" });
 
         // Act
         var resources = await provider.GetResourcesAsync(new OAuthResourceContext { HttpContext = CreateContext(options) }, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(Assert.Single(resources).AllowSelfRegisteredClients);
+        Assert.False(Assert.Single(resources).AllowSelfRegisteredClients);
     }
 
     [Fact]

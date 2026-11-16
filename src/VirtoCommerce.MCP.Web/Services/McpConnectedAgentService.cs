@@ -153,7 +153,6 @@ public class McpConnectedAgentService(
         return agents;
     }
 
-    // A self-registered agent's consent counts only for the endpoints it was given for
     private async Task<IList<string>> GetConsentedResourcesAsync(object authorization, IList<string> resources)
     {
         var consented = await authorizationManager.GetConsentedResourcesAsync(authorization);
