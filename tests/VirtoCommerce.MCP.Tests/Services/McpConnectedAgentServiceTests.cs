@@ -28,6 +28,8 @@ public class McpConnectedAgentServiceTests
 
     private static readonly DateTimeOffset _now = new(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
 
+    private static readonly string[] _consentedResources = ["https://admin.example.com/admin/mcp"];
+
     private readonly List<object> _applicationIds = [McpApp, AdminApp];
     private readonly Mock<IOpenIddictApplicationManager> _applications = new();
     private readonly Mock<IOpenIddictAuthorizationManager> _authorizations = new();
@@ -250,7 +252,7 @@ public class McpConnectedAgentServiceTests
         Authorization("auth-cursor", SelfRegisteredApp, Marketer, OpenIddictConstants.Statuses.Valid, _now.AddMinutes(-5));
         _authorizations.Setup(x => x.GetPropertiesAsync("auth-cursor", It.IsAny<CancellationToken>()))
             .ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty.Add(SelfRegisteredClientConstants.ResourcesProperty,
-                JsonSerializer.SerializeToElement(new[] { "https://admin.example.com/admin/mcp" })));
+                JsonSerializer.SerializeToElement(_consentedResources)));
         _authorizations.Setup(x => x.FindByApplicationIdAsync(SelfRegisteredApp, It.IsAny<CancellationToken>()))
             .Returns(AsAsync<object>("auth-cursor"));
     }
