@@ -32,7 +32,7 @@
               v-if="data.registrationType"
               variant="warning"
               class="mcp-agents__registration"
-              :title="$t(`MCP.AGENTS.REGISTRATIONS.${data.registrationType.toUpperCase()}`)"
+              :title="$t(registrationKey(data.registrationType))"
             >
               {{ $t("MCP.AGENTS.REGISTRATIONS.SELF") }}
             </VcStatus>
@@ -109,6 +109,7 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { mcpApi, type McpConnectedAgent } from "../api";
 import { requestedAgentSearch } from "../searchRequests";
+import { registrationKey } from "../utils";
 
 defineBlade({
   url: "/mcp-agents",
@@ -196,13 +197,11 @@ function onFilter(event: { filters: Record<string, unknown> }) {
   const value = event.filters.registration;
   const registration = Array.isArray(value) ? value[0] : value;
   selfRegistered.value = registration ? registration === "self" : undefined;
-  if (pagination.skip) pagination.setPage(1);
-  else load();
 }
 
 load();
-watch(searchValue, () => pagination.setPage(1));
-watch([searchValue, () => pagination.skip], debounce(load, 300));
+watch([searchValue, selfRegistered], () => pagination.setPage(1));
+watch([searchValue, selfRegistered, () => pagination.skip], debounce(load, 300));
 
 const bladeToolbar = ref<IBladeToolbar[]>([
   { id: "refresh", title: t("MCP.TOOLBAR.REFRESH"), icon: "lucide-refresh-cw", clickHandler: () => load() },

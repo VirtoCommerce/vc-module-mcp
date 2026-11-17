@@ -11,7 +11,7 @@ An agent works as the signed-in user: it sees only the tools that user may use, 
 ## Key Features
 
 * **Scopes**: one MCP endpoint per kind of agent (`admin`, `vendor`, a buyer scope, your own), at `/{scope}/mcp` or at `/mcp` of a host of its own
-* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; agents that identify themselves with a client ID metadata document, such as Claude, connect with the endpoint URL alone, to the back office and to the scopes whose module allows it; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The rest of the platform does not check the token's audience yet: see [What the token protects today](#what-the-token-protects-today)
+* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; agents that identify themselves with a client ID metadata document, such as Claude, connect with the endpoint URL alone, to the back office and to the scopes whose module allows it; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The platform accepts a self-registered agent's token only on its MCP endpoint; the token of an agent an administrator registered also works on the rest of the platform: see [What the token protects today](#what-the-token-protects-today)
 * **Permissions**: `[Authorize]` for platform permissions, `[McpPermission]` for permissions limited to stores or sellers; tools the user may not use are not listed
 * **Confirmation in the chat**: `[McpRequiresConfirmation]` asks the user to confirm a risky call in the agent's chat before it runs (MCP elicitation), with clients that support it
 * **Approval with a diff**: `[McpRequiresApproval]` holds a call as a pending change with a dry-run preview until a second person approves it, always or only when a condition on the arguments says so; the requester's access is checked again when it is approved
@@ -142,21 +142,19 @@ An administrator does this once per platform. Agents that identify themselves wi
 
 ### Agents that register themselves
 
-An agent that identifies itself with a client ID metadata document uses the HTTPS URL of a JSON document it publishes as its client id, as the MCP authorization specification recommends. The platform fetches the document at the sign-in, checks it, and treats the agent as a public client with PKCE, explicit consent, the authorization code and refresh token grants, and tokens only for the MCP endpoint it names. The agent appears in **Security → OAuth applications** when a user first allows it, and in **Connected agents** like any other; both screens mark it *Self-registered* and filter by how the agent registered.
+An agent that identifies itself with a client ID metadata document uses the HTTPS URL of a JSON document it publishes as its client id, as the MCP authorization specification recommends. The platform fetches the document at the sign-in, checks it, and treats the agent as a public client with PKCE, explicit consent, the authorization code and refresh token grants, and tokens only for the MCP endpoint it names, which the platform accepts only on that endpoint. The agent appears in **Security → OAuth applications** when a user first allows it, and in **Connected agents** like any other. **Connected agents** marks it *Self-registered* and filters by how the agent registered, and so does **OAuth applications** in the Admin Shell; the classic Manager lists it without the mark.
 
-* It is on by default. To allow only some sites, list them in `Authorization:ClientRegistration:ClientIdMetadataDocuments:AllowedHosts`, for example `claude.ai`; to turn it off, set `Enabled` there to `false`.
 * Per scope: `MCP:Scopes:{scope}:AllowSelfRegisteredClients` set to `false` leaves a scope, such as a buyer scope, to the agents an administrator registered. Without the setting, the scope's own default applies: on for the back-office scope `admin`, off for the scopes of other modules unless their module turns it on.
-* The user consents once per agent and endpoint: consent to `/admin/mcp` is not consent to `/vendor/mcp`.
-* The platform fetches documents only over HTTPS from public addresses, so a client id can't make it reach its own network.
-* Dynamic client registration (RFC 7591), for agents that support it but not metadata documents, is off by default; turn it on with `Authorization:ClientRegistration:DynamicRegistration:Enabled`. Anyone can then register a client, which still gets only the access above.
+* Closing a scope doesn't disconnect the agents already connected to it: **Connected agents** keeps listing them with the endpoints their users allowed, and their consent applies again if the scope opens again. Disconnect them there to make their users allow them again.
 
-See [Clients that register themselves](https://github.com/VirtoCommerce/vc-platform/blob/dev/docs/techniques/oauth-sign-in-and-consent.md#clients-that-register-themselves) in the platform documentation for every setting.
+Which sites may register, and dynamic client registration for agents that don't publish a document, are platform settings: see [Clients that register themselves](https://github.com/VirtoCommerce/vc-platform/blob/dev/docs/techniques/oauth-sign-in-and-consent.md#clients-that-register-themselves) in the platform documentation.
 
 ### Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
 | The sign-in page does not open, or the sign-in ends with an error page | The redirect URI or the callback port of the client does not match its registration |
+| A self-registered agent gets *This client application is not allowed to use the specified resource(s)* | The scope doesn't allow agents that register themselves (`MCP:Scopes:{scope}:AllowSelfRegisteredClients`), or the endpoint is not in `Authorization:Resources` |
 | An agent without a client id gets *The specified 'client_id' is invalid* | The platform could not use the agent's client metadata document: the documents are turned off, the site is not in `AllowedHosts`, or the document is invalid, and the platform log tells why. Or the agent does not support metadata documents: register a client for it |
 | `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and ticked in the client's **Resources** exactly, scheme and port included. Or it was issued without an OAuth client (password grant): connect with the registered client |
 | HTTP 403 | The scope requires a permission the user lacks, for example `vendor_portal:access` for `/vendor/mcp` |
@@ -389,7 +387,7 @@ A token without a token id is refused while the platform stores tokens, which it
 
 #### What the token protects today
 
-The MCP endpoints check that a token was issued for them. The rest of the platform does not check token audiences yet, so an access token issued for `/admin/mcp` is also accepted by the platform's REST API and GraphQL, with the permissions of its user. Until the platform checks audiences per endpoint:
+The MCP endpoints check that a token was issued for them. The platform accepts the token of an agent that registered itself only on the path of its MCP endpoint, and refuses it with `invalid_token` anywhere else. It doesn't check the audience of other tokens, so a token issued for `/admin/mcp` to an agent an administrator registered is also accepted by the platform's REST API and GraphQL, with the permissions of its user. For such agents:
 
 - The tool switch, `[McpRequiresApproval]`, `[McpRequiresConfirmation]` and the MCP audit apply to calls made through MCP. They guard the user against an agent's mistakes; they are not a boundary against whoever holds the token, who can call the REST API the tools wrap directly.
 - **Disconnect** stops the agent's token at once on MCP and, with `MCP:ValidateAgentTokensOnAllEndpoints` (on by default), on the REST API and GraphQL as well. With it off, the token works on the REST API until it expires. The platform's own `Authorization:EnablePersistentStorageTokenValidation` checks every token instead, which also ends a token as soon as its user's password or roles change.
