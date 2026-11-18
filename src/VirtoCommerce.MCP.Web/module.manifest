@@ -4,7 +4,7 @@
   <version>3.1002.0</version>
   <version-tag></version-tag>
 
-  <platformVersion>3.1100.0-alpha.13475-vcst-6639-mcp-client-self-registration</platformVersion>
+  <platformVersion>3.1100.0</platformVersion>
 
   <title>Model Context Protocol</title>
   <description>Platform MCP infrastructure: scoped MCP endpoints for back-office and vendor agents, declarative registration of tools, prompts and resources, permission checks, change approval and audit.</description>
