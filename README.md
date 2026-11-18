@@ -406,6 +406,24 @@ Changes are reviewed in the back office or with the first four tools below, pres
 | `get_job_status` | Status and progress of a background job started by a bulk tool | the user who started it, the requester of the change that started it, approvers |
 | `cancel_job` | Cancels a queued or running background job | as `get_job_status` |
 
+### Settings tools
+
+Two read-only tools in the `admin` scope answer questions about the platform's settings, for every role. They need `platform:setting:read`, the permission the back office's **Settings** screen reads with, and they show what that screen shows: hidden settings are left out, and the values are the platform-wide ones.
+
+| Tool | Purpose |
+| --- | --- |
+| `search_settings` | Settings found by words in their name, title, description or group, by module, or changed from their defaults, each with its title, description, module, group, type, value and default; pages with `skip` and `take` |
+| `explain_setting` | One setting: what it does, its value, default and allowed values, whether the platform's configuration sets it, whether a change needs a restart, whether objects such as stores keep their own values, and a link that opens it on the **Settings** screen |
+
+No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential(s), or when a module names it:
+
+```csharp
+// Module.Initialize
+serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
+```
+
+The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too.
+
 ### Audit and cleanup
 
 Every call made through a registered scope is audited with one of the outcomes `Succeeded`, `PendingApproval`, `Forbidden`, `Declined` (the user did not confirm it in the chat), `Canceled` (the call was canceled while it ran, by a timeout or a client that went away; it may have changed data partly), `Disabled` (the tool is switched off), `Failed` (the tool returned an error or refused the request with an `McpException`) or `Error` (unknown tool, invalid arguments, a tool that needs approval in a scope without it, unexpected error). Reviews made in the back office are audited with the client id `back-office`. A tool that acts on a pending change links its audit entry to it with `requestContext.SetAuditPendingChangeId(changeId)`.
@@ -747,7 +765,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `VirtoCommerce.MCP.Data.SqlServer` | Data | SQL Server migrations |
 | `VirtoCommerce.MCP.Data.MySql` | Data | MySQL migrations |
 | `VirtoCommerce.MCP.Data.PostgreSql` | Data | PostgreSQL migrations |
-| `VirtoCommerce.MCP.Web` | Web | MCP endpoints, authentication middleware, execution pipeline, review and job tools, REST API, module bootstrapping; the Admin Shell plugin in `vue/` |
+| `VirtoCommerce.MCP.Web` | Web | MCP endpoints, authentication middleware, execution pipeline, review, job and settings tools, REST API, module bootstrapping; the Admin Shell plugin in `vue/` |
 | `VirtoCommerce.MCP.Tests` | Tests | Unit and endpoint tests |
 
 ### Key Services
@@ -771,6 +789,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
 | `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |
+| `McpSettingsService` | | The settings the settings tools describe: the platform's settings with their platform-wide values (Settings V2), titles from the localization files, and the secret rule |
 
 ### REST API
 

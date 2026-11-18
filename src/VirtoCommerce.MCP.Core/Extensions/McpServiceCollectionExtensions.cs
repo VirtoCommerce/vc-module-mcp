@@ -60,6 +60,17 @@ public static class McpServiceCollectionExtensions
         return services;
     }
 
+    // Marks settings as secrets for the MCP module's settings tools (search_settings, explain_setting): they are never
+    // listed, and their values never returned. A setting typed SecureString, or with the word Key, Secret, Password, Token
+    // or Credential(s) in its name, is a secret already; this names the others.
+    public static IServiceCollection AddMcpSecretSettings(this IServiceCollection services, params string[] settingNames)
+    {
+        ArgumentNullException.ThrowIfNull(settingNames);
+
+        services.Configure<McpSecretSettingsOptions>(options => options.SettingNames.UnionWith(settingNames));
+        return services;
+    }
+
     private static bool IsInScope(IServiceProvider services, string scopeName)
     {
         var scope = services?.GetService<IHttpContextAccessor>()?.HttpContext?.GetMcpScope();

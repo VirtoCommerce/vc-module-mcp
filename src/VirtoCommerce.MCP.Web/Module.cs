@@ -59,6 +59,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddScopedMcpServer();
         serviceCollection.AddMcpTools<McpApprovalTools>();
         serviceCollection.AddMcpTools<McpJobTools>();
+        serviceCollection.AddMcpTools<McpSettingsTools>();
     }
 
     private void AddDatabase(IServiceCollection serviceCollection)
@@ -126,6 +127,8 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpPendingChangeReviewService>();
         serviceCollection.AddTransient<McpConnectedAgentService>();
         serviceCollection.AddTransient<McpAgentTokenClassifier>();
+        serviceCollection.AddTransient<McpSettingsService>();
+        serviceCollection.AddMcpSecretSettings(McpKnownSecretSettings.SettingNames);
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
         serviceCollection.AddMemoryCache();
