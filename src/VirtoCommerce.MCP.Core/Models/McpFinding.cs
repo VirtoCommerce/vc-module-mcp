@@ -18,11 +18,17 @@ public class McpFinding
     // The finding in one sentence a person understands.
     public string Title { get; set; }
 
+    // Why it matters, when the title does not say: what it costs or puts at risk. Optional.
+    public string Why { get; set; }
+
     // The figures behind it, with units and the limit they are compared with: "Spent 8,700 of 10,000 USD (87%)".
     public string Evidence { get; set; }
 
     // What to do about it, naming the tool or the screen that does it when there is one.
     public string Fix { get; set; }
+
+    // Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional.
+    public string Screen { get; set; }
 
     // The area or the cause the finding belongs to, as the module defines it, such as "policy" or "infrastructure".
     public string Category { get; set; }

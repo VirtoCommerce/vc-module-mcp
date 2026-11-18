@@ -124,29 +124,14 @@ public class McpSettingsTools(
 
     // A link to the Settings screen, opened at one setting when a name is given; null outside an MCP request or when the
     // scope has no public origin.
-    protected virtual async Task<string> GetSettingsLinkAsync(string settingName = null)
+    protected virtual Task<string> GetSettingsLinkAsync(string settingName = null)
     {
-        var httpContext = httpContextAccessor.HttpContext;
-        var scope = httpContext?.GetMcpScope();
+        var route = string.IsNullOrEmpty(settingName) ? SettingsRoute : $"{SettingsRoute}?setting={Uri.EscapeDataString(settingName)}";
 
-        if (scope == null)
-        {
-            return null;
-        }
-
-        var origin = await httpContext.RequestServices.GetMcpScopeService<IMcpPublicOriginResolver>(scope).GetOriginAsync(httpContext, scope);
-
-        if (string.IsNullOrEmpty(origin))
-        {
-            return null;
-        }
-
-        var link = $"{origin.TrimEnd('/')}{SettingsRoute}";
-
-        return string.IsNullOrEmpty(settingName) ? link : $"{link}?setting={Uri.EscapeDataString(settingName)}";
+        return McpBackOfficeLinks.GetLinkAsync(httpContextAccessor.HttpContext, route);
     }
 
-    protected virtual IList<string> GetNotes(McpSetting setting)
+    protected virtual IList<string> GetNotes(McpPlatformSetting setting)
     {
         var notes = new List<string>();
 
@@ -172,7 +157,7 @@ public class McpSettingsTools(
         return notes;
     }
 
-    private static object ToRow(McpSetting setting)
+    private static object ToRow(McpPlatformSetting setting)
     {
         return new
         {
@@ -188,7 +173,7 @@ public class McpSettingsTools(
         };
     }
 
-    private static bool HasWord(McpSetting setting, string word)
+    private static bool HasWord(McpPlatformSetting setting, string word)
     {
         return Contains(setting.Name, word) || Contains(setting.Title, word) || Contains(setting.Description, word) || Contains(setting.GroupName, word);
     }
@@ -204,7 +189,7 @@ public class McpSettingsTools(
         return string.IsNullOrEmpty(groupName) ? null : string.Join(" > ", groupName.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
-    private static string GetScreen(McpSetting setting)
+    private static string GetScreen(McpPlatformSetting setting)
     {
         var group = GetGroupPath(setting.GroupName);
 
@@ -213,6 +198,6 @@ public class McpSettingsTools(
 
     private static string AddLink(string text, string link)
     {
-        return string.IsNullOrEmpty(link) ? $"{text}." : $"{text} ({link}).";
+        return $"{McpBackOfficeLinks.WithLink(text, link)}.";
     }
 }
