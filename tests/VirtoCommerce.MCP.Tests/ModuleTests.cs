@@ -31,7 +31,7 @@ public class ModuleTests
     }
 
     [Fact]
-    public void Initialize_Should_RegisterTheAdminScopeOnly()
+    public void Initialize_Should_RegisterOnlyAdminScope_AllowingSelfRegisteredClients()
     {
         // Act
         var scopes = Initialize()

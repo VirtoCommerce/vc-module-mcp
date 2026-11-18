@@ -113,7 +113,7 @@ public class McpConnectedAgentServiceTests
     }
 
     [Fact]
-    public async Task SearchAsync_Should_TellHowASelfRegisteredAgentRegistered_And_ShowTheEndpointsTheUserConsentedTo()
+    public async Task SearchAsync_Should_TellHowSelfRegisteredAgentRegistered_And_ShowEndpointsUserConsentedTo()
     {
         // Arrange
         AddSelfRegisteredApp();
@@ -129,7 +129,7 @@ public class McpConnectedAgentServiceTests
     }
 
     [Fact]
-    public async Task SearchAsync_Should_KeepASelfRegisteredAgent_When_ItsScopeNoLongerAllowsSelfRegisteredClients()
+    public async Task SearchAsync_Should_KeepSelfRegisteredAgent_When_ItsScopeNoLongerAllowsSelfRegisteredClients()
     {
         // Arrange
         AddSelfRegisteredApp();
@@ -143,7 +143,7 @@ public class McpConnectedAgentServiceTests
     }
 
     [Fact]
-    public async Task RevokeAsync_Should_DisconnectASelfRegisteredAgent_When_ItsScopeNoLongerAllowsSelfRegisteredClients()
+    public async Task RevokeAsync_Should_DisconnectSelfRegisteredAgent_When_ItsScopeNoLongerAllowsSelfRegisteredClients()
     {
         // Arrange
         AddSelfRegisteredApp();
@@ -158,7 +158,7 @@ public class McpConnectedAgentServiceTests
     }
 
     [Fact]
-    public async Task SearchAsync_Should_SkipASelfRegisteredAgent_When_TheConsentStoresNoResources()
+    public async Task SearchAsync_Should_SkipSelfRegisteredAgent_When_ConsentStoresNoResources()
     {
         // Arrange
         AddSelfRegisteredApp();

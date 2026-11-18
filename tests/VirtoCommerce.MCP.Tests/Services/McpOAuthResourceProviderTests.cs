@@ -62,7 +62,7 @@ public class McpOAuthResourceProviderTests
     [InlineData(false, null, false)]
     [InlineData(false, true, true)]
     [InlineData(true, false, false)]
-    public async Task GetResourcesAsync_Should_AllowSelfRegisteredClients_AsTheScopeOrItsSettingSays(bool scopeDefault, bool? setting, bool expected)
+    public async Task GetResourcesAsync_Should_AllowSelfRegisteredClients_AsScopeOrItsSettingSays(bool scopeDefault, bool? setting, bool expected)
     {
         // Arrange
         var options = new McpOptions();
