@@ -422,7 +422,7 @@ No tool changes a setting: the answers name the screen that does. A secret is ne
 serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
 ```
 
-The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too.
+The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too. A module whose own tools describe settings applies the same rule with `McpSecretSettings.IsSecret` and registers `McpKnownSecretSettings`, the settings of Virto Commerce modules known to be secrets ([Describe settings](docs/toolset-helpers.md#describe-settings)).
 
 ### Audit and cleanup
 
@@ -563,7 +563,7 @@ public object SearchPromotions(RequestContext<CallToolRequestParams> context, st
 
 ### Design a toolset
 
-Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, an example routine and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, time windows, and a test package that calls tools as a user and checks the conventions.
+Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, an example routine and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, back-office links, time windows, the shapes of a setup that modules plug into, settings described as the back office does without secrets, and a test package that calls tools as a user and checks the conventions.
 
 | Layer | Count | What it is | The module helps with |
 | --- | --- | --- | --- |
@@ -827,7 +827,7 @@ Do not install the samples on a shared or production environment.
 * [MCP Sample Module](samples/VirtoCommerce.MCP.SampleModule/README.md): a ten-minute demo; Claude Code signs in to a local platform, calls tools, and a second user approves its change
 * [MCP Marketing Sample](samples/VirtoCommerce.MCP.MarketingSample/README.md): a marketer's toolset and a week of work with it
 * [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, an example routine and tests
-* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `McpTimeWindow`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
+* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `McpBackOfficeLinks`, `McpTimeWindow`, the setup shapes (`McpSetupPartPlan` and others), `McpSettingTexts`, `McpSecretSettings`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
 * [UCP module](https://github.com/VirtoCommerce/vc-module-ucp): shopping assistants for buyers, served as the `ucp` scope
 * [View on GitHub](https://github.com/VirtoCommerce/vc-module-mcp/)
 

@@ -6,7 +6,10 @@ Building blocks for the tools of a module, in `VirtoCommerce.MCP.Core`, and a te
 | --- | --- | --- |
 | A list tool that never cuts its answer off silently | [`McpPage<T>`, `GetPagingAsync`](#paging) | `VirtoCommerce.MCP.Core` |
 | Analysis results that read the same in every module | [`McpFinding`](#findings) | `VirtoCommerce.MCP.Core` |
+| A link to the back-office screen for what the tools do not cover | [`McpBackOfficeLinks`](#back-office-links) | `VirtoCommerce.MCP.Core` |
 | "The last 24 hours", "since Monday" | [`McpTimeWindow`](#time-windows) | `VirtoCommerce.MCP.Core` |
+| A setup that other modules plug parts into, such as a store's | [`McpSetupPartPlan`, `McpSetupChoice` and the others](#setups-that-modules-plug-into) | `VirtoCommerce.MCP.Core` |
+| Describe settings as the back office does, without secrets | [`McpSettingTexts`, `McpSecretSettings`](#describe-settings) | `VirtoCommerce.MCP.Core` |
 | Call tools in a unit test as a user with given permissions | [`McpToolHarness`, `McpTestUser`](#call-tools-as-a-user) | `VirtoCommerce.MCP.Testing` |
 | Check a toolset against the conventions in one test | [`McpToolsetConventions`](#check-the-conventions) | `VirtoCommerce.MCP.Testing` |
 
@@ -59,8 +62,10 @@ An analysis tool (a health check, a conflict check, a readiness check) returns `
 | `id` | A stable id of the kind of finding, such as `budget-almost-spent`. Tests and agents refer to it; it does not change with the wording |
 | `severity` | `critical`, `warning` or `info` (`McpFindingSeverities`) |
 | `title` | The finding in one sentence a person understands |
+| `why` | Why it matters, when the title does not say: what it costs or puts at risk. Optional |
 | `evidence` | The figures, with units and the limit they are compared with: "Spent 8,700 of 10,000 USD (87%)" |
 | `fix` | What to do, naming the tool or the screen that does it |
+| `screen` | Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional; [`McpBackOfficeLinks`](#back-office-links) gives its link |
 | `category` | The area or the cause, as the module defines it, such as `policy` or `infrastructure` |
 | `object_type`, `object_id`, `object_name` | The object the finding is about |
 
@@ -74,6 +79,7 @@ if (spent >= budget * 0.85m)
         Id = "budget-almost-spent",
         Severity = McpFindingSeverities.Warning,
         Title = $"The budget of '{promotion.Name}' is almost spent",
+        Why = "The promotion stops when the budget runs out.",
         Evidence = $"Spent {spent:N0} of {budget:N0} {currency} ({spent / budget:P0}).",
         Fix = "Pause it with pause_promotion, or raise the budget.",
         Category = "budget",
@@ -84,7 +90,23 @@ if (spent >= budget * 0.85m)
 return new { findings = findings.OrderBySeverity(), highest = findings.GetHighestSeverity() };
 ```
 
-`OrderBySeverity` puts critical first and keeps the order within a severity; `CountBySeverity` counts one severity.
+`OrderBySeverity` puts critical first and keeps the order within a severity; `CountBySeverity` counts one severity. A property left null, such as `why` or `screen`, is left out of the answer.
+
+## Back-office links
+
+A toolset does not cover every field. For the rest, the answer names the back-office screen that does it, with a link the person opens. `McpBackOfficeLinks.GetLinkAsync` builds the link from the public origin of the request's scope, as the scope's `IMcpPublicOriginResolver` gives it, and the route of the screen. `WithLink` writes the screen with its link in brackets.
+
+```csharp
+public const string StoresRoute = "/#!/workspace/store";
+
+var link = await McpBackOfficeLinks.GetLinkAsync(httpContextAccessor.HttpContext, StoresRoute);
+var fix = $"Back office: {McpBackOfficeLinks.WithLink("Stores > EU store > Payment methods", link)}.";
+// Back office: Stores > EU store > Payment methods (https://admin.example.com/#!/workspace/store).
+```
+
+- The link is null outside an MCP request and when the scope has no public origin. `WithLink` then gives the screen alone, so the answer still names it.
+- The route is the part of the screen's address after the origin. Screens of the classic back office start with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does.
+- A module registers nothing for it: it uses the MCP module's services of the request.
 
 ## Time windows
 
@@ -116,6 +138,41 @@ public object SearchErrors(
 - `hours` or `days` below 1, and a `since` in the future, are refused with an `McpException` whose message the agent can pass on.
 - A `since` without a kind is read as UTC; a local time is converted.
 - Take `TimeProvider` from DI, so tests can fix the time.
+
+## Setups that modules plug into
+
+Some setups span modules. A store's setup takes the basics from Store, the payment methods from Payment, the shipping methods from Shipping and the tax providers from Tax. The module that owns the setup defines its contract: the interfaces, the context and the service. Each module then adds a part. These shapes are what the parts exchange, in any such contract:
+
+| Type | What it is |
+| --- | --- |
+| `McpSetupChoice` | An allowed value of a section field, such as the code of a shipping method, with the settings it takes |
+| `McpSetupSetting` | A setting with the value of the object being set up, and whether a setup can change it. It derives `McpSetting` ([Describe settings](#describe-settings)); a secret is described without its values |
+| `McpSetupPartPlan` | What applying a part's section would change (`McpFieldChange` items), why it cannot be applied, and what the approver should know. A part derives it to carry the state after the change |
+| `McpSetupPartResult`, `McpSetupPartStatus` | What a setup changes or changed in one part, and how it went: `NoChange`, `WillChange`, `Applied`, `Failed` or `NotApplied` |
+| `McpSetupPermissions` | The existing permissions that guard a part: `Read`, `Update`, `Create`, and the permission scope that limits them (`ScopeType`) |
+| `McpSetupValues` | Compares a value from a request with a stored one or a default: numbers by value, other values by their text, ignoring case |
+| `McpFinding` | What the object is missing, with `why` and `screen` ([Findings](#findings)) |
+
+The rules belong to the contract, not to these shapes: what refuses a request, the order of the parts, what blocks going live. Store's setup is the example: its parts and their rules are in the Store module's README, under "A module's part of a store's setup".
+
+## Describe settings
+
+A tool that describes settings, such as `explain_setting`, shows them as the back office does and never shows a secret. The same helpers serve every toolset:
+
+- `McpSetting` is a setting described for a person: its name, title, description, module, type, default, value and allowed values, whether it is required and whether its value was changed. A toolset derives it to add what it knows, as `McpSetupSetting` does for a setup.
+- `McpSettingTexts.Find` gives a setting's title and description from the modules' localization files, as the back office shows them; null for a text the files do not have.
+- `McpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. A setting is a secret when it is typed `SecureString`, when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential(s): `ApiKey` does, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
+
+```csharp
+// Module.Initialize: the known secrets of Virto Commerce modules, and the module's own
+serviceCollection.AddMcpSecretSettings(McpKnownSecretSettings.SettingNames);
+serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
+
+// The service that describes the settings, given ITranslationService and IOptions<McpSecretSettingsOptions>
+var translation = translationService.GetTranslationDataForLanguage("en");
+var (title, description) = McpSettingTexts.Find(translation, descriptor.Name);
+var isSecret = McpSecretSettings.IsSecret(descriptor.Name, descriptor.ValueType, secretOptions.Value);
+```
 
 ## The testing package
 

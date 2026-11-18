@@ -72,8 +72,8 @@ public object GetMarketingOverview(
 
 - **Compact rows**: an id and the 5–8 fields the decision needs, never the full object. Names, not only ids: an organization by name, a store by name.
 - **Units and context**: money with its currency, a percentage with what it is a percentage of, "774 MB of 1024 MB (75.6%)".
-- **Reasons, not only results**: an analysis returns findings with evidence and a suggested fix, as [`McpFinding`](toolset-helpers.md#findings): an id, severity, title, evidence, fix and category. The agent turns them into an action list.
-- **The next step**: name the tool or the screen that continues the work: "Approve it in Agent approvals", "Call get_job_status with job_id".
+- **Reasons, not only results**: an analysis returns findings with evidence and a suggested fix, as [`McpFinding`](toolset-helpers.md#findings): an id, severity, title, evidence, fix and category, and when it helps, why it matters and the screen that fixes it. The agent turns them into an action list.
+- **The next step**: name the tool or the screen that continues the work: "Approve it in Agent approvals", "Call get_job_status with job_id". What the tools do not cover is answered the same way: the screen that does it, with its link from [`McpBackOfficeLinks`](toolset-helpers.md#back-office-links).
 - **Say what you cannot see.** A tool that cannot read something answers "not available" with the reason, never zero or "no problems". System Operations read only Hangfire's storage on a platform that runs RabbitMQ jobs, and reported no failed jobs while jobs were failing.
 - **Measure what you name.** A figure is compared with the limit it names: the container's memory limit, not the GC heap limit. A false "scale up" costs the person's trust in every other answer.
 - **Name the instance.** On a cluster, data held in the memory of an instance (an error journal, counters since start) is per instance; the answer names the instance it came from.
