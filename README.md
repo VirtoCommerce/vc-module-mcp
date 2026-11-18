@@ -563,7 +563,7 @@ public object SearchPromotions(RequestContext<CallToolRequestParams> context, st
 
 ### Design a toolset
 
-Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, prompts and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, time windows, and a test package that calls tools as a user and checks the conventions.
+Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, an example routine and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, time windows, and a test package that calls tools as a user and checks the conventions.
 
 | Layer | Count | What it is | The module helps with |
 | --- | --- | --- | --- |
@@ -700,7 +700,7 @@ A system integrator ships "Virto Commerce for Contoso" to a client's Claude orga
 1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [Set up the platform for agents](#set-up-the-platform-for-agents).
 1. **Roles.** Grant the client's people the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
 1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
-1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
+1. **Routines.** Each person keeps their own routines in Claude, for example as skills. The solution's documentation gives one example routine per role to copy and adapt, and the organization can share the routines it agrees on as Claude skills.
 1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
 
 A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Once the platform supports client ID metadata documents ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)), the OAuth client step goes away: the URL alone is enough.
@@ -826,7 +826,7 @@ Do not install the samples on a shared or production environment.
 * [Samples](samples/README.md): what each sample shows and where to start
 * [MCP Sample Module](samples/VirtoCommerce.MCP.SampleModule/README.md): a ten-minute demo; Claude Code signs in to a local platform, calls tools, and a second user approves its change
 * [MCP Marketing Sample](samples/VirtoCommerce.MCP.MarketingSample/README.md): a marketer's toolset and a week of work with it
-* [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, prompts and tests
+* [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, an example routine and tests
 * [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `McpTimeWindow`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
 * [UCP module](https://github.com/VirtoCommerce/vc-module-ucp): shopping assistants for buyers, served as the `ucp` scope
 * [View on GitHub](https://github.com/VirtoCommerce/vc-module-mcp/)
