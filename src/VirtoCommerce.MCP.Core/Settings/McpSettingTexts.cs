@@ -1,17 +1,21 @@
 using System;
 using Newtonsoft.Json.Linq;
+using VirtoCommerce.Platform.Core.Localizations;
 
 namespace VirtoCommerce.MCP.Core.Settings;
 
-// A setting's title and description from the modules' localization files, as the back office shows them.
-public static class McpSettingTexts
+// The MCP module's setting texts (IMcpSettingTexts): the modules' English localization files, as the back office shows
+// them.
+public class McpSettingTexts(ITranslationService translationService) : IMcpSettingTexts
 {
-    // Titles and descriptions come from the English localization files of the modules, as in the back office.
     public const string Language = "en";
 
-    // The title and the description of a setting in a translation (ITranslationService.GetTranslationDataForLanguage with
-    // Language). A title the files do not have is the display name, or else the name; such a description is null.
-    public static (string Title, string Description) Find(JObject translation, string settingName, string displayName = null)
+    public virtual JObject GetTranslation()
+    {
+        return translationService.GetTranslationDataForLanguage(Language);
+    }
+
+    public virtual (string Title, string Description) Find(JObject translation, string settingName, string displayName = null)
     {
         ArgumentNullException.ThrowIfNull(settingName);
 

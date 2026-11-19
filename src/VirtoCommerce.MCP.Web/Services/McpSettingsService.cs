@@ -2,37 +2,49 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
-using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Web.Models;
 using VirtoCommerce.Platform.Core.Common;
-using VirtoCommerce.Platform.Core.Localizations;
 using VirtoCommerce.Platform.Core.Settings;
 
 namespace VirtoCommerce.MCP.Web.Services;
 
 // The platform's settings as the settings tools describe them: the settings the back office shows, with their
-// platform-wide values, from the platform's Settings V2 service; titles and descriptions from the modules' English
-// localization files (McpSettingTexts). A secret (McpSecretSettings) is never listed and is described without its values.
+// platform-wide values, from the platform's Settings V2 service; titles and descriptions from IMcpSettingTexts. A secret
+// (IMcpSecretSettings) is never listed and is described without its values.
 public class McpSettingsService(
     ISettingsPropertyService settingsPropertyService,
-    ITranslationService translationService,
-    IOptions<McpSecretSettingsOptions> secretOptions)
+    IMcpSecretSettings secretSettings,
+    IMcpSettingTexts settingTexts)
 {
     // The settings the back office shows, without secrets, with their platform-wide values, in the order of the Settings
     // screen: by group, then by name.
     public virtual async Task<IList<McpPlatformSetting>> GetSettingsAsync()
     {
         var schemas = await settingsPropertyService.GetSchemaAsync(AbstractTypeFactory<SettingsPropertySearchCriteria>.TryCreateInstance());
+        // One read for the changed values of every setting, secrets' too: the secrets are dropped before any is described.
         var changedValues = await settingsPropertyService.GetValuesAsync(modifiedOnly: true);
-        var translation = translationService.GetTranslationDataForLanguage(McpSettingTexts.Language);
+        var translation = settingTexts.GetTranslation();
 
         return schemas
             .Where(x => !IsSecret(x))
             .Select(x => ToSetting(x, changedValues, translation))
             .ToList();
+    }
+
+    // Whether the back office shows settings of the module, secrets included: a module whose settings are all secrets is
+    // a module, not a wrong id.
+    public virtual async Task<bool> HasSettingsAsync(string moduleId)
+    {
+        if (string.IsNullOrWhiteSpace(moduleId))
+        {
+            return false;
+        }
+
+        var schemas = await settingsPropertyService.GetSchemaAsync(AbstractTypeFactory<SettingsPropertySearchCriteria>.TryCreateInstance());
+
+        return schemas.Any(x => x.ModuleId.EqualsIgnoreCase(moduleId.Trim()));
     }
 
     // One setting the back office shows, a secret too, without its values; null for a name the back office does not show.
@@ -63,21 +75,21 @@ public class McpSettingsService(
             ? new Dictionary<string, object>()
             : await settingsPropertyService.GetValuesAsync(modifiedOnly: true, moduleId: schema.ModuleId);
 
-        return ToSetting(schema, changedValues, translationService.GetTranslationDataForLanguage(McpSettingTexts.Language));
+        return ToSetting(schema, changedValues, settingTexts.GetTranslation());
     }
 
     public virtual bool IsSecret(SettingPropertySchema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
 
-        return McpSecretSettings.IsSecret(schema.Name, schema.ValueType, secretOptions.Value);
+        return secretSettings.IsSecret(schema.Name, schema.ValueType);
     }
 
     // changedValues holds the values that differ from the defaults, as the Settings V2 service compares them; every other
     // setting has its default value.
     protected virtual McpPlatformSetting ToSetting(SettingPropertySchema schema, IDictionary<string, object> changedValues, JObject translation)
     {
-        var (title, description) = McpSettingTexts.Find(translation, schema.Name, schema.DisplayName);
+        var (title, description) = settingTexts.Find(translation, schema.Name, schema.DisplayName);
 
         var setting = AbstractTypeFactory<McpPlatformSetting>.TryCreateInstance();
         setting.Name = schema.Name;

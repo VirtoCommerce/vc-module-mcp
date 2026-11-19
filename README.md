@@ -435,7 +435,7 @@ No tool changes a setting: the answers name the screen that does. A secret is ne
 serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
 ```
 
-The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too. A module whose own tools describe settings applies the same rule with `McpSecretSettings.IsSecret` ([Describe settings](docs/toolset-helpers.md#describe-settings)).
+The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too. A module whose own tools describe settings applies the same rule through `IMcpSecretSettings`, and a solution replaces the rule for every toolset by registering its own ([Describe settings](docs/toolset-helpers.md#describe-settings)).
 
 ### Audit and cleanup
 
@@ -799,6 +799,8 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
 | `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the classic back office, wherever the platform serves it |
+| `McpSecretSettings` | `IMcpSecretSettings` | The secret rule of every tool that describes settings |
+| `McpSettingTexts` | `IMcpSettingTexts` | Settings' titles and descriptions, from the modules' English localization files |
 | `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
@@ -841,7 +843,7 @@ Do not install the samples on a shared or production environment.
 * [MCP Sample Module](samples/VirtoCommerce.MCP.SampleModule/README.md): a ten-minute demo; Claude Code signs in to a local platform, calls tools, and a second user approves its change
 * [MCP Marketing Sample](samples/VirtoCommerce.MCP.MarketingSample/README.md): a marketer's toolset and a week of work with it
 * [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, an example routine and tests
-* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `IMcpLinkResolver`, `McpTimeWindow`, the setup shapes (`McpSetupPartPlan` and others), `McpSettingTexts`, `McpSecretSettings`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
+* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `IMcpLinkResolver`, `McpTimeWindow`, the setup shapes (`McpSetupPartPlan` and others), `IMcpSettingTexts`, `IMcpSecretSettings`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
 * [UCP module](https://github.com/VirtoCommerce/vc-module-ucp): shopping assistants for buyers, served as the `ucp` scope
 * [View on GitHub](https://github.com/VirtoCommerce/vc-module-mcp/)
 

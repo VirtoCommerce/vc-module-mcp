@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using VirtoCommerce.MCP.Core.Models;
 using Xunit;
@@ -99,5 +101,19 @@ public class McpSetupPartPlanTests
                 Assert.Null(x.From);
                 Assert.Equal("https://shop.example.com", x.To);
             });
+    }
+
+    // Two equal values are no change, as in McpChangePreview; a new list is a change whatever its items.
+    [Fact]
+    public void AddChange_SkipsTwoEqualValues_ButRecordsANewList()
+    {
+        var plan = new McpSetupPartPlan();
+
+        plan.AddChange("methods.cash.active", true, true)
+            .AddChange("methods.cash.priority", 10m, 10.0m)
+            .AddChange("basics.url", null, null)
+            .AddChange("basics.currencies", new List<string> { "EUR" }, new List<string> { "EUR", "USD" });
+
+        Assert.Equal(["basics.currencies"], plan.Changes.Select(x => x.Field));
     }
 }

@@ -9,7 +9,7 @@ Building blocks for the tools of a module, in `VirtoCommerce.MCP.Core`, and a te
 | A link to the screen for what the tools do not cover | [`IMcpLinkResolver`, `WithLink`](#links-to-screens) | `VirtoCommerce.MCP.Core` |
 | "The last 24 hours", "since Monday" | [`McpTimeWindow`](#time-windows) | `VirtoCommerce.MCP.Core` |
 | A setup that other modules plug parts into, such as a store's | [`McpSetupPartPlan`, `McpSetupChoice` and the others](#setups-that-modules-plug-into) | `VirtoCommerce.MCP.Core` |
-| Describe settings as the back office does, without secrets | [`McpSettingTexts`, `McpSecretSettings`](#describe-settings) | `VirtoCommerce.MCP.Core` |
+| Describe settings as the back office does, without secrets | [`IMcpSettingTexts`, `IMcpSecretSettings`](#describe-settings) | `VirtoCommerce.MCP.Core` |
 | Call tools in a unit test as a user with given permissions | [`McpToolHarness`, `McpTestUser`](#call-tools-as-a-user) | `VirtoCommerce.MCP.Testing` |
 | Check a toolset against the conventions in one test | [`McpToolsetConventions`](#check-the-conventions) | `VirtoCommerce.MCP.Testing` |
 
@@ -160,17 +160,22 @@ The rules belong to the contract, not to these shapes: what refuses a request, t
 A tool that describes settings, such as `explain_setting`, shows them as the back office does and never shows a secret. The same helpers serve every toolset:
 
 - `McpSetting` is a setting described for a person: its name, title, description, module, type, default, value and allowed values, whether it is required and whether its value was changed. A toolset derives it to add what it knows, as `McpSetupSetting` does for a setup.
-- `McpSettingTexts.Find` gives a setting's title and description from the modules' English localization files (`McpSettingTexts.Language`), as the back office shows them. A title the files do not have is the setting's display name, or else its name; such a description is null.
-- `McpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. A setting is a secret when it is typed `SecureString`, when it is a setting of a Virto Commerce module known to be a secret (`McpKnownSecretSettings`), when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential(s): `ApiKey` does, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
+- `IMcpSettingTexts` gives a setting's title and description: `GetTranslation` reads the texts once for an answer, and `Find` looks a setting up in them. The MCP module's `McpSettingTexts` reads the modules' English localization files, as the back office shows them. A title the files do not have is the setting's display name, or else its name; such a description is null.
+- `IMcpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. The MCP module's `McpSecretSettings` makes a setting a secret when it is typed `SecureString`, when it is a setting of a Virto Commerce module known to be a secret (`McpKnownSecretSettings`), when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential(s): `ApiKey` does, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
+- Every toolset shares the two rules, so a solution changes one for all of them by registering its own. `AddMcpSettingRules` registers the MCP module's; a module whose services use them without the MCP module calls it too.
 
 ```csharp
-// Module.Initialize: the module's own secrets that the rule does not find
+// Module.Initialize: the module's own secrets that the rule does not find, and the rules for its services
 serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
+serviceCollection.AddMcpSettingRules();
 
-// The service that describes the settings, given ITranslationService and IOptions<McpSecretSettingsOptions>
-var translation = translationService.GetTranslationDataForLanguage(McpSettingTexts.Language);
-var (title, description) = McpSettingTexts.Find(translation, descriptor.Name, descriptor.DisplayName);
-var isSecret = McpSecretSettings.IsSecret(descriptor.Name, descriptor.ValueType, secretOptions.Value);
+// The service that describes the settings, given IMcpSettingTexts and IMcpSecretSettings
+var translation = settingTexts.GetTranslation();
+var (title, description) = settingTexts.Find(translation, descriptor.Name, descriptor.DisplayName);
+var isSecret = secretSettings.IsSecret(descriptor.Name, descriptor.ValueType);
+
+// A solution's own rule, for every toolset: registered in its module's Initialize
+serviceCollection.AddSingleton<IMcpSecretSettings, MySecretSettings>();
 ```
 
 ## The testing package

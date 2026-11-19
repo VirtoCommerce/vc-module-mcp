@@ -2,13 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.Platform.Core.Settings;
 
 namespace VirtoCommerce.MCP.Core.Settings;
 
-// The rule that keeps secrets out of the answers of every tool that describes settings.
-public static partial class McpSecretSettings
+// The MCP module's secret rule (IMcpSecretSettings).
+public partial class McpSecretSettings(IOptions<McpSecretSettingsOptions> options) : IMcpSecretSettings
 {
     // Compared with the whole words of a setting name: "ApiKey" has the word Key, "Keyword" does not.
     private static readonly HashSet<string> _secretWords = new(StringComparer.OrdinalIgnoreCase) { "Key", "Secret", "Password", "Token", "Credential", "Credentials" };
@@ -18,18 +19,16 @@ public static partial class McpSecretSettings
     // A setting is a secret when it is typed SecureString, when it is known to be one (McpKnownSecretSettings), when a
     // module names it (AddMcpSecretSettings), or when its name has the word Key, Secret, Password, Token or Credential(s).
     // The rule errs on the safe side.
-    public static bool IsSecret(string name, SettingValueType valueType, McpSecretSettingsOptions options)
+    public virtual bool IsSecret(string name, SettingValueType valueType)
     {
-        ArgumentNullException.ThrowIfNull(options);
-
         return valueType == SettingValueType.SecureString
             || _knownSecrets.Contains(name)
-            || options.SettingNames.Contains(name)
+            || options.Value.SettingNames.Contains(name)
             || GetNameWords(name).Any(_secretWords.Contains);
     }
 
     // The words of a name, split at dots and case changes: "Stripe.APIKey" has Stripe, API and Key.
-    private static IEnumerable<string> GetNameWords(string name)
+    protected virtual IEnumerable<string> GetNameWords(string name)
     {
         return string.IsNullOrEmpty(name) ? [] : NameWordRegex().Matches(name).Select(x => x.Value);
     }

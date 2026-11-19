@@ -11,6 +11,7 @@ using Newtonsoft.Json.Linq;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Testing;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.MCP.Web.Tools;
@@ -195,6 +196,17 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         Assert.Contains("Module 'VirtoCommerce.Catalgo' has no settings here", result.Error);
     }
 
+    // Every setting of the module is a secret: an empty page with the note on secrets, not "a wrong id".
+    [Fact]
+    public async Task SearchSettings_AModuleWhoseSettingsAreAllSecrets_IsAnEmptyPage_WithTheNoteOnSecrets()
+    {
+        var result = await CallAsync("search_settings", new { module_id = "partner.erp" });
+
+        Assert.Equal(McpToolCallOutcome.Succeeded, result.Outcome);
+        Assert.Empty(result.Json.GetProperty("settings").GetProperty("items").EnumerateArray());
+        Assert.StartsWith("Secrets are not listed.", result.Json.GetProperty("secrets").GetString());
+    }
+
     [Fact]
     public async Task SearchSettings_Pages_AndTwoPagesHoldEverySettingOnce()
     {
@@ -305,7 +317,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
     {
         // Arrange
         var secretOptions = new McpSecretSettingsOptions();
-        var service = new McpSettingsService(_settingsPropertyService, _translationService.Object, Options.Create(secretOptions));
+        var service = new McpSettingsService(_settingsPropertyService, new McpSecretSettings(Options.Create(secretOptions)), new McpSettingTexts(_translationService.Object));
 
         // Act
         var setting = await service.GetSettingAsync(_stripeKey.Name);
@@ -327,7 +339,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         var result = await CallAsync("explain_setting", new { name });
 
         Assert.Equal(McpToolCallOutcome.Failed, result.Outcome);
-        Assert.Equal($"Setting '{name}' was not found. search_settings finds settings by words in their name, title or description.", result.Error);
+        Assert.Equal($"Setting '{name}' was not found. search_settings finds settings by words in their name, title, description or group.", result.Error);
     }
 
     private Task<McpToolCallResult> CallAsync(string toolName, object arguments)

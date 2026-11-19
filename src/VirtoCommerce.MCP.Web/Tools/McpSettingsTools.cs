@@ -49,8 +49,9 @@ public class McpSettingsTools(
         {
             settings = settings.Where(x => string.Equals(x.ModuleId, module_id.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
 
-            // A wrong module id would otherwise read as a module without settings.
-            if (settings.Count == 0)
+            // A wrong module id would otherwise read as a module without settings. A module whose settings are all secrets
+            // gets an empty page, with the note on secrets.
+            if (settings.Count == 0 && !await settingsService.HasSettingsAsync(module_id))
             {
                 throw new McpException($"Module '{module_id}' has no settings here. Module ids look like VirtoCommerce.Catalog; " +
                     "search_settings without module_id finds the settings of every module.");
@@ -79,7 +80,7 @@ public class McpSettingsTools(
         [Description("The setting's name, as search_settings returns it, such as Catalog.ImageCategories.")] string name)
     {
         var setting = await settingsService.GetSettingAsync(name)
-            ?? throw new McpException($"Setting '{name}' was not found. search_settings finds settings by words in their name, title or description.");
+            ?? throw new McpException($"Setting '{name}' was not found. search_settings finds settings by words in their name, title, description or group.");
 
         var backOffice = AddLink(GetScreen(setting), await GetSettingsLinkAsync(setting.Name));
 
