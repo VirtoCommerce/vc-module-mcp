@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
@@ -25,7 +24,7 @@ namespace VirtoCommerce.MCP.Web.Tools;
 public class McpSettingsTools(
     McpSettingsService settingsService,
     IMcpPageSizeResolver pageSizeResolver,
-    IHttpContextAccessor httpContextAccessor)
+    IMcpLinkResolver linkResolver)
 {
     // The back office's Settings screen; ?setting= scrolls to one setting and highlights it.
     public const string SettingsRoute = "/#!/workspace/settings";
@@ -128,7 +127,7 @@ public class McpSettingsTools(
     {
         var route = string.IsNullOrEmpty(settingName) ? SettingsRoute : $"{SettingsRoute}?setting={Uri.EscapeDataString(settingName)}";
 
-        return McpBackOfficeLinks.GetLinkAsync(httpContextAccessor.HttpContext, route);
+        return linkResolver.GetLinkAsync(route);
     }
 
     protected virtual IList<string> GetNotes(McpPlatformSetting setting)
@@ -198,6 +197,6 @@ public class McpSettingsTools(
 
     private static string AddLink(string text, string link)
     {
-        return $"{McpBackOfficeLinks.WithLink(text, link)}.";
+        return $"{text.WithLink(link)}.";
     }
 }

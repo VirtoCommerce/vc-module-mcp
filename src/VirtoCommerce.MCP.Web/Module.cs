@@ -16,6 +16,7 @@ using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Data.BackgroundJobs;
 using VirtoCommerce.MCP.Data.MySql;
 using VirtoCommerce.MCP.Data.PostgreSql;
@@ -113,6 +114,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        serviceCollection.AddTransient<IMcpLinkResolver, McpLinkResolver>();
         serviceCollection.AddTransient<IMcpOriginValidator, McpOriginValidator>();
         serviceCollection.AddTransient<IOAuthResourceProvider, McpOAuthResourceProvider>();
         serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();

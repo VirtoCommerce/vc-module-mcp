@@ -1,4 +1,4 @@
-namespace VirtoCommerce.MCP.Core;
+namespace VirtoCommerce.MCP.Core.Settings;
 
 // The settings of Virto Commerce modules known to be secrets. The list was found by running McpSecretSettings over the
 // settings of the installed modules; a secret the rule cannot find is added here by hand. A module whose tools describe

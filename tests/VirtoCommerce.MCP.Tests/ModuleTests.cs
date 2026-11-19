@@ -9,6 +9,7 @@ using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Web;
 using VirtoCommerce.MCP.Web.Filters;
 using VirtoCommerce.MCP.Web.Services;
@@ -24,6 +25,7 @@ public class ModuleTests
     [InlineData(typeof(IMcpScopeRegistry), ServiceLifetime.Singleton)]
     [InlineData(typeof(McpCallToolFilter), ServiceLifetime.Scoped)]
     [InlineData(typeof(McpSettingsService), ServiceLifetime.Transient)]
+    [InlineData(typeof(IMcpLinkResolver), ServiceLifetime.Transient)]
     public void Initialize_Should_RegisterServicesWithTheExpectedLifetime(Type serviceType, ServiceLifetime lifetime)
     {
         // Act

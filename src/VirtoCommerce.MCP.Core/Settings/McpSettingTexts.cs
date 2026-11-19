@@ -1,7 +1,7 @@
 using System;
 using Newtonsoft.Json.Linq;
 
-namespace VirtoCommerce.MCP.Core;
+namespace VirtoCommerce.MCP.Core.Settings;
 
 // A setting's title and description from the modules' localization files, as the back office shows them.
 public static class McpSettingTexts

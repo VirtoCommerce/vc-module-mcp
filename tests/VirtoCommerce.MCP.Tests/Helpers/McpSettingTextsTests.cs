@@ -1,5 +1,5 @@
 using Newtonsoft.Json.Linq;
-using VirtoCommerce.MCP.Core;
+using VirtoCommerce.MCP.Core.Settings;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Helpers;

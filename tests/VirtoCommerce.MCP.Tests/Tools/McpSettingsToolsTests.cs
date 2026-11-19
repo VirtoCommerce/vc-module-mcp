@@ -8,10 +8,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
-using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Testing;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.MCP.Web.Tools;
@@ -122,6 +122,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
                 .AddSingleton(_translationService.Object)
                 .AddSingleton(pageSize.Object)
                 .AddSingleton(originResolver.Object)
+                .AddTransient<IMcpLinkResolver, McpLinkResolver>()
                 .AddTransient<McpSettingsService>()
                 .AddMcpSecretSettings(McpKnownSecretSettings.SettingNames)
                 .AddMcpSecretSettings(_erpSigningCode.Name),

@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.Platform.Core.Settings;
 
-namespace VirtoCommerce.MCP.Core;
+namespace VirtoCommerce.MCP.Core.Settings;
 
 // The rule that keeps secrets out of the answers of every tool that describes settings.
 public static partial class McpSecretSettings

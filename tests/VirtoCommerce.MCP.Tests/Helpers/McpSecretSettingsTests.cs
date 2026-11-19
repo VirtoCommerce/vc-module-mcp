@@ -1,5 +1,5 @@
-using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.Platform.Core.Settings;
 using Xunit;
 

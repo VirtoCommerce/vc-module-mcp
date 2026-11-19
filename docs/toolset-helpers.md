@@ -6,7 +6,7 @@ Building blocks for the tools of a module, in `VirtoCommerce.MCP.Core`, and a te
 | --- | --- | --- |
 | A list tool that never cuts its answer off silently | [`McpPage<T>`, `GetPagingAsync`](#paging) | `VirtoCommerce.MCP.Core` |
 | Analysis results that read the same in every module | [`McpFinding`](#findings) | `VirtoCommerce.MCP.Core` |
-| A link to the back-office screen for what the tools do not cover | [`McpBackOfficeLinks`](#back-office-links) | `VirtoCommerce.MCP.Core` |
+| A link to the screen for what the tools do not cover | [`IMcpLinkResolver`, `WithLink`](#links-to-screens) | `VirtoCommerce.MCP.Core` |
 | "The last 24 hours", "since Monday" | [`McpTimeWindow`](#time-windows) | `VirtoCommerce.MCP.Core` |
 | A setup that other modules plug parts into, such as a store's | [`McpSetupPartPlan`, `McpSetupChoice` and the others](#setups-that-modules-plug-into) | `VirtoCommerce.MCP.Core` |
 | Describe settings as the back office does, without secrets | [`McpSettingTexts`, `McpSecretSettings`](#describe-settings) | `VirtoCommerce.MCP.Core` |
@@ -65,7 +65,7 @@ An analysis tool (a health check, a conflict check, a readiness check) returns `
 | `why` | Why it matters, when the title does not say: what it costs or puts at risk. Optional |
 | `evidence` | The figures, with units and the limit they are compared with: "Spent 8,700 of 10,000 USD (87%)" |
 | `fix` | What to do, naming the tool or the screen that does it |
-| `screen` | Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional; [`McpBackOfficeLinks`](#back-office-links) gives its link |
+| `screen` | Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional; [`IMcpLinkResolver`](#links-to-screens) gives its link |
 | `category` | The area or the cause, as the module defines it, such as `policy` or `infrastructure` |
 | `object_type`, `object_id`, `object_name` | The object the finding is about |
 
@@ -92,21 +92,20 @@ return new { findings = findings.OrderBySeverity(), highest = findings.GetHighes
 
 `OrderBySeverity` puts critical first and keeps the order within a severity; `CountBySeverity` counts one severity. A property left null, such as `why` or `screen`, is left out of the answer.
 
-## Back-office links
+## Links to screens
 
-A toolset does not cover every field. For the rest, the answer names the back-office screen that does it, with a link the person opens. `McpBackOfficeLinks.GetLinkAsync` builds the link from the public origin of the request's scope, as the scope's `IMcpPublicOriginResolver` gives it, and the route of the screen. `WithLink` writes the screen with its link in brackets.
+A toolset does not cover every field. For the rest, the answer names the screen that does it, with a link the person opens. `IMcpLinkResolver.GetLinkAsync` gives the link: the public origin of the request's scope, as the scope's `IMcpPublicOriginResolver` gives it, followed by the route of the screen. `WithLink` writes the screen with its link in brackets.
 
 ```csharp
-public const string StoresRoute = "/#!/workspace/store";
-
-var link = await McpBackOfficeLinks.GetLinkAsync(httpContextAccessor.HttpContext, StoresRoute);
-var fix = $"Back office: {McpBackOfficeLinks.WithLink("Stores > EU store > Payment methods", link)}.";
+// A tool or a service of the toolset, given IMcpLinkResolver linkResolver
+var link = await linkResolver.GetLinkAsync("/#!/workspace/store");
+var fix = $"Back office: {"Stores > EU store > Payment methods".WithLink(link)}.";
 // Back office: Stores > EU store > Payment methods (https://admin.example.com/#!/workspace/store).
 ```
 
 - The link is null outside an MCP request and when the scope has no public origin. `WithLink` then gives the screen alone, so the answer still names it.
 - The route is the part of the screen's address after the origin. Screens of the classic back office start with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does.
-- A module registers nothing for it: it uses the MCP module's services of the request.
+- A module registers nothing for it: the MCP module registers `IMcpLinkResolver`, and a solution replaces it to send the links elsewhere.
 
 ## Time windows
 
