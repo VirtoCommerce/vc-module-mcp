@@ -98,6 +98,7 @@ public sealed class McpToolHarness : IAsyncDisposable
         configureServices?.Invoke(services);
         services.TryAddSingleton<IHttpContextAccessor, HttpContextAccessor>();
         services.TryAddTransient<IMcpLinkResolver, McpLinkResolver>();
+        services.TryAddSingleton<IAdminUIAppService, McpTestAdminUIAppService>();
         registerTools(services);
 
         return new McpToolHarness(services.BuildServiceProvider(), scope ?? DefaultScope());

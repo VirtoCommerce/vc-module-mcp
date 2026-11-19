@@ -7,8 +7,16 @@ namespace VirtoCommerce.MCP.Core.Models;
 // Setting and field values as a setup compares them: a value from a request (a JsonElement), a stored one or a default.
 public static class McpSetupValues
 {
-    // Numbers by value (10 equals 10.0), anything else by its invariant text, ignoring case; null equals an empty text.
+    // Numbers and booleans by value (10 equals 10.0, true equals "True"), anything else by its invariant text exactly, as
+    // the platform compares setting values; null equals an empty text.
     public static bool AreEqual(object left, object right)
+    {
+        return AreEqual(left, right, StringComparison.Ordinal);
+    }
+
+    // As AreEqual, with texts compared as given: StringComparison.OrdinalIgnoreCase finds an allowed value whatever the
+    // case it is sent in.
+    public static bool AreEqual(object left, object right, StringComparison textComparison)
     {
         var leftText = ToInvariantString(left);
         var rightText = ToInvariantString(right);
@@ -19,7 +27,12 @@ public static class McpSetupValues
             return leftNumber == rightNumber;
         }
 
-        return string.Equals(leftText ?? string.Empty, rightText ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        if (bool.TryParse(leftText, out var leftBoolean) && bool.TryParse(rightText, out var rightBoolean))
+        {
+            return leftBoolean == rightBoolean;
+        }
+
+        return string.Equals(leftText ?? string.Empty, rightText ?? string.Empty, textComparison);
     }
 
     public static string ToInvariantString(object value)

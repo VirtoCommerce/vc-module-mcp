@@ -9,26 +9,40 @@ namespace VirtoCommerce.MCP.Tests.Helpers;
 [Trait("Category", "Unit")]
 public class McpSetupValuesTests
 {
+    // A change of letter case is a change of a text, as the platform compares setting values.
     [Theory]
     [InlineData(10, 10.0, true)]
     [InlineData("10", 10, true)]
     [InlineData("10.50", 10.5, true)]
     [InlineData(10, 11, false)]
-    [InlineData("Abc", "aBC", true)]
+    [InlineData("Abc", "Abc", true)]
+    [InlineData("Abc", "aBC", false)]
     [InlineData("abc", "abd", false)]
     [InlineData(null, "", true)]
     [InlineData(null, "x", false)]
     [InlineData(true, "True", true)]
-    public void AreEqual_ComparesNumbersByValue_AndTextIgnoringCase(object left, object right, bool expected)
+    [InlineData("true", "True", true)]
+    [InlineData(false, "true", false)]
+    public void AreEqual_ComparesNumbersAndBooleansByValue_AndTextExactly(object left, object right, bool expected)
     {
         Assert.Equal(expected, McpSetupValues.AreEqual(left, right));
         Assert.Equal(expected, McpSetupValues.AreEqual(right, left));
     }
 
+    // How an allowed value sent in another case is found.
+    [Fact]
+    public void AreEqual_IgnoresTheCaseOfTexts_WhenAsked()
+    {
+        Assert.True(McpSetupValues.AreEqual("Live", "live", StringComparison.OrdinalIgnoreCase));
+        Assert.False(McpSetupValues.AreEqual("Live", "Test", StringComparison.OrdinalIgnoreCase));
+        Assert.True(McpSetupValues.AreEqual(10, "10.0", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void AreEqual_ReadsTheValueOfAJsonElementFromARequest()
     {
-        Assert.True(McpSetupValues.AreEqual(Json("\"Abc\""), "abc"));
+        Assert.True(McpSetupValues.AreEqual(Json("\"Abc\""), "Abc"));
+        Assert.False(McpSetupValues.AreEqual(Json("\"Abc\""), "abc"));
         Assert.True(McpSetupValues.AreEqual(Json("5"), 5.0));
         Assert.True(McpSetupValues.AreEqual(Json("true"), true));
         Assert.True(McpSetupValues.AreEqual(Json("null"), null));

@@ -798,6 +798,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
+| `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the classic back office, wherever the platform serves it |
 | `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |

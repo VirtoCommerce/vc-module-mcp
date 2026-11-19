@@ -64,6 +64,17 @@ public class McpFindingTests
         Assert.Equal("Customers cannot pay.", document.RootElement.GetProperty("why").GetString());
         Assert.Equal("Stores > EU store > Payment methods", document.RootElement.GetProperty("screen").GetString());
     }
+
+    // ManualOnly is written only when it is true, so the answers of other toolsets stay as they were.
+    [Fact]
+    public void Serialize_WritesManualOnly_OnlyWhenItIsTrue()
+    {
+        var unset = JsonSerializer.Serialize(new McpFinding { Id = "a" }, McpSerialization.Options);
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(new McpFinding { Id = "a", ManualOnly = true }, McpSerialization.Options));
+
+        Assert.DoesNotContain("manual_only", unset);
+        Assert.True(document.RootElement.GetProperty("manual_only").GetBoolean());
+    }
 }
 
 [Trait("Category", "Unit")]

@@ -66,6 +66,7 @@ An analysis tool (a health check, a conflict check, a readiness check) returns `
 | `evidence` | The figures, with units and the limit they are compared with: "Spent 8,700 of 10,000 USD (87%)" |
 | `fix` | What to do, naming the tool or the screen that does it |
 | `screen` | Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional; [`IMcpLinkResolver`](#links-to-screens) gives its link |
+| `manual_only` | True when only a person can fix it, never a tool, such as a secret to enter in the back office. Written only when true |
 | `category` | The area or the cause, as the module defines it, such as `policy` or `infrastructure` |
 | `object_type`, `object_id`, `object_name` | The object the finding is about |
 
@@ -103,8 +104,8 @@ var fix = $"Back office: {"Stores > EU store > Payment methods".WithLink(link)}.
 // Back office: Stores > EU store > Payment methods (https://admin.example.com/#!/workspace/store).
 ```
 
-- The link is null outside an MCP request and when the scope has no public origin. `WithLink` then gives the screen alone, so the answer still names it.
-- The route is the part of the screen's address after the origin. Screens of the classic back office start with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does.
+- The link is null outside an MCP request, when the scope has no public origin, and when the classic back office (the AngularJS admin, app `platform`) is not installed or the platform's admin UI is switched off (`VirtoCommerce:PlatformUI:Enable`). `WithLink` then gives the screen alone, so the answer still names it.
+- The route is the screen's address in the classic back office, which starts with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does. The link follows where the platform serves the classic back office (`IAdminUIAppService`): at the site root, or at `/apps/platform/` when another admin UI, such as Admin Shell, owns the root (`VirtoCommerce:PlatformUI:RootApp`).
 - A module registers nothing for it: the MCP module registers `IMcpLinkResolver`, and a solution replaces it to send the links elsewhere.
 
 ## Time windows
@@ -149,7 +150,7 @@ Some setups span modules. A store's setup takes the basics from Store, the payme
 | `McpSetupPartPlan` | What applying a part's section would change (`McpFieldChange` items), why it cannot be applied, and what the approver should know. A part derives it to carry the state after the change |
 | `McpSetupPartResult`, `McpSetupPartStatus` | What a setup changes or changed in one part, and how it went: `NoChange`, `WillChange`, `Applied`, `Failed` or `NotApplied` |
 | `McpSetupPermissions` | The existing permissions that guard a part: `Read`, `Update`, `Create`, and the permission scope that limits them (`ScopeType`) |
-| `McpSetupValues` | Compares a value from a request with a stored one or a default: numbers by value, other values by their text, ignoring case |
+| `McpSetupValues` | Compares a value from a request with a stored one or a default: numbers and booleans by value, other values by their exact text, as the platform compares setting values; an overload takes a `StringComparison`, such as `OrdinalIgnoreCase` to find an allowed value sent in another case |
 | `McpFinding` | What the object is missing, with `why` and `screen` ([Findings](#findings)) |
 
 The rules belong to the contract, not to these shapes: what refuses a request, the order of the parts, what blocks going live. Store's setup is the example: its parts and their rules are in the Store module's README, under "A module's part of a store's setup".

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 
 namespace VirtoCommerce.MCP.Core.Models;
 
@@ -29,6 +30,11 @@ public class McpFinding
 
     // Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional.
     public string Screen { get; set; }
+
+    // Fixed by a person only, never through the tools, such as a secret entered in the back office. Written to the answer
+    // only when true.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ManualOnly { get; set; }
 
     // The area or the cause the finding belongs to, as the module defines it, such as "policy" or "infrastructure".
     public string Category { get; set; }
