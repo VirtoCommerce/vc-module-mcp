@@ -40,12 +40,13 @@ public class McpSettingTextsTests
     }
 
     [Fact]
-    public void Find_GivesNull_ForATextTheFilesDoNotHave()
+    public void Find_GivesTheDisplayNameOrTheName_ForATitleTheFilesDoNotHave()
     {
         var translation = JObject.Parse("""{ "settings": { "Stores": { "Blank": { "title": " " } } } }""");
 
-        Assert.Equal((null, null), McpSettingTexts.Find(translation, "Stores.Blank"));
-        Assert.Equal((null, null), McpSettingTexts.Find(translation, "Stores.Unknown"));
-        Assert.Equal((null, null), McpSettingTexts.Find(translation: null, "Stores.Blank"));
+        Assert.Equal(("Blank setting", null), McpSettingTexts.Find(translation, "Stores.Blank", "Blank setting"));
+        Assert.Equal(("Stores.Blank", null), McpSettingTexts.Find(translation, "Stores.Blank"));
+        Assert.Equal(("Stores.Unknown", null), McpSettingTexts.Find(translation, "Stores.Unknown"));
+        Assert.Equal(("Stores.Blank", null), McpSettingTexts.Find(translation: null, "Stores.Blank"));
     }
 }

@@ -9,7 +9,6 @@ using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
-using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Web;
 using VirtoCommerce.MCP.Web.Filters;
 using VirtoCommerce.MCP.Web.Services;
@@ -47,19 +46,6 @@ public class ModuleTests
         // Assert
         Assert.Contains(ModuleConstants.ToolNames.SearchSettings, names);
         Assert.Contains(ModuleConstants.ToolNames.ExplainSetting, names);
-    }
-
-    [Fact]
-    public void Initialize_Should_KnowTheSecretSettingsOfVirtoCommerceModules()
-    {
-        // Arrange
-        using var serviceProvider = Initialize().BuildServiceProvider();
-
-        // Act
-        var secrets = serviceProvider.GetRequiredService<IOptions<McpSecretSettingsOptions>>().Value.SettingNames;
-
-        // Assert
-        Assert.Equal(McpKnownSecretSettings.SettingNames.Order(), secrets.Order());
     }
 
     [Fact]

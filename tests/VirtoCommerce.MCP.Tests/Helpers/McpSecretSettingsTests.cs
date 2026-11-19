@@ -43,6 +43,13 @@ public class McpSecretSettingsTests
     }
 
     [Fact]
+    public void IsSecret_ForEverySettingKnownToBeASecret_WhateverTheCase()
+    {
+        // In capitals, the names have no secret word of their own: only the list finds them, with no module registering it.
+        Assert.All(McpKnownSecretSettings.SettingNames, name => Assert.True(McpSecretSettings.IsSecret(name.ToUpperInvariant(), SettingValueType.ShortText, _noNamedSecrets)));
+    }
+
+    [Fact]
     public void IsSecret_WhenAModuleNamesIt_WhateverTheCase()
     {
         var options = new McpSecretSettingsOptions();

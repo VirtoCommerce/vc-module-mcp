@@ -60,9 +60,9 @@ public static class McpServiceCollectionExtensions
         return services;
     }
 
-    // Marks settings as secrets for the MCP module's settings tools (search_settings, explain_setting): they are never
-    // listed, and their values never returned. A setting typed SecureString, or with the word Key, Secret, Password, Token
-    // or Credential(s) in its name, is a secret already; this names the others.
+    // Marks a module's settings as secrets for every tool that describes settings (McpSecretSettings): they are never
+    // listed, and their values never returned. A setting typed SecureString, known to be a secret (McpKnownSecretSettings),
+    // or with the word Key, Secret, Password, Token or Credential(s) in its name, is a secret already; this names the others.
     public static IServiceCollection AddMcpSecretSettings(this IServiceCollection services, params string[] settingNames)
     {
         ArgumentNullException.ThrowIfNull(settingNames);

@@ -13,13 +13,17 @@ public static partial class McpSecretSettings
     // Compared with the whole words of a setting name: "ApiKey" has the word Key, "Keyword" does not.
     private static readonly HashSet<string> _secretWords = new(StringComparer.OrdinalIgnoreCase) { "Key", "Secret", "Password", "Token", "Credential", "Credentials" };
 
-    // A setting is a secret when it is typed SecureString, when a module names it (AddMcpSecretSettings), or when its name
-    // has the word Key, Secret, Password, Token or Credential(s). The rule errs on the safe side.
+    private static readonly HashSet<string> _knownSecrets = new(McpKnownSecretSettings.SettingNames, StringComparer.OrdinalIgnoreCase);
+
+    // A setting is a secret when it is typed SecureString, when it is known to be one (McpKnownSecretSettings), when a
+    // module names it (AddMcpSecretSettings), or when its name has the word Key, Secret, Password, Token or Credential(s).
+    // The rule errs on the safe side.
     public static bool IsSecret(string name, SettingValueType valueType, McpSecretSettingsOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         return valueType == SettingValueType.SecureString
+            || _knownSecrets.Contains(name)
             || options.SettingNames.Contains(name)
             || GetNameWords(name).Any(_secretWords.Contains);
     }

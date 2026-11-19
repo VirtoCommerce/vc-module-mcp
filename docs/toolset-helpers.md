@@ -159,17 +159,16 @@ The rules belong to the contract, not to these shapes: what refuses a request, t
 A tool that describes settings, such as `explain_setting`, shows them as the back office does and never shows a secret. The same helpers serve every toolset:
 
 - `McpSetting` is a setting described for a person: its name, title, description, module, type, default, value and allowed values, whether it is required and whether its value was changed. A toolset derives it to add what it knows, as `McpSetupSetting` does for a setup.
-- `McpSettingTexts.Find` gives a setting's title and description from the modules' localization files, as the back office shows them; null for a text the files do not have.
-- `McpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. A setting is a secret when it is typed `SecureString`, when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential(s): `ApiKey` does, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
+- `McpSettingTexts.Find` gives a setting's title and description from the modules' English localization files (`McpSettingTexts.Language`), as the back office shows them. A title the files do not have is the setting's display name, or else its name; such a description is null.
+- `McpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. A setting is a secret when it is typed `SecureString`, when it is a setting of a Virto Commerce module known to be a secret (`McpKnownSecretSettings`), when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential(s): `ApiKey` does, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
 
 ```csharp
-// Module.Initialize: the known secrets of Virto Commerce modules, and the module's own
-serviceCollection.AddMcpSecretSettings(McpKnownSecretSettings.SettingNames);
+// Module.Initialize: the module's own secrets that the rule does not find
 serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
 
 // The service that describes the settings, given ITranslationService and IOptions<McpSecretSettingsOptions>
-var translation = translationService.GetTranslationDataForLanguage("en");
-var (title, description) = McpSettingTexts.Find(translation, descriptor.Name);
+var translation = translationService.GetTranslationDataForLanguage(McpSettingTexts.Language);
+var (title, description) = McpSettingTexts.Find(translation, descriptor.Name, descriptor.DisplayName);
 var isSecret = McpSecretSettings.IsSecret(descriptor.Name, descriptor.ValueType, secretOptions.Value);
 ```
 
@@ -263,7 +262,7 @@ public class PromotionToolsTests : IAsyncDisposable
 - `AskedForConfirmation` and `WasDryRun` say what happened on the way; `EnsureSucceeded()` throws with the outcome and the message otherwise.
 - `McpToolCallOptions.AsApprovedChange` runs a call that needs approval for real, as an approved change does; `DeclineConfirmation` answers a confirmation with **Decline** (by default the harness confirms).
 - The scope is the admin scope (signed-in users, approval with `mcp:approve`); pass another `McpScope` to `Create` for a scope of your own. Tools a test registers itself go through `McpToolHarness.Create(services => services.AddMcpTools<MyTools>(), configureServices, scope)`.
-- During a call, `IHttpContextAccessor.HttpContext` carries the user and the scope, as on the MCP endpoint.
+- During a call, `IHttpContextAccessor.HttpContext` carries the user and the scope, as on the MCP endpoint, and `IMcpLinkResolver` gives links from the scope's `IMcpPublicOriginResolver`, which the test registers.
 
 The harness reproduces the rules above; it does not run the module's call filters, write the audit, or store pending changes. Test those through the MCP module's endpoint, as a [scenario on a test environment](role-toolsets.md#on-a-test-environment).
 

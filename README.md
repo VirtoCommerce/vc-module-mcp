@@ -428,14 +428,14 @@ Two read-only tools in the `admin` scope answer questions about the platform's s
 | `search_settings` | Settings found by words in their name, title, description or group, by module, or changed from their defaults, each with its title, description, module, group, type, value and default; pages with `skip` and `take` |
 | `explain_setting` | One setting: what it does, its value, default and allowed values, whether the platform's configuration sets it, whether a change needs a restart, whether objects such as stores keep their own values, and a link that opens it on the **Settings** screen |
 
-No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential(s), or when a module names it:
+No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential(s), when it is a setting of a Virto Commerce module known to be a secret, or when a module names it:
 
 ```csharp
 // Module.Initialize
 serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
 ```
 
-The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too. A module whose own tools describe settings applies the same rule with `McpSecretSettings.IsSecret` and registers `McpKnownSecretSettings`, the settings of Virto Commerce modules known to be secrets ([Describe settings](docs/toolset-helpers.md#describe-settings)).
+The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too. A module whose own tools describe settings applies the same rule with `McpSecretSettings.IsSecret` ([Describe settings](docs/toolset-helpers.md#describe-settings)).
 
 ### Audit and cleanup
 

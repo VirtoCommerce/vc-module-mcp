@@ -6,15 +6,18 @@ namespace VirtoCommerce.MCP.Core.Settings;
 // A setting's title and description from the modules' localization files, as the back office shows them.
 public static class McpSettingTexts
 {
-    // The title and the description of a setting in a translation (ITranslationService.GetTranslationDataForLanguage);
-    // null for a text the files do not have.
-    public static (string Title, string Description) Find(JObject translation, string settingName)
+    // Titles and descriptions come from the English localization files of the modules, as in the back office.
+    public const string Language = "en";
+
+    // The title and the description of a setting in a translation (ITranslationService.GetTranslationDataForLanguage with
+    // Language). A title the files do not have is the display name, or else the name; such a description is null.
+    public static (string Title, string Description) Find(JObject translation, string settingName, string displayName = null)
     {
         ArgumentNullException.ThrowIfNull(settingName);
 
         var texts = FindNode(translation?["settings"], settingName.Split('.'), 0);
 
-        return (GetText(texts, "title"), GetText(texts, "description"));
+        return (GetText(texts, "title") ?? displayName ?? settingName, GetText(texts, "description"));
     }
 
     private static string GetText(JToken texts, string key)

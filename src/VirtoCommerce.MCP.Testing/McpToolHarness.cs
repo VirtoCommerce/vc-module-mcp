@@ -20,6 +20,7 @@ using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.Platform.Core;
 
 namespace VirtoCommerce.MCP.Testing;
@@ -96,6 +97,7 @@ public sealed class McpToolHarness : IAsyncDisposable
         services.TryAddSingleton(TimeProvider.System);
         configureServices?.Invoke(services);
         services.TryAddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+        services.TryAddTransient<IMcpLinkResolver, McpLinkResolver>();
         registerTools(services);
 
         return new McpToolHarness(services.BuildServiceProvider(), scope ?? DefaultScope());

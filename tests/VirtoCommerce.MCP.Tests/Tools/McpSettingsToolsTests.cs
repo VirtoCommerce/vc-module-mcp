@@ -11,7 +11,6 @@ using Newtonsoft.Json.Linq;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
-using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Testing;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.MCP.Web.Tools;
@@ -43,8 +42,8 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
 
     private static readonly SettingDescriptor _orderStatus = new()
     {
-        Name = "Orders.DefaultStatus", ModuleId = "VirtoCommerce.Orders", GroupName = "Orders|General", ValueType = SettingValueType.ShortText,
-        DefaultValue = "New", AllowedValues = ["New", "Processing"],
+        Name = "Orders.DefaultStatus", DisplayName = "Default order status", ModuleId = "VirtoCommerce.Orders", GroupName = "Orders|General",
+        ValueType = SettingValueType.ShortText, DefaultValue = "New", AllowedValues = ["New", "Processing"],
     };
 
     private static readonly SettingDescriptor _cacheExpiration = new()
@@ -122,9 +121,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
                 .AddSingleton(_translationService.Object)
                 .AddSingleton(pageSize.Object)
                 .AddSingleton(originResolver.Object)
-                .AddTransient<IMcpLinkResolver, McpLinkResolver>()
                 .AddTransient<McpSettingsService>()
-                .AddMcpSecretSettings(McpKnownSecretSettings.SettingNames)
                 .AddMcpSecretSettings(_erpSigningCode.Name),
             scope: null);
     }
@@ -273,6 +270,16 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         Assert.Contains(GetNotes(senderEmail), x => x.Contains("the back office shows it but cannot change it"));
         Assert.True(cacheExpiration.Json.GetProperty("restart_required").GetBoolean());
         Assert.Equal(["A change takes effect after the platform restarts."], GetNotes(cacheExpiration));
+    }
+
+    [Fact]
+    public async Task ExplainSetting_TitleIsTheDisplayName_WhenTheLocalizationFilesHaveNone()
+    {
+        // Act
+        var result = await CallAsync("explain_setting", new { name = _orderStatus.Name });
+
+        // Assert
+        Assert.Equal("Default order status", result.Json.GetProperty("title").GetString());
     }
 
     [Fact]
