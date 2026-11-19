@@ -69,7 +69,14 @@
       "LAST_USED": "Último uso",
       "SESSIONS": "Inicios de sesión activos",
       "ENDPOINT": "Punto de conexión MCP",
-      "SEARCH": "Agente, ID de cliente o usuario"
+      "SEARCH": "Agente, ID de cliente o usuario",
+      "REGISTRATION": "Registro",
+      "REGISTRATIONS": {
+        "SELF": "Autorregistrado",
+        "ADMINISTRATOR": "Por un administrador",
+        "CLIENT_ID_METADATA_DOCUMENT": "Autorregistrado: documento de metadatos",
+        "DYNAMIC_REGISTRATION": "Autorregistrado: dinámico"
+      }
     },
     "FIELDS": {
       "TOOL": "Herramienta",

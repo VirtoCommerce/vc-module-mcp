@@ -7,11 +7,13 @@ using Microsoft.AspNetCore.Identity;
 using OpenIddict.Abstractions;
 using VirtoCommerce.MCP.Web.Models;
 using VirtoCommerce.Platform.Core.Security;
+using VirtoCommerce.Platform.Security.OpenIddict.ClientRegistration;
 
 namespace VirtoCommerce.MCP.Web.Services;
 
-// The agents connected to MCP endpoints. An agent is an OAuth client registered for an MCP resource (rsrc:.../mcp);
-// each user who signs in to it gets one stored authorization, which lives until it is revoked.
+// The agents connected to MCP endpoints. An agent is an OAuth client registered for an MCP resource (rsrc:.../mcp), or
+// a self-registered client a user consented to for one; each user who signs in to it gets one stored authorization,
+// which lives until it is revoked.
 public class McpConnectedAgentService(
     IOpenIddictApplicationManager applicationManager,
     IOpenIddictAuthorizationManager authorizationManager,
@@ -37,12 +39,17 @@ public class McpConnectedAgentService(
 
         foreach (var application in applications)
         {
-            var resources = await GetMcpResourcesAsync(application);
             var clientId = await applicationManager.GetClientIdAsync(application);
-
-            if (resources.Count > 0 && (string.IsNullOrEmpty(criteria.ClientId) || string.Equals(criteria.ClientId, clientId, StringComparison.Ordinal)))
+            var registrationType = await applicationManager.GetRegistrationTypeAsync(application);
+            if (!MatchesCriteria(criteria, clientId, registrationType))
             {
-                agents.AddRange(await GetAgentsAsync(application, clientId, resources, criteria.UserId));
+                continue;
+            }
+
+            var resources = registrationType == null ? await GetMcpResourcesAsync(application) : null;
+            if (resources == null || resources.Count > 0)
+            {
+                agents.AddRange(await GetAgentsAsync(application, clientId, registrationType, resources, criteria.UserId));
             }
         }
 
@@ -103,8 +110,16 @@ public class McpConnectedAgentService(
     {
         var applicationId = await authorizationManager.GetApplicationIdAsync(authorization);
         var application = string.IsNullOrEmpty(applicationId) ? null : await applicationManager.FindByIdAsync(applicationId);
+        if (application == null)
+        {
+            return false;
+        }
 
-        return application != null && (await GetMcpResourcesAsync(application)).Count > 0;
+        var resources = await applicationManager.IsSelfRegisteredAsync(application)
+            ? await GetConsentedMcpResourcesAsync(authorization)
+            : await GetMcpResourcesAsync(application);
+
+        return resources.Count > 0;
     }
 
     protected virtual async Task<IList<string>> GetMcpResourcesAsync(object application)
@@ -114,11 +129,23 @@ public class McpConnectedAgentService(
         return permissions
             .Where(x => x.StartsWith(OpenIddictConstants.Permissions.Prefixes.Resource, StringComparison.Ordinal))
             .Select(x => x[OpenIddictConstants.Permissions.Prefixes.Resource.Length..])
-            .Where(x => x.TrimEnd('/').EndsWith(McpResourceSuffix, StringComparison.OrdinalIgnoreCase))
+            .Where(IsMcpResource)
             .ToList();
     }
 
-    private async Task<IList<McpConnectedAgent>> GetAgentsAsync(object application, string clientId, IList<string> resources, string userId)
+    protected virtual async Task<IList<string>> GetConsentedMcpResourcesAsync(object authorization)
+    {
+        var consented = await authorizationManager.GetConsentedResourcesAsync(authorization);
+
+        return consented.Where(IsMcpResource).ToList();
+    }
+
+    private static bool IsMcpResource(string resource)
+    {
+        return resource.TrimEnd('/').EndsWith(McpResourceSuffix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<IList<McpConnectedAgent>> GetAgentsAsync(object application, string clientId, string registrationType, IList<string> resources, string userId)
     {
         var applicationId = await applicationManager.GetIdAsync(application);
         var clientName = await applicationManager.GetDisplayNameAsync(application) ?? clientId;
@@ -129,22 +156,31 @@ public class McpConnectedAgentService(
         {
             var subject = await authorizationManager.GetSubjectAsync(authorization);
 
-            if (await authorizationManager.HasStatusAsync(authorization, OpenIddictConstants.Statuses.Valid) &&
-                (string.IsNullOrEmpty(userId) || string.Equals(subject, userId, StringComparison.OrdinalIgnoreCase)))
+            if (!await authorizationManager.HasStatusAsync(authorization, OpenIddictConstants.Statuses.Valid) ||
+                (!string.IsNullOrEmpty(userId) && !string.Equals(subject, userId, StringComparison.OrdinalIgnoreCase)))
             {
-                var agent = new McpConnectedAgent
-                {
-                    Id = await authorizationManager.GetIdAsync(authorization),
-                    ClientId = clientId,
-                    ClientName = clientName,
-                    UserId = subject,
-                    Resources = resources,
-                    ConnectedDate = (await authorizationManager.GetCreationDateAsync(authorization))?.UtcDateTime,
-                };
-
-                await SetTokenActivityAsync(agent);
-                agents.Add(agent);
+                continue;
             }
+
+            var agentResources = resources ?? await GetConsentedMcpResourcesAsync(authorization);
+            if (agentResources.Count == 0)
+            {
+                continue;
+            }
+
+            var agent = new McpConnectedAgent
+            {
+                Id = await authorizationManager.GetIdAsync(authorization),
+                ClientId = clientId,
+                ClientName = clientName,
+                RegistrationType = registrationType,
+                UserId = subject,
+                Resources = agentResources,
+                ConnectedDate = (await authorizationManager.GetCreationDateAsync(authorization))?.UtcDateTime,
+            };
+
+            await SetTokenActivityAsync(agent);
+            agents.Add(agent);
         }
 
         return agents;
@@ -168,6 +204,14 @@ public class McpConnectedAgentService(
                 agent.ActiveSessionCount++;
             }
         }
+    }
+
+    protected virtual bool MatchesCriteria(McpConnectedAgentSearchCriteria criteria, string clientId, string registrationType)
+    {
+        var clientMatches = string.IsNullOrEmpty(criteria.ClientId) || string.Equals(criteria.ClientId, clientId, StringComparison.Ordinal);
+        var registrationMatches = criteria.SelfRegistered == null || criteria.SelfRegistered == (registrationType != null);
+
+        return clientMatches && registrationMatches;
     }
 
     protected virtual bool Matches(McpConnectedAgent agent, string keyword)

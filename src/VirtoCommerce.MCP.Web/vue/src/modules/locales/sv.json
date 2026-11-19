@@ -69,7 +69,14 @@
       "LAST_USED": "Senast använd",
       "SESSIONS": "Aktiva inloggningar",
       "ENDPOINT": "MCP-slutpunkt",
-      "SEARCH": "Agent, klient-id eller användare"
+      "SEARCH": "Agent, klient-id eller användare",
+      "REGISTRATION": "Registrering",
+      "REGISTRATIONS": {
+        "SELF": "Självregistrerad",
+        "ADMINISTRATOR": "Av en administratör",
+        "CLIENT_ID_METADATA_DOCUMENT": "Självregistrerad: metadatadokument",
+        "DYNAMIC_REGISTRATION": "Självregistrerad: dynamisk"
+      }
     },
     "FIELDS": {
       "TOOL": "Verktyg",

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
@@ -11,6 +12,7 @@ using OpenIddict.Abstractions;
 using VirtoCommerce.MCP.Web.Models;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core.Security;
+using VirtoCommerce.Platform.Security.OpenIddict.ClientRegistration;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Services;
@@ -20,11 +22,15 @@ public class McpConnectedAgentServiceTests
 {
     private const string McpApp = "app-claude";
     private const string AdminApp = "app-admin-spa";
+    private const string SelfRegisteredApp = "app-cursor";
     private const string Marketer = "user-marketer";
     private const string Approver = "user-approver";
 
     private static readonly DateTimeOffset _now = new(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
 
+    private static readonly string[] _consentedResources = ["https://admin.example.com/admin/mcp"];
+
+    private readonly List<object> _applicationIds = [McpApp, AdminApp];
     private readonly Mock<IOpenIddictApplicationManager> _applications = new();
     private readonly Mock<IOpenIddictAuthorizationManager> _authorizations = new();
     private readonly Mock<IOpenIddictTokenManager> _tokens = new();
@@ -38,7 +44,7 @@ public class McpConnectedAgentServiceTests
         ClaimsPrincipalExtensions.UserIdClaimTypes = ["sub", ClaimTypes.NameIdentifier];
 
         _applications.Setup(x => x.ListAsync(It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .Returns(AsAsync<object>(McpApp, AdminApp));
+            .Returns(() => AsAsync(_applicationIds.ToArray()));
 
         Application(McpApp, "claude-code", "Claude Code", "ept:authorization", "rsrc:https://admin.example.com/admin/mcp");
         Application(AdminApp, "admin-spa", "Back office", "ept:authorization", "rsrc:https://admin.example.com/api");
@@ -107,6 +113,81 @@ public class McpConnectedAgentServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_Should_TellHowSelfRegisteredAgentRegistered_And_ShowEndpointsUserConsentedTo()
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria());
+
+        // Assert
+        var cursor = result.Results.Single(x => x.Id == "auth-cursor");
+        Assert.Equal(SelfRegisteredClientConstants.ClientIdMetadataDocument, cursor.RegistrationType);
+        Assert.Equal(["https://admin.example.com/admin/mcp"], cursor.Resources);
+        Assert.All(result.Results.Where(x => x.Id != "auth-cursor"), x => Assert.Null(x.RegistrationType));
+    }
+
+    [Fact]
+    public async Task SearchAsync_Should_KeepSelfRegisteredAgent_When_ItsScopeNoLongerAllowsSelfRegisteredClients()
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+        CloseTheScopeOfTheSelfRegisteredApp();
+
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria());
+
+        // Assert
+        Assert.Equal(["https://admin.example.com/admin/mcp"], result.Results.Single(x => x.Id == "auth-cursor").Resources);
+    }
+
+    [Fact]
+    public async Task RevokeAsync_Should_DisconnectSelfRegisteredAgent_When_ItsScopeNoLongerAllowsSelfRegisteredClients()
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+        CloseTheScopeOfTheSelfRegisteredApp();
+
+        // Act
+        var result = await CreateService().RevokeAsync(User(Marketer), "auth-cursor", canRevokeAny: false);
+
+        // Assert
+        Assert.Equal(McpConnectedAgentRevokeResult.Revoked, result);
+        _sessions.Verify(x => x.TerminateUserSessionGroup("auth-cursor"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SearchAsync_Should_SkipSelfRegisteredAgent_When_ConsentStoresNoResources()
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+        _authorizations.Setup(x => x.GetPropertiesAsync("auth-cursor", It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty);
+
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria());
+
+        // Assert
+        Assert.DoesNotContain(result.Results, x => x.Id == "auth-cursor");
+    }
+
+    [Theory]
+    [InlineData(true, new[] { "auth-cursor" })]
+    [InlineData(false, new[] { "auth-marketer", "auth-approver" })]
+    [InlineData(null, new[] { "auth-cursor", "auth-marketer", "auth-approver" })]
+    public async Task SearchAsync_Should_FilterBySelfRegistration(bool? selfRegistered, string[] expected)
+    {
+        // Arrange
+        AddSelfRegisteredApp();
+
+        // Act
+        var result = await CreateService().SearchAsync(new McpConnectedAgentSearchCriteria { SelfRegistered = selfRegistered });
+
+        // Assert
+        Assert.Equal(expected, result.Results.Select(x => x.Id));
+    }
+
+    [Fact]
     public async Task RevokeAsync_Should_SignTheAgentOut_When_TheUserRevokesTheirOwnAgent()
     {
         // Act
@@ -158,8 +239,32 @@ public class McpConnectedAgentServiceTests
         return new McpConnectedAgentService(_applications.Object, _authorizations.Object, _tokens.Object, _sessions.Object, () => _userManager.Object);
     }
 
+    // A client that registered itself with a client ID metadata document, the latest to connect
+    private void AddSelfRegisteredApp()
+    {
+        _applicationIds.Add(SelfRegisteredApp);
+
+        Application(SelfRegisteredApp, "https://cursor.com/oauth/client", "Cursor", "ept:authorization", "rsrc:https://admin.example.com/admin/mcp",
+            "rsrc:https://admin.example.com/vendor/mcp");
+        _applications.Setup(x => x.GetPropertiesAsync(SelfRegisteredApp, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty.Add(SelfRegisteredClientConstants.RegistrationProperty, JsonSerializer.SerializeToElement(SelfRegisteredClientConstants.ClientIdMetadataDocument)));
+
+        Authorization("auth-cursor", SelfRegisteredApp, Marketer, OpenIddictConstants.Statuses.Valid, _now.AddMinutes(-5));
+        _authorizations.Setup(x => x.GetPropertiesAsync("auth-cursor", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty.Add(SelfRegisteredClientConstants.ResourcesProperty,
+                JsonSerializer.SerializeToElement(_consentedResources)));
+        _authorizations.Setup(x => x.FindByApplicationIdAsync(SelfRegisteredApp, It.IsAny<CancellationToken>()))
+            .Returns(AsAsync<object>("auth-cursor"));
+    }
+
+    private void CloseTheScopeOfTheSelfRegisteredApp()
+    {
+        _applications.Setup(x => x.GetPermissionsAsync(SelfRegisteredApp, It.IsAny<CancellationToken>())).ReturnsAsync(["ept:authorization"]);
+    }
+
     private void Application(string id, string clientId, string displayName, params string[] permissions)
     {
+        _applications.Setup(x => x.GetPropertiesAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty);
         _applications.Setup(x => x.FindByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(id);
         _applications.Setup(x => x.GetIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(id);
         _applications.Setup(x => x.GetClientIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(clientId);
@@ -172,6 +277,7 @@ public class McpConnectedAgentServiceTests
         _authorizations.Setup(x => x.FindByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(id);
         _authorizations.Setup(x => x.GetIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(id);
         _authorizations.Setup(x => x.GetApplicationIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(applicationId);
+        _authorizations.Setup(x => x.GetPropertiesAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableDictionary<string, JsonElement>.Empty);
         _authorizations.Setup(x => x.GetSubjectAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(subject);
         _authorizations.Setup(x => x.GetCreationDateAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(created);
         _authorizations.Setup(x => x.HasStatusAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))

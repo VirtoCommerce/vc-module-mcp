@@ -69,7 +69,14 @@
       "LAST_USED": "آخر استخدام",
       "SESSIONS": "عمليات تسجيل الدخول النشطة",
       "ENDPOINT": "نقطة نهاية MCP",
-      "SEARCH": "الوكيل أو معرّف العميل أو المستخدم"
+      "SEARCH": "الوكيل أو معرّف العميل أو المستخدم",
+      "REGISTRATION": "التسجيل",
+      "REGISTRATIONS": {
+        "SELF": "مسجّل ذاتيًا",
+        "ADMINISTRATOR": "بواسطة مسؤول",
+        "CLIENT_ID_METADATA_DOCUMENT": "مسجّل ذاتيًا: مستند بيانات وصفية",
+        "DYNAMIC_REGISTRATION": "مسجّل ذاتيًا: ديناميكي"
+      }
     },
     "FIELDS": {
       "TOOL": "الأداة",

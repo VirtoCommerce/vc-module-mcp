@@ -69,7 +69,14 @@
       "LAST_USED": "שימוש אחרון",
       "SESSIONS": "כניסות פעילות",
       "ENDPOINT": "נקודת קצה של MCP",
-      "SEARCH": "סוכן, מזהה לקוח או משתמש"
+      "SEARCH": "סוכן, מזהה לקוח או משתמש",
+      "REGISTRATION": "רישום",
+      "REGISTRATIONS": {
+        "SELF": "נרשם בעצמו",
+        "ADMINISTRATOR": "על ידי מנהל",
+        "CLIENT_ID_METADATA_DOCUMENT": "נרשם בעצמו: מסמך מטא-נתונים",
+        "DYNAMIC_REGISTRATION": "נרשם בעצמו: דינמי"
+      }
     },
     "FIELDS": {
       "TOOL": "כלי",

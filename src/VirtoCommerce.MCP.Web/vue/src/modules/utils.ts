@@ -40,6 +40,7 @@ export function outcomeVariant(outcome?: string): Variant {
 
 export const changeStatusKey = (status?: string) => `MCP.STATUS.${status ?? "Pending"}`;
 export const outcomeKey = (outcome?: string) => `MCP.OUTCOME.${outcome ?? "Error"}`;
+export const registrationKey = (registrationType: string) => `MCP.AGENTS.REGISTRATIONS.${registrationType.toUpperCase()}`;
 
 // The dry-run preview of an intent-level tool (McpChangePreview): what it does to which object, as a diff.
 export interface ChangePreview {

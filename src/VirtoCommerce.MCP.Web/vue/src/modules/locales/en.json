@@ -69,7 +69,14 @@
       "LAST_USED": "Last used",
       "SESSIONS": "Active sign-ins",
       "ENDPOINT": "MCP endpoint",
-      "SEARCH": "Agent, client id or user"
+      "SEARCH": "Agent, client id or user",
+      "REGISTRATION": "Registration",
+      "REGISTRATIONS": {
+        "SELF": "Self-registered",
+        "ADMINISTRATOR": "By an administrator",
+        "CLIENT_ID_METADATA_DOCUMENT": "Self-registered: metadata document",
+        "DYNAMIC_REGISTRATION": "Self-registered: dynamic"
+      }
     },
     "FIELDS": {
       "TOOL": "Tool",
