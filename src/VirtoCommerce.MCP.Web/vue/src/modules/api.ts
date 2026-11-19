@@ -80,6 +80,7 @@ export interface McpConnectedAgent {
   id: string;
   clientId?: string;
   clientName?: string;
+  registrationType?: "client_id_metadata_document" | "dynamic_registration";
   userId?: string;
   userName?: string;
   resources?: string[];
@@ -155,7 +156,7 @@ export const mcpApi = {
   setToolEnabled: (scopeName: string, toolName: string, enabled: boolean) =>
     request<McpToolInfo[]>("PUT", "/api/mcp/tools/availability", { scopeName, toolName, enabled }),
   searchConnectedAgents: (
-    criteria: { userId?: string; clientId?: string; keyword?: string; skip?: number; take?: number },
+    criteria: { userId?: string; clientId?: string; selfRegistered?: boolean; keyword?: string; skip?: number; take?: number },
     signal?: AbortSignal,
   ) => request<SearchResult<McpConnectedAgent>>("POST", "/api/mcp/connected-agents/search", criteria, signal),
   disconnectAgent: (id: string) => request<void>("DELETE", `/api/mcp/connected-agents/${encodeURIComponent(id)}`),

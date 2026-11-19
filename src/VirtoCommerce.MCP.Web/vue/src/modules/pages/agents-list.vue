@@ -13,8 +13,10 @@
       :searchable="true"
       :search-placeholder="$t('MCP.AGENTS.SEARCH')"
       :state-key="STATE_KEY"
+      :global-filters="globalFilters"
       :empty-state="{ icon: 'lucide-plug', title: $t('MCP.AGENTS.EMPTY'), description: $t('MCP.AGENTS.EMPTY_HINT') }"
       @pagination-click="pagination.goToPage"
+      @filter="onFilter"
     >
       <VcColumn
         id="clientName"
@@ -26,6 +28,14 @@
           <div class="mcp-agents__client">
             <span class="mcp-agents__client-name">{{ data.clientName || data.clientId }}</span>
             <code class="mcp-agents__muted">{{ data.clientId }}</code>
+            <VcStatus
+              v-if="data.registrationType"
+              variant="warning"
+              class="mcp-agents__registration"
+              :title="$t(registrationKey(data.registrationType))"
+            >
+              {{ $t("MCP.AGENTS.REGISTRATIONS.SELF") }}
+            </VcStatus>
           </div>
         </template>
       </VcColumn>
@@ -94,11 +104,12 @@ import {
   useTableSearch,
   type IBladeToolbar,
 } from "@vc-shell/framework";
-import { VcBlade, VcButton, VcColumn, VcDataTable } from "@vc-shell/framework/ui";
-import { ref, watch } from "vue";
+import { VcBlade, VcButton, VcColumn, VcDataTable, VcStatus } from "@vc-shell/framework/ui";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { mcpApi, type McpConnectedAgent } from "../api";
 import { requestedAgentSearch } from "../searchRequests";
+import { registrationKey } from "../utils";
 
 defineBlade({
   url: "/mcp-agents",
@@ -133,10 +144,17 @@ watch(
 const items = ref<McpConnectedAgent[]>([]);
 const totalCount = ref(0);
 const pagination = useDataTablePagination({ stateKey: STATE_KEY, pageSize: PAGE_SIZE, totalCount });
+// true: the agents that registered themselves; false: the ones an administrator registered
+const selfRegistered = ref<boolean>();
 
 const { loading, action: load } = useAsync(async () => {
   try {
-    const result = await mcpApi.searchConnectedAgents({ keyword: searchValue.value?.trim() || undefined, skip: pagination.skip, take: PAGE_SIZE });
+    const result = await mcpApi.searchConnectedAgents({
+      keyword: searchValue.value?.trim() || undefined,
+      selfRegistered: selfRegistered.value,
+      skip: pagination.skip,
+      take: PAGE_SIZE,
+    });
     items.value = result.results ?? [];
     totalCount.value = result.totalCount ?? 0;
   } catch (error) {
@@ -162,9 +180,28 @@ async function disconnect(agent: McpConnectedAgent) {
   }
 }
 
+const globalFilters = computed(() => [
+  {
+    id: "registration",
+    label: t("MCP.AGENTS.REGISTRATION"),
+    filter: {
+      options: [
+        { value: "self", label: t("MCP.AGENTS.REGISTRATIONS.SELF") },
+        { value: "administrator", label: t("MCP.AGENTS.REGISTRATIONS.ADMINISTRATOR") },
+      ],
+    },
+  },
+]);
+
+function onFilter(event: { filters: Record<string, unknown> }) {
+  const value = event.filters.registration;
+  const registration = Array.isArray(value) ? value[0] : value;
+  selfRegistered.value = registration ? registration === "self" : undefined;
+}
+
 load();
-watch(searchValue, () => pagination.setPage(1));
-watch([searchValue, () => pagination.skip], debounce(load, 300));
+watch([searchValue, selfRegistered], () => pagination.setPage(1));
+watch([searchValue, selfRegistered, () => pagination.skip], debounce(load, 300));
 
 const bladeToolbar = ref<IBladeToolbar[]>([
   { id: "refresh", title: t("MCP.TOOLBAR.REFRESH"), icon: "lucide-refresh-cw", clickHandler: () => load() },
@@ -182,6 +219,10 @@ const bladeToolbar = ref<IBladeToolbar[]>([
 
   &__client-name {
     font-weight: 600;
+  }
+
+  &__registration {
+    align-self: flex-start;
   }
 
   &__muted {

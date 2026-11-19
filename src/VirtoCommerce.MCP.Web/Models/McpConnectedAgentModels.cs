@@ -13,6 +13,9 @@ public class McpConnectedAgent
 
     public string ClientName { get; set; }
 
+    // client_id_metadata_document or dynamic_registration; null when an administrator registered the client.
+    public string RegistrationType { get; set; }
+
     public string UserId { get; set; }
 
     public string UserName { get; set; }
@@ -34,6 +37,9 @@ public class McpConnectedAgentSearchCriteria
     public string UserId { get; set; }
 
     public string ClientId { get; set; }
+
+    // True: only self-registered agents; false: only the ones an administrator registered; null: all.
+    public bool? SelfRegistered { get; set; }
 
     // Part of the client id, the client name or the user name, case-insensitive
     public string Keyword { get; set; }

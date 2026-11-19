@@ -69,7 +69,14 @@
       "LAST_USED": "上次使用",
       "SESSIONS": "活动登录",
       "ENDPOINT": "MCP 端点",
-      "SEARCH": "代理、客户端 ID 或用户"
+      "SEARCH": "代理、客户端 ID 或用户",
+      "REGISTRATION": "注册方式",
+      "REGISTRATIONS": {
+        "SELF": "自行注册",
+        "ADMINISTRATOR": "由管理员注册",
+        "CLIENT_ID_METADATA_DOCUMENT": "自行注册：元数据文档",
+        "DYNAMIC_REGISTRATION": "自行注册：动态注册"
+      }
     },
     "FIELDS": {
       "TOOL": "工具",

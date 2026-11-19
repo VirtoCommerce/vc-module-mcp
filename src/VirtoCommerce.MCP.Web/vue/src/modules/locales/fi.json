@@ -69,7 +69,14 @@
       "LAST_USED": "Viimeksi käytetty",
       "SESSIONS": "Aktiiviset kirjautumiset",
       "ENDPOINT": "MCP-päätepiste",
-      "SEARCH": "Agentti, asiakastunnus tai käyttäjä"
+      "SEARCH": "Agentti, asiakastunnus tai käyttäjä",
+      "REGISTRATION": "Rekisteröinti",
+      "REGISTRATIONS": {
+        "SELF": "Itse rekisteröity",
+        "ADMINISTRATOR": "Ylläpitäjän rekisteröimä",
+        "CLIENT_ID_METADATA_DOCUMENT": "Itse rekisteröity: metatietoasiakirja",
+        "DYNAMIC_REGISTRATION": "Itse rekisteröity: dynaaminen"
+      }
     },
     "FIELDS": {
       "TOOL": "Työkalu",

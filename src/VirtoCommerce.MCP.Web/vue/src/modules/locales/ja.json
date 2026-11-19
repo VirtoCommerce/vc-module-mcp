@@ -69,7 +69,14 @@
       "LAST_USED": "最終使用",
       "SESSIONS": "アクティブなサインイン",
       "ENDPOINT": "MCP エンドポイント",
-      "SEARCH": "エージェント、クライアント ID、ユーザー"
+      "SEARCH": "エージェント、クライアント ID、ユーザー",
+      "REGISTRATION": "登録",
+      "REGISTRATIONS": {
+        "SELF": "自己登録",
+        "ADMINISTRATOR": "管理者による登録",
+        "CLIENT_ID_METADATA_DOCUMENT": "自己登録: メタデータ ドキュメント",
+        "DYNAMIC_REGISTRATION": "自己登録: 動的登録"
+      }
     },
     "FIELDS": {
       "TOOL": "ツール",

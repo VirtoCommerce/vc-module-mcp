@@ -61,7 +61,7 @@ public class ModuleTests
     }
 
     [Fact]
-    public void Initialize_Should_RegisterTheAdminScopeOnly()
+    public void Initialize_Should_RegisterOnlyAdminScope_AllowingSelfRegisteredClients()
     {
         // Act
         var scopes = Initialize()
@@ -73,6 +73,7 @@ public class ModuleTests
         Assert.Equal([McpScopes.Admin], scopes.Keys.ToArray());
         Assert.True(scopes[McpScopes.Admin].RequireAuthenticatedUser);
         Assert.Empty(scopes[McpScopes.Admin].Permissions);
+        Assert.True(scopes[McpScopes.Admin].AllowSelfRegisteredClients);
     }
 
     [Fact]

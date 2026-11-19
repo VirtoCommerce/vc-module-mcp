@@ -11,7 +11,7 @@ An agent works as the signed-in user: it sees only the tools that user may use, 
 ## Key Features
 
 * **Scopes**: one MCP endpoint per kind of agent (`admin`, `vendor`, a buyer scope, your own), at `/{scope}/mcp` or at `/mcp` of a host of its own
-* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The rest of the platform does not check the token's audience yet: see [What the token protects today](#what-the-token-protects-today)
+* **Platform sign-in**: OAuth 2.1 with PKCE and a token issued for one endpoint (RFC 8707), which the MCP endpoints check; agents that identify themselves with a client ID metadata document, such as Claude, connect with the endpoint URL alone, to the back office and to the scopes whose module allows it; anonymous scopes with sign-in on demand per tool; revoked sessions stop working on the next request. The platform accepts a self-registered agent's token only on its MCP endpoint; the token of an agent an administrator registered also works on the rest of the platform: see [What the token protects today](#what-the-token-protects-today)
 * **Permissions**: `[Authorize]` for platform permissions, `[McpPermission]` for permissions limited to stores or sellers; tools the user may not use are not listed
 * **Confirmation in the chat**: `[McpRequiresConfirmation]` asks the user to confirm a risky call in the agent's chat before it runs (MCP elicitation), with clients that support it
 * **Approval with a diff**: `[McpRequiresApproval]` holds a call as a pending change with a dry-run preview until a second person approves it, always or only when a condition on the arguments says so; the requester's access is checked again when it is approved
@@ -30,7 +30,7 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
 > [!NOTE]
 > The steps below are an example, with the back-office endpoint `/admin/mcp`. The MCP module is the infrastructure: on its own it serves only its approval and job tools. The tools an agent works with, and every scope besides `admin`, are registered by other modules. See [UCP](https://github.com/VirtoCommerce/vc-module-ucp) for a buyer scope, `/ucp/mcp`, with its shopping tools, and the [Samples](#samples) for back-office tools (marketing, content); to write your own, see the [Developer guide](#developer-guide).
 
-You need two things from your administrator: the **endpoint URL** and the agent's **client id**.
+You need the **endpoint URL** from your administrator. Claude Code, Claude Desktop and claude.ai identify themselves to the platform, so the URL is all they need. Another agent may also need a **client id**, which your administrator registers for it.
 
 ```text
 https://virtostart-demo-admin.govirto.com/admin/mcp
@@ -43,24 +43,26 @@ Then pick your agent:
 **Claude Code**
 
 ```bash
-claude mcp add --transport http --client-id claude-code --callback-port 65111 virto https://virtostart-demo-admin.govirto.com/admin/mcp
+claude mcp add --transport http virto https://virtostart-demo-admin.govirto.com/admin/mcp
 ```
 
-In Claude Code, run `/mcp`, select `virto`, choose **Authenticate** and sign in. Add `--scope project` to share the server with your team through the folder's `.mcp.json`; the token stays in your profile.
+In Claude Code, run `/mcp`, select `virto`, choose **Authenticate**, sign in and allow access. Add `--scope project` to share the server with your team through the folder's `.mcp.json`; the token stays in your profile.
+
+If your administrator gave you a client id, add `--client-id <client id> --callback-port 65111`.
 
 **Claude Desktop and claude.ai**
 
 1. **Settings → Connectors → Add custom connector.**
-1. Name: `Virto Commerce`. URL: the endpoint. Under **Advanced settings**, OAuth client id: the one your administrator gave you.
+1. Name: `Virto Commerce`. URL: the endpoint. Leave **Advanced settings** empty, unless your administrator gave you a client id.
 1. **Connect**, sign in and allow access.
 
 **ChatGPT**
 
-In developer mode (ChatGPT Business, Enterprise or Edu), **Settings → Apps → Create** an app with the endpoint URL, authentication **OAuth** and the client id, then sign in and allow access. See OpenAI's [developer mode guide](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta).
+In developer mode (ChatGPT Business, Enterprise or Edu), **Settings → Apps → Create** an app with the endpoint URL and authentication **OAuth**, with the client id your administrator gave you, then sign in and allow access. See OpenAI's [developer mode guide](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta).
 
 **VS Code**
 
-Add the server to `.vscode/mcp.json`, then choose **Start** above it; VS Code asks for the client id and opens the sign-in:
+Add the server to `.vscode/mcp.json`, then choose **Start** above it. VS Code opens the sign-in; if it asks for a client id, enter the one your administrator gave you:
 
 ```json
 {
@@ -70,7 +72,9 @@ Add the server to `.vscode/mcp.json`, then choose **Start** above it; VS Code as
 }
 ```
 
-**Other agents.** Any MCP client with the streamable HTTP transport and OAuth with a client id works the same way: give it the endpoint and the client id.
+**Other agents.** Any MCP client with the streamable HTTP transport and OAuth works the same way: give it the endpoint, and a client id if it does not identify itself with a client ID metadata document.
+
+**The consent page.** The first time, the platform asks you to allow the agent, once per agent and endpoint. An agent that registered itself is marked as such, with the site it comes from when it identifies itself with a client ID metadata document, for example *claude.ai*: allow it only if you are connecting that agent right now.
 
 **Try it.** The agent works as you: it sees only the tools you may use, in your stores. Ask for example:
 
@@ -82,9 +86,9 @@ Menu names in the agents change from release to release; if a step does not matc
 
 ## Set up the platform for agents
 
-An administrator does this once per platform, and registers one OAuth client per kind of agent.
+An administrator does this once per platform. Agents that identify themselves with a client ID metadata document, such as Claude Code, Claude Desktop and claude.ai, need no OAuth client: skip step 3 for them.
 
-1. **Install** `VirtoCommerce.MCP` (platform 3.1096.0 or later) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
+1. **Install** `VirtoCommerce.MCP` (platform 3.1100.0 or later) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
 1. **Allow tokens for the endpoint** in `appsettings.json`:
 
     ```json
@@ -93,7 +97,7 @@ An administrator does this once per platform, and registers one OAuth client per
     }
     ```
 
-1. **Register the agent** in **Security → OAuth applications** of the back office, one application per kind of agent. The screen is the same in the Admin Shell (3.1094.0 or later) and in the classic Manager (`VirtoCommerce.AdminAngularJs` 3.1096.0 or later). Select **Add**, then:
+1. **Register the agents that can't register themselves** in **Security → OAuth applications** of the back office, one application per kind of agent. The screen is the same in the Admin Shell (3.1094.0 or later) and in the classic Manager (`VirtoCommerce.AdminAngularJs` 3.1096.0 or later). Select **Add**, then:
 
     1. **Display name** and **Client ID**: the agent shows the name on the consent page; the user enters the client ID in the agent.
     1. **Client type**: *Public*. The secret disappears, and **Require PKCE** switches on.
@@ -122,10 +126,7 @@ An administrator does this once per platform, and registers one OAuth client per
     The redirect URI is where the agent receives the result of the sign-in, not an address of the platform. The values are the ones the agents use at the time of writing; check the agent's documentation if a sign-in ends with an error page.
 
 1. **Grant permissions** with roles. Agents need no permission of their own: an agent sees the tools whose permissions the user has, the same ones that protect the back office and the REST API (for example `marketing:read`, limited to the user's stores). Give `mcp:approve` to the people who approve agents' changes, and `mcp:audit:read` and `mcp:manage` to the people who run the agents.
-1. **Hand out** the endpoint URL and the client id of each agent.
-
-> [!NOTE]
-> With [VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639), agents that identify themselves with a client ID metadata document will connect with the endpoint URL alone, as with Shopify, BigCommerce or commercetools.
+1. **Hand out** the endpoint URL, and the client id of each agent you registered.
 
 <details>
 <summary>Why each field of the client</summary>
@@ -139,11 +140,22 @@ An administrator does this once per platform, and registers one OAuth client per
 
 </details>
 
+### Agents that register themselves
+
+An agent that identifies itself with a client ID metadata document uses the HTTPS URL of a JSON document it publishes as its client id, as the MCP authorization specification recommends. The platform fetches the document at the sign-in, checks it, and treats the agent as a public client with PKCE, explicit consent, the authorization code and refresh token grants, and tokens only for the MCP endpoint it names, which the platform accepts only on that endpoint. The agent appears in **Security → OAuth applications** when a user first allows it, and in **Connected agents** like any other. **Connected agents** marks it *Self-registered* and filters by how the agent registered, and so does **OAuth applications** in the Admin Shell; the classic Manager lists it without the mark.
+
+* Per scope: `MCP:Scopes:{scope}:AllowSelfRegisteredClients` set to `false` leaves a scope, such as a buyer scope, to the agents an administrator registered. Without the setting, the scope's own default applies: on for the back-office scope `admin`, off for the scopes of other modules unless their module turns it on.
+* Closing a scope doesn't disconnect the agents already connected to it: **Connected agents** keeps listing them with the endpoints their users allowed, and their consent applies again if the scope opens again. Disconnect them there to make their users allow them again.
+
+Which sites may register, and dynamic client registration for agents that don't publish a document, are platform settings: see [Clients that register themselves](https://github.com/VirtoCommerce/vc-platform/blob/dev/docs/techniques/oauth-sign-in-and-consent.md#clients-that-register-themselves) in the platform documentation.
+
 ### Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
 | The sign-in page does not open, or the sign-in ends with an error page | The redirect URI or the callback port of the client does not match its registration |
+| A self-registered agent gets *This client application is not allowed to use the specified resource(s)* | The scope doesn't allow agents that register themselves (`MCP:Scopes:{scope}:AllowSelfRegisteredClients`), or the endpoint is not in `Authorization:Resources` |
+| An agent without a client id gets *The specified 'client_id' is invalid* | The platform could not use the agent's client metadata document: the documents are turned off, the site is not in `AllowedHosts`, or the document is invalid, and the platform log tells why. Or the agent does not support metadata documents: register a client for it |
 | `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and ticked in the client's **Resources** exactly, scheme and port included. Or it was issued without an OAuth client (password grant): connect with the registered client |
 | HTTP 403 | The scope requires a permission the user lacks, for example `vendor_portal:access` for `/vendor/mcp` |
 | HTTP 403 from a client that runs in a browser | Its page origin is not the scope's origin: add it to `MCP:AllowedOrigins` or `MCP:Scopes:{scope}:AllowedOrigins` (see [Browser origins](#browser-origins)) |
@@ -161,7 +173,7 @@ Everything people do with agents is in the back office, under **Configuration �
 | Agent approvals | approvers of a scope (`mcp:approve`, or the scope's `ApprovalPermission`) | The queue of changes agents asked to make, with a menu counter. A change opens with **what will change**: the object, a *now → after* diff and the warnings of its dry run, then the request and the arguments. **Approve** runs the tool right away as the reviewer, with the same rules as `approve_pending_change`; **Reject** records the reason. Once applied, the screen shows the tool's result as a diff. |
 | Agent audit log | `mcp:audit:read` | Every tool call with the user, the client, the scope, the duration and the outcome, filtered by outcome and scope. The search box takes a tool name, or the trace id an agent reported. A call links to the change it submitted or executed. |
 | Agent tools | `mcp:manage` | Every tool of every scope with its kind (read, write, needs approval) and a switch; one switch per scope turns a whole scope off. |
-| Connected agents | every signed-in user for their own agents, `mcp:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. **Disconnect** revokes the sign-in at once. |
+| Connected agents | every signed-in user for their own agents, `mcp:manage` for everyone's | The agents users signed in to: the OAuth client, the user, the MCP endpoint, when it was connected and last used, and its active sign-ins. An agent that registered itself, without an administrator, is marked *Self-registered*, and the list filters by it. **Disconnect** revokes the sign-in at once. |
 
 The global search of the back office (**Ctrl+K**) finds them too: **Agent tools** by name, title or description, with an *Off* or *Approval* mark (`mcp:manage`), and **Connected agents** by client or user name (one's own, or everyone's with `mcp:manage`). A result opens its screen with the search filled in; type `tools:` or `agents:` to search only there.
 
@@ -225,6 +237,7 @@ Disconnect does not touch what the agent already handed over to the platform:
 | `MCP:Scopes:{scope}:PublicOrigin` | Origin of one scope, for example the storefront host for a buyer scope. A module can decide the origin of its own scope instead: the UCP module takes it from `MCP:Scopes:ucp:PublicOrigin`, otherwise from the URL of the request's store. |
 | `MCP:Scopes:{scope}:Hosts` | Hosts that serve the scope at `/mcp`, for example `store.example.com`. An entry with a port matches that port only. A host serves one scope; a host listed for two scopes stops the platform at startup. Add `https://{host}/mcp` to `Authorization:Resources`. |
 | `MCP:Scopes:{scope}:AllowedOrigins` | Origins of browser pages allowed to call this scope only. |
+| `MCP:Scopes:{scope}:AllowSelfRegisteredClients` | Whether agents that register themselves (client ID metadata document, dynamic registration) may connect to the scope with its URL only. Without it, the scope's own default applies (`McpScope.AllowSelfRegisteredClients`: `true` for `admin`, `false` unless the module that registers the scope turns it on); `false` leaves the scope to the agents an administrator registered, for example a buyer scope. See [Agents that register themselves](#agents-that-register-themselves). |
 
 Invalid origins stop the platform at startup: an origin is an absolute `http` or `https` address without a path, query or fragment.
 
@@ -265,7 +278,7 @@ A web MCP client hosted on another origin, such as MCP Inspector's browser UI, n
 | `mcp:audit:read` | Read the tool call audit log |
 | `mcp:manage` | See the tools of every scope and switch them on and off; see and disconnect the AI agents of every user (without it, users see and disconnect their own) |
 
-There is no permission to connect an agent. A tool is protected by the permission of what it does, the same one the back office and the REST API check, so an agent can do what its user can do and no more. Who may connect at all is decided by the OAuth clients an administrator registers, the user's consent, **Disconnect** in **Connected agents** and the scope switch in **Agent tools**. An MCP endpoint accepts only a token issued to a client: a token with no client, which the platform's password grant issues to an anonymous client, skips the consent and could not be disconnected, so it is refused. A scope can still require a permission for every request (`McpScope.Permissions`), as `vendor` requires `vendor_portal:access`.
+There is no permission to connect an agent. A tool is protected by the permission of what it does, the same one the back office and the REST API check, so an agent can do what its user can do and no more. Who may connect at all is decided by the OAuth clients an administrator registers, the sites allowed to register agents themselves (see [Agents that register themselves](#agents-that-register-themselves)), the user's consent, **Disconnect** in **Connected agents** and the scope switch in **Agent tools**. An MCP endpoint accepts only a token issued to a client: a token with no client, which the platform's password grant issues to an anonymous client, skips the consent and could not be disconnected, so it is refused. A scope can still require a permission for every request (`McpScope.Permissions`), as `vendor` requires `vendor_portal:access`.
 
 ### Observability
 
@@ -374,7 +387,7 @@ A token without a token id is refused while the platform stores tokens, which it
 
 #### What the token protects today
 
-The MCP endpoints check that a token was issued for them. The rest of the platform does not check token audiences yet, so an access token issued for `/admin/mcp` is also accepted by the platform's REST API and GraphQL, with the permissions of its user. Until the platform checks audiences per endpoint:
+The MCP endpoints check that a token was issued for them. The platform accepts the token of an agent that registered itself only on the path of its MCP endpoint, and refuses it with `invalid_token` anywhere else. It doesn't check the audience of other tokens, so a token issued for `/admin/mcp` to an agent an administrator registered is also accepted by the platform's REST API and GraphQL, with the permissions of its user. For such agents:
 
 - The tool switch, `[McpRequiresApproval]`, `[McpRequiresConfirmation]` and the MCP audit apply to calls made through MCP. They guard the user against an agent's mistakes; they are not a boundary against whoever holds the token, who can call the REST API the tools wrap directly.
 - **Disconnect** stops the agent's token at once on MCP and, with `MCP:ValidateAgentTokensOnAllEndpoints` (on by default), on the REST API and GraphQL as well. With it off, the token works on the REST API until it expires. The platform's own `Authorization:EnablePersistentStorageTokenValidation` checks every token instead, which also ends a token as soon as its user's password or roles change.
@@ -493,6 +506,7 @@ serviceCollection.AddMcpScope(new McpScope
     RequireAuthenticatedUser = true,
     Permissions = ["catalog:access"],
     ApprovalPermission = "catalog:approve", // optional: turns approval on in the scope
+    AllowSelfRegisteredClients = true,       // optional: agents connect with the URL only; MCP:Scopes:{scope}:AllowSelfRegisteredClients overrides it
 });
 ```
 
@@ -697,13 +711,12 @@ A system integrator ships "Virto Commerce for Contoso" to a client's Claude orga
     ```
 
 1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
-1. **OAuth client for Claude.** Register one client with Claude's callback URL (`https://claude.ai/api/mcp/auth_callback`) and explicit consent, as in [Set up the platform for agents](#set-up-the-platform-for-agents).
 1. **Roles.** Grant the client's people the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
-1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL and the OAuth client id (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
+1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL alone (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
 1. **Routines.** Each person keeps their own routines in Claude, for example as skills. The solution's documentation gives one example routine per role to copy and adapt, and the organization can share the routines it agrees on as Claude skills.
 1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
 
-A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Once the platform supports client ID metadata documents ([VCST-6639](https://virtocommerce.atlassian.net/browse/VCST-6639)), the OAuth client step goes away: the URL alone is enough.
+A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Claude identifies itself with a client ID metadata document, so no OAuth client is registered for it; to let only Claude register itself, set `Authorization:ClientRegistration:ClientIdMetadataDocuments:AllowedHosts` to `claude.ai`.
 
 ## How to extend
 
@@ -806,7 +819,7 @@ Base route: `api/mcp`
 | `POST` | `/audit/search` | `mcp:audit:read` | Search the audit log, by tool, outcome, scope, user, trace id, pending change or date range |
 | `GET` | `/tools` | `mcp:manage` | The tools of every scope and whether they are switched on |
 | `PUT` | `/tools/availability` | `mcp:manage` | Switch a tool, or a scope with `*`, on or off; body `{ "scopeName", "toolName", "enabled" }` |
-| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:manage` | Agents users signed in to, with their client, endpoint and activity; `keyword` matches the client id, the client name or the user name |
+| `POST` | `/connected-agents/search` | signed in; everyone's with `mcp:manage` | Agents users signed in to, with their client, how it registered (`registrationType`), endpoint and activity; `keyword` matches the client id, the client name or the user name; `selfRegistered` keeps the agents that registered themselves (`true`) or the ones an administrator registered (`false`) |
 | `DELETE` | `/connected-agents/{id}` | the agent's user, or `mcp:manage` | Disconnect an agent: revoke its authorization and tokens |
 
 MCP endpoints: `POST /{scope}/mcp`, `POST /mcp` on a host of a scope, and the protected resource metadata at `GET /.well-known/oauth-protected-resource/{scope}/mcp` and, for a scope host, `GET /.well-known/oauth-protected-resource/mcp`. A `tools/list` request that accepts only `application/json`, as registry crawlers and health checks send, gets a plain JSON answer instead of HTTP 406.

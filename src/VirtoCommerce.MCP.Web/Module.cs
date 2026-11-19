@@ -145,6 +145,7 @@ public class Module : IModule, IHasConfiguration
                 "and return its id. Such a change is applied only after another user with the mcp:approve permission approves it.",
             RequireAuthenticatedUser = true,
             ApprovalPermission = ModuleConstants.Security.Permissions.Approve,
+            AllowSelfRegisteredClients = true,
         });
     }
 
