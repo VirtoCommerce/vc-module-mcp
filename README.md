@@ -799,8 +799,8 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
-| `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the classic back office, wherever the platform serves it |
-| `McpAdminShellLinks` | | The Admin Shell's address, which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell |
+| `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the admin UIs: the classic back office, or any admin UI app by its id, wherever the platform serves it |
+| `McpAdminShellLinks` | | The Admin Shell's address (`IMcpLinkResolver.GetAppLinkAsync`), which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell |
 | `McpSecretSettings` | `IMcpSecretSettings` | The secret rule of every tool that describes settings |
 | `McpSettingTexts` | `IMcpSettingTexts` | Settings' titles and descriptions, from the modules' English localization files |
 | `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |

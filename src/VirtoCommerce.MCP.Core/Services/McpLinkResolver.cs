@@ -8,8 +8,9 @@ using VirtoCommerce.Platform.Core.Common;
 
 namespace VirtoCommerce.MCP.Core.Services;
 
-// The routes are those of the AngularJS back office, the admin UI app "platform", and the link follows where the platform
-// serves it: at the site root, or at /apps/platform/ when another admin UI owns the root (VirtoCommerce:PlatformUI:RootApp).
+// The routes of GetLinkAsync are those of the AngularJS back office, the admin UI app "platform"; GetAppLinkAsync links
+// any admin UI app. A link follows where the platform serves the app: at the site root, or at /apps/{appId}/ when another
+// admin UI owns the root (VirtoCommerce:PlatformUI:RootApp).
 public class McpLinkResolver(
     IHttpContextAccessor httpContextAccessor,
     IAdminUIAppService adminUIAppService,
@@ -18,32 +19,36 @@ public class McpLinkResolver(
 {
     public const string BackOfficeAppId = "platform";
 
-    public virtual async Task<string> GetLinkAsync(string route)
+    public virtual Task<string> GetLinkAsync(string route)
+    {
+        return GetAppLinkAsync(BackOfficeAppId, route);
+    }
+
+    public virtual async Task<string> GetAppLinkAsync(string appId, string route)
     {
         var context = httpContextAccessor.HttpContext;
         var scope = context.GetMcpScope();
-        var backOffice = GetBackOffice();
+        var app = GetAdminUI(appId);
 
-        if (scope == null || backOffice == null)
+        if (scope == null || app == null)
         {
             return null;
         }
 
         var origin = await context.RequestServices.GetMcpScopeService<IMcpPublicOriginResolver>(scope).GetOriginAsync(context, scope);
 
-        return string.IsNullOrEmpty(origin) ? null : $"{origin.TrimEnd('/')}{backOffice.Url?.TrimEnd('/')}{route}";
+        return string.IsNullOrEmpty(origin) ? null : $"{origin.TrimEnd('/')}{app.Url?.TrimEnd('/')}{route}";
     }
 
-    // The AngularJS back office as the platform serves it (Url is "/" at the site root, "/apps/platform/" otherwise); null
-    // when it is not installed, or when the platform's admin UI is switched off (VirtoCommerce:PlatformUI:Enable), as the
-    // back office then refuses its page.
-    protected virtual AdminUIApp GetBackOffice()
+    // The admin UI app as the platform serves it (Url is "/" at the site root, "/apps/{appId}/" otherwise); null when it is
+    // not installed, or when the platform's admin UI is switched off (VirtoCommerce:PlatformUI:Enable).
+    protected virtual AdminUIApp GetAdminUI(string appId)
     {
         if (!platformUIOptions.CurrentValue.Enable)
         {
             return null;
         }
 
-        return adminUIAppService.GetAdminUIs().FirstOrDefault(x => x.Id.EqualsIgnoreCase(BackOfficeAppId));
+        return adminUIAppService.GetAdminUIs().FirstOrDefault(x => x.Id.EqualsIgnoreCase(appId));
     }
 }

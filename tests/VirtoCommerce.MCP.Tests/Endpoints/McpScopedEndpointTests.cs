@@ -619,6 +619,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
         // Assert
         Assert.Contains($"in {McpAdminShellLinks.ApprovalsScreen} ({Origin}/apps/admin-shell/). ", PendingApprovalMessage(result));
+        // The raw text, as the agent reads it: the path's characters as they are, not as \u escapes
         Assert.Contains("Admin Shell > Configuration > AI agents (MCP) > Agent approvals", Text(result));
     }
 
@@ -1625,6 +1626,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddTransient<McpPendingChangeExecutor>();
         services.AddTransient<McpUserPrincipalFactory>(_ => new TestUserPrincipalFactory(CreateUserPrincipal));
         services.AddScoped<McpCallToolFilter>();
+        services.AddTransient<IMcpLinkResolver, McpLinkResolver>();
         services.AddTransient<McpAdminShellLinks>();
         services.AddSingleton(CreateAdminUIAppService());
         services.AddSingleton(Mock.Of<IOpenIddictTokenManager>());

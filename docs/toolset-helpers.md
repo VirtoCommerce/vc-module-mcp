@@ -106,6 +106,7 @@ var fix = $"Back office: {"Stores > EU store > Payment methods".WithLink(link)}.
 
 - The link is null outside an MCP request, when the scope has no public origin, and when the classic back office (the AngularJS admin, app `platform`) is not installed or the platform's admin UI is switched off (`VirtoCommerce:PlatformUI:Enable`). `WithLink` then gives the screen alone, so the answer still names it.
 - The route is the screen's address in the classic back office, which starts with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does. The link follows where the platform serves the classic back office (`IAdminUIAppService`): at the site root, or at `/apps/platform/` when another admin UI, such as Admin Shell, owns the root (`VirtoCommerce:PlatformUI:RootApp`).
+- `GetAppLinkAsync(appId, route)` links a screen of another admin UI app the same way, by the app's id: the MCP module links the Admin Shell (`admin-shell`), where its own screens are. The rules for a null link are the same, and a link is null too when no installed admin UI has the id.
 - A module registers nothing for it: the MCP module registers `IMcpLinkResolver`, and a solution replaces it to send the links elsewhere.
 
 ## Time windows

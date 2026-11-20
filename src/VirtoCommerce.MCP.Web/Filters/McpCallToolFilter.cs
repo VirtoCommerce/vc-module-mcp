@@ -373,9 +373,7 @@ public class McpCallToolFilter(
     // approvalsLink: the Admin Shell, where an approver opens Agent approvals; without it the screen is named by its menu path only
     protected static CallToolResult CreatePendingApprovalResult(McpPendingChange change, McpScope scope, string approvalsLink)
     {
-        var approvalsScreen = string.IsNullOrEmpty(approvalsLink)
-            ? McpAdminShellLinks.ApprovalsScreen
-            : $"{McpAdminShellLinks.ApprovalsScreen} ({approvalsLink})";
+        var approvalsScreen = McpAdminShellLinks.ApprovalsScreen.WithLink(approvalsLink);
 
         var payload = new
         {

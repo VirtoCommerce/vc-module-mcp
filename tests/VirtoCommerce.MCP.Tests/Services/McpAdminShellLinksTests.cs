@@ -12,6 +12,8 @@ using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Services;
 
+// The links go through McpLinkResolver.GetAppLinkAsync, whose McpLinkResolverTests cover the cases without a link: no
+// MCP request, no public origin, and the platform's admin UI switched off.
 [Trait("Category", "Unit")]
 public class McpAdminShellLinksTests
 {
@@ -26,7 +28,7 @@ public class McpAdminShellLinksTests
     public async Task GetLinkAsync_Should_BeTheAdminShellAtTheOriginOfTheScope()
     {
         // Arrange
-        var links = CreateLinks(CreateContext(_scope, CreateOriginResolver($"{PublicOrigin}/")), _backOffice, _adminShell);
+        var links = CreateLinks(_backOffice, _adminShell);
 
         // Act
         var link = await links.GetLinkAsync();
@@ -40,8 +42,7 @@ public class McpAdminShellLinksTests
     public async Task GetLinkAsync_Should_BeTheSiteRoot_When_TheAdminShellOwnsIt()
     {
         // Arrange
-        var adminShellAtTheRoot = new AdminUIApp { Id = McpAdminShellLinks.AdminShellAppId, Path = "/apps/admin-shell", Url = "/", IsRoot = true };
-        var links = CreateLinks(CreateContext(_scope, CreateOriginResolver(PublicOrigin)), adminShellAtTheRoot);
+        var links = CreateLinks(new AdminUIApp { Id = McpAdminShellLinks.AdminShellAppId, Path = "/apps/admin-shell", Url = "/", IsRoot = true });
 
         // Act
         var link = await links.GetLinkAsync();
@@ -54,7 +55,7 @@ public class McpAdminShellLinksTests
     public async Task GetLinkAsync_Should_BeNull_WithoutTheAdminShell()
     {
         // Arrange
-        var links = CreateLinks(CreateContext(_scope, CreateOriginResolver(PublicOrigin)), _backOffice);
+        var links = CreateLinks(_backOffice);
 
         // Act
         var link = await links.GetLinkAsync();
@@ -63,86 +64,20 @@ public class McpAdminShellLinksTests
         Assert.Null(link);
     }
 
-    // VirtoCommerce:PlatformUI:Enable = false: the platform still lists the admin UIs, but its admin UI is off.
-    [Fact]
-    public async Task GetLinkAsync_Should_BeNull_WhenThePlatformsAdminUIIsSwitchedOff()
+    private static McpAdminShellLinks CreateLinks(params AdminUIApp[] apps)
     {
-        // Arrange
-        var links = CreateLinks(CreateContext(_scope, CreateOriginResolver(PublicOrigin)), platformUIEnabled: false, _backOffice, _adminShell);
+        var originResolver = new Mock<IMcpPublicOriginResolver>();
+        originResolver.Setup(x => x.GetOriginAsync(It.IsAny<HttpContext>(), It.IsAny<McpScope>())).ReturnsAsync($"{PublicOrigin}/");
 
-        // Act
-        var link = await links.GetLinkAsync();
-
-        // Assert
-        Assert.Null(link);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public async Task GetLinkAsync_Should_BeNull_When_TheScopeHasNoOrigin(string origin)
-    {
-        // Arrange
-        var links = CreateLinks(CreateContext(_scope, CreateOriginResolver(origin)), _adminShell);
-
-        // Act
-        var link = await links.GetLinkAsync();
-
-        // Assert
-        Assert.Null(link);
-    }
-
-    // MCP:PublicOrigin is configured, so the origin resolver would give an origin even without a scope.
-    [Fact]
-    public async Task GetLinkAsync_Should_BeNull_OutsideAnMcpRequest()
-    {
-        // Arrange
-        var originResolver = new McpPublicOriginResolver(Options.Create(new McpOptions { PublicOrigin = PublicOrigin }));
-        var links = CreateLinks(CreateContext(scope: null, originResolver), _adminShell);
-
-        // Act
-        var link = await links.GetLinkAsync();
-
-        // Assert
-        Assert.Null(link);
-    }
-
-    private static McpAdminShellLinks CreateLinks(HttpContext context, params AdminUIApp[] apps)
-    {
-        return CreateLinks(context, platformUIEnabled: true, apps);
-    }
-
-    private static McpAdminShellLinks CreateLinks(HttpContext context, bool platformUIEnabled, params AdminUIApp[] apps)
-    {
-        var options = new Mock<IOptionsMonitor<PlatformUIOptions>>();
-        options.Setup(x => x.CurrentValue).Returns(new PlatformUIOptions { Enable = platformUIEnabled });
+        var context = new DefaultHttpContext { RequestServices = new ServiceCollection().AddSingleton(originResolver.Object).BuildServiceProvider() };
+        context.SetMcpScope(_scope);
 
         var adminUIs = new Mock<IAdminUIAppService>();
         adminUIs.Setup(x => x.GetAdminUIs()).Returns(apps);
 
-        return new McpAdminShellLinks(new HttpContextAccessor { HttpContext = context }, adminUIs.Object, options.Object);
-    }
+        var options = new Mock<IOptionsMonitor<PlatformUIOptions>>();
+        options.Setup(x => x.CurrentValue).Returns(new PlatformUIOptions());
 
-    private static IMcpPublicOriginResolver CreateOriginResolver(string origin)
-    {
-        var resolver = new Mock<IMcpPublicOriginResolver>();
-        resolver.Setup(x => x.GetOriginAsync(It.IsAny<HttpContext>(), It.IsAny<McpScope>())).ReturnsAsync(origin);
-
-        return resolver.Object;
-    }
-
-    private static DefaultHttpContext CreateContext(McpScope scope, IMcpPublicOriginResolver originResolver)
-    {
-        var context = new DefaultHttpContext
-        {
-            RequestServices = new ServiceCollection().AddSingleton(originResolver).BuildServiceProvider(),
-        };
-
-        if (scope != null)
-        {
-            context.SetMcpScope(scope);
-        }
-
-        return context;
+        return new McpAdminShellLinks(new McpLinkResolver(new HttpContextAccessor { HttpContext = context }, adminUIs.Object, options.Object));
     }
 }
