@@ -129,6 +129,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpConnectedAgentService>();
         serviceCollection.AddTransient<McpAgentTokenClassifier>();
         serviceCollection.AddTransient<McpSettingsService>();
+        serviceCollection.AddTransient<McpAdminShellLinks>();
         serviceCollection.AddMcpSettingRules();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();

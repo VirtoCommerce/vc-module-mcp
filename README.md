@@ -402,7 +402,8 @@ The MCP endpoints check that a token was issued for them. The platform accepts t
 - The change runs as the approver, whose access may be wider. A tool held for approval should store the scope of the change explicitly in its arguments (for example the store ids), not "every store I may use", which differs between the requester and the approver.
 - The requester's dry run sees the requester as `RequestContext.User` only; `HttpContext.User` and the platform services that read the current user still see the approver. A tool's dry run should take the user from its request context.
 - The dry run runs again at approval, so a dry run must not have side effects (counters, lookups that write).
-- A change expires after `MCP.Approval.PendingChangeLifetimeHours` and can no longer be approved.
+- The approver sees the preview of the dry run made when the change was submitted, but an approval does not apply that preview: the tool runs with the request's arguments on the data as they are at approval. When the data changed while the change waited, the approval is either refused, because the requester's dry run now fails (the change stays pending: reject it, or ask the requester to submit it again), or it applies what the preview did not show: an argument that holds a complete list, for example, removes an entry added in the meantime. The result recorded with the change shows what the tool did, in **Agent approvals** and in `get_pending_change`. So approve a change soon, and reject one whose object changed since it was submitted, so that the requester submits it again.
+- A change expires after `MCP.Approval.PendingChangeLifetimeHours` (72 by default) and can no longer be approved.
 - A change is executed at most once, even if two approvers, or two replicas, approve it at the same time.
 - A call with `dryRun: true` changes nothing, so it runs right away instead of being submitted.
 - Changes are approved in scopes with approval only (`McpScope.ApprovalPermission`; `admin` by default). In any other scope, a call to a tool marked `[McpRequiresApproval]` is refused and audited as `Error`, and the tool is reported as an error in the log at startup. So is such a tool without `[McpScope]`, because on endpoints without a scope its calls are not held for approval.
@@ -485,7 +486,7 @@ serviceCollection.AddMcpTools<PromotionTools>();
 ```
 
 - `AddMcpPrompts<T>()` and `AddMcpResources<T>()` register prompts and resources the same way. A static class is registered with `AddMcpTools([typeof(MyTools)])`. `AddMcpCapabilities<TAssemblyMarker>()` registers every tool, prompt and resource class of the assembly of `TAssemblyMarker`, an empty class of the module's MCP project (`McpAssemblyMarker` by convention).
-- Every tool, prompt and resource is serialized with `McpSerialization.Options`, the same for all modules: the MCP SDK's defaults with snake_case names, so an agent sees one convention in every tool. A module does not pass options of its own, and the options are read-only.
+- Every tool, prompt and resource is serialized with `McpSerialization.Options`, the same for all modules: the MCP SDK's defaults with snake_case names, so an agent sees one convention in every tool. Characters are written as they are (`>`, `&`, `Müller`), not as `\u` escapes, because the agent reads the JSON as text. A module does not pass options of its own, and the options are read-only.
 - A primitive without `[McpScope]` is not exposed on any registered scope. Names must be unique within a scope; a duplicate is reported as an error in the log at startup.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission, before the tool runs.
 - In a scope that requires a signed-in user, every tool must say who may use it: `[Authorize]`, `[McpPermission]`, `[AllowAnonymous]`, or `[McpAnyUser]` for a tool every signed-in user may call because it checks access to its data itself. A tool that says none of them is not served in that scope, and a warning at startup names it, so a forgotten permission hides the tool instead of opening it to every user. Prompts and resources are not covered by this rule; protect them with `[Authorize]` or `[McpPermission]` when they return data. A prompt or resource whose `[McpPermission]` the user does not have is neither listed nor readable; prompts and resources are not audited and have no switch.
@@ -799,6 +800,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
 | `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the classic back office, wherever the platform serves it |
+| `McpAdminShellLinks` | | The Admin Shell's address, which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell |
 | `McpSecretSettings` | `IMcpSecretSettings` | The secret rule of every tool that describes settings |
 | `McpSettingTexts` | `IMcpSettingTexts` | Settings' titles and descriptions, from the modules' English localization files |
 | `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |

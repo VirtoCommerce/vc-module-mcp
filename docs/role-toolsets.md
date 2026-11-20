@@ -106,6 +106,7 @@ Every action of the brief gets the lightest safeguard that matches its risk:
 
 - Confirmation guards the user against the agent's mistake; approval guards the business against the user's. A client answers a confirmation itself, so confirmation is never the only control on a change that needs a second person.
 - Every write returns a [preview](../README.md#previews): the dry run, the approver and the audit see the same diff. Put what must never happen into the preview's warnings: "The discount is above the 30% policy".
+- A change held for approval waits, up to 72 hours by default, and the approver sees the preview made when it was submitted. The approval runs the tool with the same arguments on the data as they are then: a dry run that now fails keeps the change pending, to be rejected, and an argument that holds a complete list removes what was added in the meantime. The result recorded with the change shows what was applied. Tell the approvers of the role to approve soon and to reject a change whose object changed since it was submitted; [Approval](../README.md#approval) has the rules.
 - Mark personal data in arguments with [`[McpSensitive]`](../README.md#sensitive-arguments), so it shows as `***` in the audit log and in approvals.
 
 ## 4. Give the role its permissions

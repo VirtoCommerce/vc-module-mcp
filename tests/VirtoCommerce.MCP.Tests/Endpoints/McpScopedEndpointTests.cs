@@ -41,6 +41,7 @@ using VirtoCommerce.MCP.Web.Extensions;
 using VirtoCommerce.MCP.Web.Filters;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.MCP.Web.Tools;
+using VirtoCommerce.Platform.Core;
 using VirtoCommerce.Platform.Core.Security;
 using VirtoCommerce.Platform.Core.Settings;
 using Xunit;
@@ -83,6 +84,9 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private readonly Mock<ISettingsManager> _settingsManager = new();
     private readonly ConcurrentBag<McpPendingChangeSearchCriteria> _searchCriteria = [];
     private readonly ConcurrentDictionary<string, McpJob> _jobs = new();
+
+    // The installed admin UIs: the classic back office, and the Admin Shell when a test adds it
+    private readonly List<AdminUIApp> _adminUIs = [new AdminUIApp { Id = McpLinkResolver.BackOfficeAppId, Url = "/", IsRoot = true }];
     private IHost _host;
     private HttpClient _client;
 
@@ -307,6 +311,26 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(McpAuditOutcome.Declined, Assert.Single(_auditEntries).Outcome);
     }
 
+    // A value that is not a text shows as JSON, with its characters as they are.
+    [Fact]
+    public async Task ToolsCall_Should_DescribeTheCall_WithTheCharactersOfItsArguments()
+    {
+        // Arrange
+        string question = null;
+        await using var client = await ConnectAsync(ConfirmScope, (request, _) =>
+        {
+            question = request.Message;
+            return ValueTask.FromResult(new ElicitResult { Action = "accept" });
+        });
+
+        // Act
+        await client.CallToolAsync("archive_all", new Dictionary<string, object> { ["olderThanDays"] = 30, ["folders"] = new[] { "Bücher & Hefte" } },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.EndsWith($"{Environment.NewLine}folders: [\"Bücher & Hefte\"]", question);
+    }
+
     [Fact]
     public async Task ToolsCall_Should_DescribeTheCall_When_TheToolGivesNoMessage()
     {
@@ -342,14 +366,14 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     [Fact]
     public async Task ApprovePendingChange_Should_Refuse_And_AuditItAsDeclined_When_TheClientCannotAskTheUser()
     {
-        // Act: approval needs a person's confirmation, so a client that cannot ask is sent to the back office
+        // Act: approval needs a person's confirmation, so a client that cannot ask is sent to Agent approvals
         var result = await CallAsync(
             Token(permissions: [McpPermissions.Approve, WritePermission]),
             ToolsCall(ModuleConstants.ToolNames.ApprovePendingChange, new { change_id = StoredChange.Id }));
 
         // Assert
         Assert.True(IsError(result));
-        Assert.Contains("back office", Text(result));
+        Assert.Contains($"Ask the user to approve the change in {McpAdminShellLinks.ApprovalsScreen}, ", Text(result));
         Assert.Equal(0, TestTools.Executions);
         Assert.Empty(_completedChanges);
         Assert.Equal(McpAuditOutcome.Declined, Assert.Single(_auditEntries).Outcome);
@@ -567,6 +591,35 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         var entry = Assert.Single(_auditEntries);
         Assert.Equal(McpAuditOutcome.PendingApproval, entry.Outcome);
         Assert.Equal("change-1", entry.PendingChangeId);
+    }
+
+    // Without the Admin Shell the screen is named by its menu path, and an approver in an assistant uses the tool.
+    [Fact]
+    public async Task ToolsCall_Should_NameAgentApprovalsWithoutALink_When_TheAdminShellIsNotInstalled()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_tool", new { promotionId = "p1" }));
+
+        // Assert
+        var message = PendingApprovalMessage(result);
+        Assert.Contains($"in {McpAdminShellLinks.ApprovalsScreen}. ", message);
+        Assert.Contains("An approver who works in an assistant can approve it with approve_pending_change.", message);
+        Assert.DoesNotContain(Origin, message);
+    }
+
+    // The platform does not serve the screen at its own address, so the link opens the Admin Shell.
+    [Fact]
+    public async Task ToolsCall_Should_LinkTheAdminShell_When_ItIsInstalled()
+    {
+        // Arrange
+        _adminUIs.Add(new AdminUIApp { Id = McpAdminShellLinks.AdminShellAppId, Path = "/apps/admin-shell", Url = "/apps/admin-shell/" });
+
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_tool", new { promotionId = "p1" }));
+
+        // Assert
+        Assert.Contains($"in {McpAdminShellLinks.ApprovalsScreen} ({Origin}/apps/admin-shell/). ", PendingApprovalMessage(result));
+        Assert.Contains("Admin Shell > Configuration > AI agents (MCP) > Agent approvals", Text(result));
     }
 
     [Fact]
@@ -1572,6 +1625,8 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         services.AddTransient<McpPendingChangeExecutor>();
         services.AddTransient<McpUserPrincipalFactory>(_ => new TestUserPrincipalFactory(CreateUserPrincipal));
         services.AddScoped<McpCallToolFilter>();
+        services.AddTransient<McpAdminShellLinks>();
+        services.AddSingleton(CreateAdminUIAppService());
         services.AddSingleton(Mock.Of<IOpenIddictTokenManager>());
         services.AddSingleton(_settingsManager.Object);
         services.AddSingleton(CreateAuditEntryService());
@@ -1949,9 +2004,25 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         return response["result"]!["tools"]!.AsArray().Select(x => x!["name"]!.GetValue<string>()).Order().ToArray();
     }
 
+    private IAdminUIAppService CreateAdminUIAppService()
+    {
+        var adminUIAppService = new Mock<IAdminUIAppService>();
+        adminUIAppService.Setup(x => x.GetAdminUIs()).Returns(() => _adminUIs.ToList());
+
+        return adminUIAppService.Object;
+    }
+
     private static bool IsError(JsonNode response)
     {
         return response["error"] != null || response["result"]?["isError"]?.GetValue<bool>() == true;
+    }
+
+    private static string PendingApprovalMessage(JsonNode response)
+    {
+        var payload = JsonNode.Parse(Text(response))!;
+        Assert.Equal("pending_approval", payload["status"]!.GetValue<string>());
+
+        return payload["message"]!.GetValue<string>();
     }
 
     private static string Text(JsonNode response)
@@ -2235,7 +2306,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
         [McpServerTool(Name = "archive_all"), Description("Archives old drafts.")]
         [McpRequiresConfirmation]
-        public static string ArchiveAll(int olderThanDays)
+        public static string ArchiveAll(int olderThanDays, string[] folders = null)
         {
             Interlocked.Increment(ref _executions);
             return $"archived {olderThanDays}";

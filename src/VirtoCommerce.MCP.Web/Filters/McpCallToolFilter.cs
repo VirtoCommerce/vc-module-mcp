@@ -277,7 +277,15 @@ public class McpCallToolFilter(
         audit.Outcome = McpAuditOutcome.PendingApproval;
         audit.PendingChangeId = change.Id;
 
-        return CreatePendingApprovalResult(change, scope);
+        return CreatePendingApprovalResult(change, scope, await GetApprovalsLinkAsync(context));
+    }
+
+    // The link to the Admin Shell, where an approver opens Agent approvals; null names the screen without a link
+    protected virtual Task<string> GetApprovalsLinkAsync(RequestContext<CallToolRequestParams> context)
+    {
+        var adminShellLinks = context.Services?.GetService<McpAdminShellLinks>();
+
+        return adminShellLinks == null ? Task.FromResult<string>(null) : adminShellLinks.GetLinkAsync();
     }
 
     private async Task<bool> IsForbiddenAsync(RequestContext<CallToolRequestParams> context)
@@ -359,19 +367,29 @@ public class McpCallToolFilter(
 
     protected static CallToolResult CreatePendingApprovalResult(McpPendingChange change, McpScope scope)
     {
+        return CreatePendingApprovalResult(change, scope, approvalsLink: null);
+    }
+
+    // approvalsLink: the Admin Shell, where an approver opens Agent approvals; without it the screen is named by its menu path only
+    protected static CallToolResult CreatePendingApprovalResult(McpPendingChange change, McpScope scope, string approvalsLink)
+    {
+        var approvalsScreen = string.IsNullOrEmpty(approvalsLink)
+            ? McpAdminShellLinks.ApprovalsScreen
+            : $"{McpAdminShellLinks.ApprovalsScreen} ({approvalsLink})";
+
         var payload = new
         {
             status = "pending_approval",
             change_id = change.Id,
             expires_at = change.ExpirationDate,
-            message = $"The change was not applied. It is waiting for approval by a user with the {scope.ApprovalPermission} permission. " +
-                "Tell the user the change id; an approver applies it with approve_pending_change. " +
+            message = $"The change was not applied. It waits for an approver, a user with the {scope.ApprovalPermission} permission, in {approvalsScreen}. " +
+                "An approver who works in an assistant can approve it with approve_pending_change. Tell the user the change id. " +
                 "The requester can check it with get_pending_change and withdraw it with reject_pending_change.",
         };
 
         return new CallToolResult
         {
-            Content = [new TextContentBlock { Text = JsonSerializer.Serialize(payload, McpJsonUtilities.DefaultOptions) }],
+            Content = [new TextContentBlock { Text = JsonSerializer.Serialize(payload, McpSerialization.Options) }],
         };
     }
 
@@ -410,7 +428,7 @@ public class McpCallToolFilter(
         audit.ErrorMessage = "The client cannot ask the user to confirm the call, and the tool does not run without it.";
 
         var where = tool.ProtocolTool.Name == ModuleConstants.ToolNames.ApprovePendingChange
-            ? "Ask the user to approve the change in the back office (MCP > Pending changes)"
+            ? $"Ask the user to approve the change in {McpAdminShellLinks.ApprovalsScreen}"
             : "Ask the user to do it in the back office";
 
         return CreateErrorResult($"'{tool.ProtocolTool.Name}' runs only after the user confirms it, and this MCP client cannot ask the user, " +
@@ -612,7 +630,7 @@ public class McpCallToolFilter(
 
         foreach (var (name, value) in values)
         {
-            var text = value is JsonValue scalar && scalar.TryGetValue<string>(out var str) ? str : value?.ToJsonString() ?? "null";
+            var text = value is JsonValue scalar && scalar.TryGetValue<string>(out var str) ? str : value?.ToJsonString(McpSerialization.Options) ?? "null";
             result[name] = text.Length > MaxConfirmationValueLength ? text[..MaxConfirmationValueLength] + "…" : text;
         }
 

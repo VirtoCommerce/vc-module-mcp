@@ -80,6 +80,16 @@ public sealed class McpToolHarnessTests : IAsyncDisposable
         Assert.Equal(25, result.Json.GetProperty("total_count").GetInt32());
     }
 
+    // The SDK writes a tool's answer with McpSerialization.Options: the agent reads its characters as they are.
+    [Fact]
+    public async Task CallAsync_TheAnswer_KeepsItsCharactersAsTheyAre()
+    {
+        var result = await _harness.CallAsync(_reader, "get_store_report", new { store_id = "Müller & Söhne > Köln" }, cancellationToken: TestContext.Current.CancellationToken);
+
+        result.EnsureSucceeded();
+        Assert.Contains("\"store_id\":\"Müller & Söhne > Köln\"", result.Text);
+    }
+
     [Fact]
     public async Task CallAsync_AToolThatNeedsApproval_RunsAsADryRun()
     {
