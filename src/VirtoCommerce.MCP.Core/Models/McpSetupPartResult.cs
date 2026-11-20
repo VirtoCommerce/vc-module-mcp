@@ -13,6 +13,10 @@ public class McpSetupPartResult
 
     public IList<string> Warnings { get; set; } = [];
 
+    // The permissions the part's plan needs (McpSetupPartPlan.RequiredPermissions); null when the part's Create or Update
+    // permission applies.
+    public IList<string> RequiredPermissions { get; set; }
+
     // Why the part failed to apply, without the exception's text, which goes to the log.
     public string Error { get; set; }
 }

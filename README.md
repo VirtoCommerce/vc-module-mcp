@@ -349,7 +349,7 @@ A step that decides per operation, such as a quota for write tools or an extra a
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
 1. The module resolves the scope from the path or the host, reads the token with the platform's OpenIddict validation, and checks that it was issued for this endpoint, to an OAuth client, for a user (not to the client itself), and is still valid in the platform token store.
 1. The scope's permission, if it has one, and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
-1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
+1. Arguments are validated. An argument the tool does not take, its name compared exactly (`dry_run` or `DryRun` for `dryRun`), and a missing required argument are returned as the tool's error, not a protocol error, so the model can correct the call; the first names the arguments the tool takes.
 1. A tool marked `[McpRequiresConfirmation]` asks the user in the chat first, when the client can ask (see [Confirmation in the chat](#confirmation-in-the-chat)); a call the user declines does not run.
 1. A tool marked `[McpRequiresApproval]` does not run: it runs once with its `dryRun` (or `dry_run`) parameter set, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. A tool that requires approval but has no dry-run parameter is refused, and reported as an error at startup. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
@@ -429,7 +429,7 @@ Two read-only tools in the `admin` scope answer questions about the platform's s
 | `search_settings` | Settings found by words in their name, title, description or group, by module, or changed from their defaults, each with its title, description, module, group, type, value and default; pages with `skip` and `take` |
 | `explain_setting` | One setting: what it does, its value, default and allowed values, whether the platform's configuration sets it, whether a change needs a restart, whether objects such as stores keep their own values, and a link that opens it on the **Settings** screen |
 
-No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential(s), when it is a setting of a Virto Commerce module known to be a secret, or when a module names it:
+No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential, also as a plural or followed by digits (`ApiKeys`, `ApiKey2`), when it is a setting of a Virto Commerce module known to be a secret, or when a module names it:
 
 ```csharp
 // Module.Initialize
@@ -787,7 +787,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | Service | Interface | Responsibility |
 | --- | --- | --- |
 | `McpScopeRegistry` | `IMcpScopeRegistry` | Scopes registered by modules and configuration; finds the scope of a request by path or host |
-| `McpCallToolFilter` | | The execution pipeline of every `tools/call`: switches, permissions, arguments, approval, audit, telemetry |
+| `McpCallToolFilter` | | The execution pipeline of every `tools/call`: switches, permissions, arguments (unknown and missing ones refused), approval, audit, telemetry |
 | `McpApprovalService` | `IMcpApprovalService` | Pending change lifecycle: submit, approve, complete, reject, expire |
 | `McpPendingChangeExecutor` | | Runs an approved change as the approver, in an MCP session or from the back office |
 | `McpPendingChangeReviewService` | | Back-office review with the same rules as the review tools |
@@ -803,6 +803,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpAdminShellLinks` | | The Admin Shell's address (`IMcpLinkResolver.GetAppLinkAsync`), which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell |
 | `McpSecretSettings` | `IMcpSecretSettings` | The secret rule of every tool that describes settings |
 | `McpSettingTexts` | `IMcpSettingTexts` | Settings' titles and descriptions, from the modules' English localization files |
+| `McpSetupValues` | `IMcpSetupValues` | How a setup compares a value from a request with a stored one: numbers and booleans by value, two texts exactly |
 | `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |

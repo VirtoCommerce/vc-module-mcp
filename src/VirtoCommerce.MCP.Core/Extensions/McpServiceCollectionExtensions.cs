@@ -73,13 +73,15 @@ public static class McpServiceCollectionExtensions
         return services;
     }
 
-    // The rules of every tool that describes settings: which settings are secrets (IMcpSecretSettings) and where their
-    // titles and descriptions come from (IMcpSettingTexts). The MCP module adds them, and so does a module whose services
-    // use them without it. A solution replaces a rule by registering its own in its module's Initialize.
+    // The rules of every tool that describes settings: which settings are secrets (IMcpSecretSettings), where their
+    // titles and descriptions come from (IMcpSettingTexts), and how a setup compares their values (IMcpSetupValues). The
+    // MCP module adds them, and so does a module whose services use them without it. A solution replaces a rule by
+    // registering its own in its module's Initialize.
     public static IServiceCollection AddMcpSettingRules(this IServiceCollection services)
     {
         services.TryAddSingleton<IMcpSecretSettings, McpSecretSettings>();
         services.TryAddSingleton<IMcpSettingTexts, McpSettingTexts>();
+        services.TryAddSingleton<IMcpSetupValues, McpSetupValues>();
         return services;
     }
 

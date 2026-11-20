@@ -518,6 +518,39 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Equal(McpAuditOutcome.Error, Assert.Single(_auditEntries).Outcome);
     }
 
+    // An argument the tool does not take is refused, with the arguments it takes, so the agent can correct the call.
+    [Fact]
+    public async Task ToolsCall_Should_RefuseAnArgumentTheToolDoesNotTake_And_NameTheOnesItTakes()
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("write_tool", new { value = "x", valeu = "y" }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Equal("Tool 'write_tool' has no argument 'valeu', so the call was not run. Its arguments: value.", Text(result));
+        Assert.Equal(0, TestTools.Executions);
+        Assert.Equal(McpAuditOutcome.Error, Assert.Single(_auditEntries).Outcome);
+    }
+
+    // A misspelled dryRun, in another case or as dry_run, would otherwise submit the change instead of previewing it.
+    [Theory]
+    [InlineData("dry_run")]
+    [InlineData("DryRun")]
+    public async Task ToolsCall_Should_RefuseAMisspelledDryRun_InsteadOfSubmittingTheChange(string argument)
+    {
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]),
+            ToolsCall("submit_tool", new Dictionary<string, object> { ["promotionId"] = "p1", [argument] = true }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Contains($"has no argument '{argument}'", Text(result));
+        Assert.Contains("Its arguments: promotionId, dryRun.", Text(result));
+        Assert.Empty(_submittedChanges);
+        Assert.Equal(0, TestTools.DryRuns);
+        Assert.Equal(0, TestTools.Executions);
+    }
+
     [Fact]
     public async Task ToolsCall_Should_CallAToolOfAStaticClass()
     {

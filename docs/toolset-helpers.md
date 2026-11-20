@@ -107,7 +107,7 @@ var fix = $"Back office: {"Stores > EU store > Payment methods".WithLink(link)}.
 - The link is null outside an MCP request, when the scope has no public origin, and when the classic back office (the AngularJS admin, app `platform`) is not installed or the platform's admin UI is switched off (`VirtoCommerce:PlatformUI:Enable`). `WithLink` then gives the screen alone, so the answer still names it.
 - The route is the screen's address in the classic back office, which starts with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does. The link follows where the platform serves the classic back office (`IAdminUIAppService`): at the site root, or at `/apps/platform/` when another admin UI, such as Admin Shell, owns the root (`VirtoCommerce:PlatformUI:RootApp`).
 - `GetAppLinkAsync(appId, route)` links a screen of another admin UI app the same way, by the app's id: the MCP module links the Admin Shell (`admin-shell`), where its own screens are. The rules for a null link are the same, and a link is null too when no installed admin UI has the id.
-- A module registers nothing for it: the MCP module registers `IMcpLinkResolver`, and a solution replaces it to send the links elsewhere.
+- A toolset registers nothing for it: the MCP module, which serves the toolset, registers `IMcpLinkResolver`. Only a service that also runs without the MCP module installed needs its own `TryAddTransient<IMcpLinkResolver, McpLinkResolver>()`; its links are null there, outside any MCP request. A solution replaces it to send the links elsewhere.
 
 ## Time windows
 
@@ -148,10 +148,10 @@ Some setups span modules. A store's setup takes the basics from Store, the payme
 | --- | --- |
 | `McpSetupChoice` | An allowed value of a section field, such as the code of a shipping method, with the settings it takes |
 | `McpSetupSetting` | A setting with the value of the object being set up, and whether a setup can change it. It derives `McpSetting` ([Describe settings](#describe-settings)); a secret is described without its values |
-| `McpSetupPartPlan` | What applying a part's section would change (`McpFieldChange` items), why it cannot be applied, and what the approver should know. A part derives it to carry the state after the change |
-| `McpSetupPartResult`, `McpSetupPartStatus` | What a setup changes or changed in one part, and how it went: `NoChange`, `WillChange`, `Applied`, `Failed` or `NotApplied` |
+| `McpSetupPartPlan` | What applying a part's section would change (`McpFieldChange` items), why it cannot be applied, and what the approver should know. A part derives it to carry the state after the change. `RequiredPermissions` names the permissions the plan needs when they follow what it does, as the catalog part's do (`RequirePermission` adds one); otherwise the part's `Create` or `Update` permission applies |
+| `McpSetupPartResult`, `McpSetupPartStatus` | What a setup changes or changed in one part, and how it went: `NoChange`, `WillChange`, `Applied`, `Failed` or `NotApplied`; with the permissions its plan needs (`RequiredPermissions`) |
 | `McpSetupPermissions` | The existing permissions that guard a part: `Read`, `Update`, `Create`, and the permission scope that limits them (`ScopeType`) |
-| `McpSetupValues` | Compares a value from a request with a stored one or a default: numbers and booleans by value, other values by their exact text, as the platform compares setting values; an overload takes a `StringComparison`, such as `OrdinalIgnoreCase` to find an allowed value sent in another case |
+| `IMcpSetupValues` | Compares a value from a request with a stored one or a default: numbers and booleans by value when either side is one (`10` equals `"10.0"`), two texts by their exact text (`"007"` and `"7"` differ), as the platform compares setting values; an overload takes a `StringComparison`, such as `OrdinalIgnoreCase` to find an allowed value sent in another case. A service: `AddMcpSettingRules` registers the MCP module's `McpSetupValues`, and a solution replaces it for every setup |
 | `McpFinding` | What the object is missing, with `why` and `screen` ([Findings](#findings)) |
 
 The rules belong to the contract, not to these shapes: what refuses a request, the order of the parts, what blocks going live. Store's setup is the example: its parts and their rules are in the Store module's README, under "A module's part of a store's setup".
@@ -162,8 +162,8 @@ A tool that describes settings, such as `explain_setting`, shows them as the bac
 
 - `McpSetting` is a setting described for a person: its name, title, description, module, type, default, value and allowed values, whether it is required and whether its value was changed. A toolset derives it to add what it knows, as `McpSetupSetting` does for a setup.
 - `IMcpSettingTexts` gives a setting's title and description: `GetTranslation` reads the texts once for an answer, and `Find` looks a setting up in them. The MCP module's `McpSettingTexts` reads the modules' English localization files, as the back office shows them. A title the files do not have is the setting's display name, or else its name; such a description is null.
-- `IMcpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. The MCP module's `McpSecretSettings` makes a setting a secret when it is typed `SecureString`, when it is a setting of a Virto Commerce module known to be a secret (`McpKnownSecretSettings`), when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential(s): `ApiKey` does, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
-- Every toolset shares the two rules, so a solution changes one for all of them by registering its own. `AddMcpSettingRules` registers the MCP module's; a module whose services use them without the MCP module calls it too.
+- `IMcpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. The MCP module's `McpSecretSettings` makes a setting a secret when it is typed `SecureString`, when it is a setting of a Virto Commerce module known to be a secret (`McpKnownSecretSettings`), when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential, also as a plural or followed by digits: `ApiKey`, `ApiKeys` and `ApiKey2` do, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
+- Every toolset shares the two rules, and every setup the comparison of values (`IMcpSetupValues`), so a solution changes one for all of them by registering its own. `AddMcpSettingRules` registers the MCP module's three; a module whose services use them without the MCP module calls it too.
 
 ```csharp
 // Module.Initialize: the module's own secrets that the rule does not find, and the rules for its services
@@ -261,7 +261,7 @@ public class PromotionToolsTests : IAsyncDisposable
 | `PendingApproval` | The tool requires approval for these arguments (`[McpRequiresApproval]`, with its `Condition`): it ran as a dry run, and the result is the preview an approver sees |
 | `Declined` | The tool asks for confirmation and the test declined it (`DeclineConfirmation`); it did not run |
 | `Forbidden` | The tool threw `McpForbiddenException`; `Error` is its message |
-| `Failed` | The tool threw `McpException` or answered with an error; `Error` is the message |
+| `Failed` | The tool threw `McpException` or answered with an error, or the call named an argument the tool does not take, which the MCP module refuses; `Error` is the message |
 | `NotAvailable` | The user may not see the tool |
 | `NotFound` | No tool of that name in the scope |
 

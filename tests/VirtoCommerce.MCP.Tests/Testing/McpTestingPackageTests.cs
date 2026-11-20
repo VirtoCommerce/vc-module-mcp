@@ -171,6 +171,19 @@ public sealed class McpToolHarnessTests : IAsyncDisposable
         Assert.Contains("Nothing to check.", result.Error);
     }
 
+    // As the MCP module does, an argument the tool does not take fails the call: a misspelled dryRun would otherwise run the
+    // change for real in a test that meant a preview.
+    [Fact]
+    public async Task CallAsync_AnArgumentTheToolDoesNotTake_FailsTheCall()
+    {
+        var result = await _harness.CallAsync(_writer, "delete_item", new { item_id = "item-1", dry_run = true }, new McpToolCallOptions { AsApprovedChange = true },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(McpToolCallOutcome.Failed, result.Outcome);
+        Assert.Equal("Tool 'delete_item' has no argument 'dry_run'; the MCP module refuses the call.", result.Error);
+        Assert.Empty(_store.Deleted);
+    }
+
     [Fact]
     public async Task CallAsync_AToolTheUserMayNotSee_IsNotAvailable()
     {

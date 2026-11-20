@@ -13,6 +13,7 @@ using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web.Models;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core;
+using VirtoCommerce.Platform.Core.Common;
 
 namespace VirtoCommerce.MCP.Web.Tools;
 
@@ -47,7 +48,7 @@ public class McpSettingsTools(
 
         if (!string.IsNullOrWhiteSpace(module_id))
         {
-            settings = settings.Where(x => string.Equals(x.ModuleId, module_id.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+            settings = settings.Where(x => x.ModuleId.EqualsIgnoreCase(module_id.Trim())).ToList();
 
             // A wrong module id would otherwise read as a module without settings. A module whose settings are all secrets
             // gets an empty page, with the note on secrets.
@@ -157,7 +158,7 @@ public class McpSettingsTools(
         return notes;
     }
 
-    private static object ToRow(McpPlatformSetting setting)
+    protected virtual object ToRow(McpPlatformSetting setting)
     {
         return new
         {
@@ -173,23 +174,24 @@ public class McpSettingsTools(
         };
     }
 
-    private static bool HasWord(McpPlatformSetting setting, string word)
+    // A word of a search: in the name, the title, the description, or the group as the answers show it ("Catalog > General").
+    protected virtual bool HasWord(McpPlatformSetting setting, string word)
     {
-        return Contains(setting.Name, word) || Contains(setting.Title, word) || Contains(setting.Description, word) || Contains(setting.GroupName, word);
+        return Contains(setting.Name, word) || Contains(setting.Title, word) || Contains(setting.Description, word) || Contains(GetGroupPath(setting.GroupName), word);
     }
 
     private static bool Contains(string text, string word)
     {
-        return text?.Contains(word, StringComparison.OrdinalIgnoreCase) == true;
+        return text?.ContainsIgnoreCase(word) == true;
     }
 
     // "Catalog|General" reads "Catalog > General", as the Settings screen nests it.
-    private static string GetGroupPath(string groupName)
+    protected virtual string GetGroupPath(string groupName)
     {
         return string.IsNullOrEmpty(groupName) ? null : string.Join(" > ", groupName.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
-    private static string GetScreen(McpPlatformSetting setting)
+    protected virtual string GetScreen(McpPlatformSetting setting)
     {
         var group = GetGroupPath(setting.GroupName);
 

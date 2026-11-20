@@ -136,6 +136,21 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         Assert.Empty(_harness.GetVisibleToolNames(McpTestUser.Create("store-admin").WithPermissions("store:read", "store:update")));
     }
 
+    // A call is refused too, not only hidden from the list.
+    [Theory]
+    [InlineData("search_settings")]
+    [InlineData("explain_setting")]
+    public async Task TheSettingsTools_RefuseACall_WithoutThePermissionToReadSettings(string toolName)
+    {
+        var storeAdmin = McpTestUser.Create("store-admin").WithPermissions("store:read", "store:update");
+
+        var arguments = toolName == "explain_setting" ? new { name = _taxCalculation.Name } : null;
+
+        var result = await _harness.CallAsync(storeAdmin, toolName, arguments, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(McpToolCallOutcome.NotAvailable, result.Outcome);
+    }
+
     [Fact]
     public void TheSettingsTools_FollowTheConventions()
     {
@@ -167,6 +182,15 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
 
         Assert.Equal([_taxCalculation.Name], GetNames(found));
         Assert.Empty(GetNames(notFound));
+    }
+
+    // The group is found as the answers show it, "Catalog > General", not as the platform stores it.
+    [Fact]
+    public async Task SearchSettings_FindsTheGroupAsTheAnswersShowIt()
+    {
+        var result = await CallAsync("search_settings", new { keyword = "Catalog > General" });
+
+        Assert.Equal([_imageCategories.Name], GetNames(result));
     }
 
     [Fact]

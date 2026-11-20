@@ -205,7 +205,18 @@ public class McpCallToolFilter(
             return forbidden;
         }
 
-        // An invalid argument is reported as a tool error, not as a protocol error, so the model can correct the call.
+        // An invalid argument is reported as a tool error, not as a protocol error, so the model can correct the call. An
+        // argument the tool does not take is refused, not ignored: a misspelled one, such as dry_run for dryRun, would
+        // otherwise change what the call does without a word.
+        var unknownArguments = tool != null ? FindUnknownArguments(tool, context.Params?.Arguments) : [];
+        if (unknownArguments.Count > 0)
+        {
+            audit.Outcome = McpAuditOutcome.Error;
+            audit.ErrorMessage = GetUnknownArgumentsMessage(tool, unknownArguments);
+
+            return CreateErrorResult(audit.ErrorMessage);
+        }
+
         var missingArgument = FindMissingRequiredArgument(context);
         if (missingArgument != null)
         {
@@ -400,6 +411,27 @@ public class McpCallToolFilter(
 
         var arguments = context.Params?.Arguments;
         return GetRequiredArgumentNames(tool).FirstOrDefault(name => !HasValue(arguments, name));
+    }
+
+    // The arguments of the call that the tool's input schema does not name, compared exactly, as the tool reads them; none
+    // when the schema takes any names.
+    protected virtual IList<string> FindUnknownArguments(McpServerTool tool, IDictionary<string, JsonElement> arguments)
+    {
+        var argumentNames = tool.GetArgumentNames();
+
+        return argumentNames == null || arguments == null
+            ? []
+            : arguments.Keys.Where(name => !argumentNames.Contains(name, StringComparer.Ordinal)).ToList();
+    }
+
+    // The refusal of the arguments the tool does not take, with the ones it takes, so the agent can correct the call.
+    protected virtual string GetUnknownArgumentsMessage(McpServerTool tool, IList<string> unknownArguments)
+    {
+        var unknown = string.Join(", ", unknownArguments.Select(x => $"'{x}'"));
+        var argumentNames = tool.GetArgumentNames() ?? [];
+        var takes = argumentNames.Count == 0 ? "It takes no arguments." : $"Its arguments: {string.Join(", ", argumentNames)}.";
+
+        return $"Tool '{tool.ProtocolTool.Name}' has no {(unknownArguments.Count == 1 ? "argument" : "arguments")} {unknown}, so the call was not run. {takes}";
     }
 
     // The confirmation of a tool with [McpRequiresConfirmation], except for its dry runs, which change nothing.

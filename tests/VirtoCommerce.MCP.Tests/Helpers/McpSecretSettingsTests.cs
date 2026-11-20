@@ -23,6 +23,13 @@ public class McpSecretSettingsTests
     [InlineData("Azure.Credentials")]
     [InlineData("GDPR.GDPRPassword")]
     [InlineData("Legacy.API_KEY")]
+    [InlineData("Stripe.ApiKeys")]
+    [InlineData("Webhook.Secrets")]
+    [InlineData("Sanity.AccessTokens")]
+    [InlineData("Smtp.Passwords")]
+    [InlineData("Legacy.API_KEYS")]
+    [InlineData("Stripe.ApiKey2")]
+    [InlineData("Smtp.Password12")]
     public void IsSecret_WhenAWordOfTheNameIsASecretWord(string name)
     {
         Assert.True(_rule.IsSecret(name, SettingValueType.ShortText));
@@ -34,6 +41,10 @@ public class McpSecretSettingsTests
     [InlineData("Catalog.Monkey")]
     [InlineData("Office.Secretary")]
     [InlineData("Stores.TaxCalculationEnabled")]
+    [InlineData("Search.Keywords")]
+    [InlineData("Seo.Tokenizers")]
+    [InlineData("Office.Secretaries")]
+    [InlineData("Catalog.Turkeys")]
     [InlineData(null)]
     public void IsNotSecret_WhenNoWholeWordIsASecretWord(string name)
     {

@@ -24,7 +24,7 @@ public class McpSettingTexts(ITranslationService translationService) : IMcpSetti
         return (GetText(texts, "title") ?? displayName ?? settingName, GetText(texts, "description"));
     }
 
-    private static string GetText(JToken texts, string key)
+    protected virtual string GetText(JToken texts, string key)
     {
         var text = texts?[key]?.ToString();
 
@@ -33,7 +33,7 @@ public class McpSettingTexts(ITranslationService translationService) : IMcpSetti
 
     // The localization files nest a setting name by its dots ("Stores" > "TaxCalculationEnabled"), but a key may also
     // hold several segments with their dots, so the longest key is tried first.
-    private static JToken FindNode(JToken node, string[] segments, int index)
+    protected virtual JToken FindNode(JToken node, string[] segments, int index)
     {
         if (node is not JObject obj)
         {
