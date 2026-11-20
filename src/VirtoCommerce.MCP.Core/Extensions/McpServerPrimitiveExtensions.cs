@@ -53,6 +53,21 @@ public static class McpServerPrimitiveExtensions
         return _dryRunParameterNames.FirstOrDefault(name => properties.TryGetProperty(name, out _));
     }
 
+    // The names of the arguments the tool's input schema takes, in its order; null when the schema takes other names too
+    // (no properties, or additionalProperties other than false).
+    public static IList<string> GetArgumentNames(this McpServerTool tool)
+    {
+        var schema = tool.ProtocolTool.InputSchema;
+        if (schema.ValueKind != JsonValueKind.Object || !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object ||
+            (schema.TryGetProperty("additionalProperties", out var additional) && additional.ValueKind != JsonValueKind.False))
+        {
+            return null;
+        }
+
+        return properties.EnumerateObject().Select(x => x.Name).ToList();
+    }
+
     // The tools that require approval but cannot be previewed: their calls are refused, because the preview is what
     // the approver reviews and what checks the change against the requester's access.
     public static IList<string> FindApprovalToolsWithoutDryRun(IEnumerable<McpServerTool> tools)

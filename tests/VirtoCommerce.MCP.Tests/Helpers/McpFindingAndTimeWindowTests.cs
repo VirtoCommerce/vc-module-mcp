@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 using ModelContextProtocol;
+using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Models;
 using Xunit;
 
@@ -40,6 +42,38 @@ public class McpFindingTests
     public void GetRank_PutsAnUnknownSeverityLast()
     {
         Assert.True(McpFindingSeverities.GetRank("severe") > McpFindingSeverities.GetRank(McpFindingSeverities.Info));
+    }
+
+    // Why and Screen are optional: the answers of a toolset that does not set them stay as they were.
+    [Fact]
+    public void Serialize_LeavesWhyAndScreenOut_WhenTheyAreNotSet()
+    {
+        var json = JsonSerializer.Serialize(new McpFinding { Id = "a", Severity = McpFindingSeverities.Info }, McpSerialization.Options);
+
+        Assert.DoesNotContain("\"why\"", json);
+        Assert.DoesNotContain("\"screen\"", json);
+    }
+
+    [Fact]
+    public void Serialize_WritesWhyAndScreen_WhenTheyAreSet()
+    {
+        var finding = new McpFinding { Id = "a", Why = "Customers cannot pay.", Screen = "Stores > EU store > Payment methods" };
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(finding, McpSerialization.Options));
+
+        Assert.Equal("Customers cannot pay.", document.RootElement.GetProperty("why").GetString());
+        Assert.Equal("Stores > EU store > Payment methods", document.RootElement.GetProperty("screen").GetString());
+    }
+
+    // ManualOnly is written only when it is true, so the answers of other toolsets stay as they were.
+    [Fact]
+    public void Serialize_WritesManualOnly_OnlyWhenItIsTrue()
+    {
+        var unset = JsonSerializer.Serialize(new McpFinding { Id = "a" }, McpSerialization.Options);
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(new McpFinding { Id = "a", ManualOnly = true }, McpSerialization.Options));
+
+        Assert.DoesNotContain("manual_only", unset);
+        Assert.True(document.RootElement.GetProperty("manual_only").GetBoolean());
     }
 }
 

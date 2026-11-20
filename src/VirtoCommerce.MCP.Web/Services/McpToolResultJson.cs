@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -7,7 +8,8 @@ namespace VirtoCommerce.MCP.Web.Services;
 // Reads the preview and the result of a pending change for a reviewer, in the approval tools and in the back office.
 public static class McpToolResultJson
 {
-    private static readonly JsonSerializerOptions _indented = new() { WriteIndented = true };
+    // A person reads it as text in the back office, so characters are written as they are, not as \u escapes
+    private static readonly JsonSerializerOptions _indented = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static JsonNode Parse(string json)
     {

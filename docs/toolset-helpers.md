@@ -6,7 +6,10 @@ Building blocks for the tools of a module, in `VirtoCommerce.MCP.Core`, and a te
 | --- | --- | --- |
 | A list tool that never cuts its answer off silently | [`McpPage<T>`, `GetPagingAsync`](#paging) | `VirtoCommerce.MCP.Core` |
 | Analysis results that read the same in every module | [`McpFinding`](#findings) | `VirtoCommerce.MCP.Core` |
+| A link to the screen for what the tools do not cover | [`IMcpLinkResolver`, `WithLink`](#links-to-screens) | `VirtoCommerce.MCP.Core` |
 | "The last 24 hours", "since Monday" | [`McpTimeWindow`](#time-windows) | `VirtoCommerce.MCP.Core` |
+| A setup that other modules plug parts into, such as a store's | [`McpSetupPartPlan`, `McpSetupChoice` and the others](#setups-that-modules-plug-into) | `VirtoCommerce.MCP.Core` |
+| Describe settings as the back office does, without secrets | [`IMcpSettingTexts`, `IMcpSecretSettings`](#describe-settings) | `VirtoCommerce.MCP.Core` |
 | Call tools in a unit test as a user with given permissions | [`McpToolHarness`, `McpTestUser`](#call-tools-as-a-user) | `VirtoCommerce.MCP.Testing` |
 | Check a toolset against the conventions in one test | [`McpToolsetConventions`](#check-the-conventions) | `VirtoCommerce.MCP.Testing` |
 
@@ -59,8 +62,11 @@ An analysis tool (a health check, a conflict check, a readiness check) returns `
 | `id` | A stable id of the kind of finding, such as `budget-almost-spent`. Tests and agents refer to it; it does not change with the wording |
 | `severity` | `critical`, `warning` or `info` (`McpFindingSeverities`) |
 | `title` | The finding in one sentence a person understands |
+| `why` | Why it matters, when the title does not say: what it costs or puts at risk. Optional |
 | `evidence` | The figures, with units and the limit they are compared with: "Spent 8,700 of 10,000 USD (87%)" |
 | `fix` | What to do, naming the tool or the screen that does it |
+| `screen` | Where in the back office it is fixed, such as "Stores > EU store > Payment methods". Optional; [`IMcpLinkResolver`](#links-to-screens) gives its link |
+| `manual_only` | True when only a person can fix it, never a tool, such as a secret to enter in the back office. Written only when true |
 | `category` | The area or the cause, as the module defines it, such as `policy` or `infrastructure` |
 | `object_type`, `object_id`, `object_name` | The object the finding is about |
 
@@ -74,6 +80,7 @@ if (spent >= budget * 0.85m)
         Id = "budget-almost-spent",
         Severity = McpFindingSeverities.Warning,
         Title = $"The budget of '{promotion.Name}' is almost spent",
+        Why = "The promotion stops when the budget runs out.",
         Evidence = $"Spent {spent:N0} of {budget:N0} {currency} ({spent / budget:P0}).",
         Fix = "Pause it with pause_promotion, or raise the budget.",
         Category = "budget",
@@ -84,7 +91,23 @@ if (spent >= budget * 0.85m)
 return new { findings = findings.OrderBySeverity(), highest = findings.GetHighestSeverity() };
 ```
 
-`OrderBySeverity` puts critical first and keeps the order within a severity; `CountBySeverity` counts one severity.
+`OrderBySeverity` puts critical first and keeps the order within a severity; `CountBySeverity` counts one severity. A property left null, such as `why` or `screen`, is left out of the answer.
+
+## Links to screens
+
+A toolset does not cover every field. For the rest, the answer names the screen that does it, with a link the person opens. `IMcpLinkResolver.GetLinkAsync` gives the link: the public origin of the request's scope, as the scope's `IMcpPublicOriginResolver` gives it, followed by the route of the screen. `WithLink` writes the screen with its link in brackets.
+
+```csharp
+// A tool or a service of the toolset, given IMcpLinkResolver linkResolver
+var link = await linkResolver.GetLinkAsync("/#!/workspace/store");
+var fix = $"Back office: {"Stores > EU store > Payment methods".WithLink(link)}.";
+// Back office: Stores > EU store > Payment methods (https://admin.example.com/#!/workspace/store).
+```
+
+- The link is null outside an MCP request, when the scope has no public origin, and when the classic back office (the AngularJS admin, app `platform`) is not installed or the platform's admin UI is switched off (`VirtoCommerce:PlatformUI:Enable`). `WithLink` then gives the screen alone, so the answer still names it.
+- The route is the screen's address in the classic back office, which starts with `/#!/workspace/`; the Settings screen takes `?setting=<name>` to open one setting, as `explain_setting` does. The link follows where the platform serves the classic back office (`IAdminUIAppService`): at the site root, or at `/apps/platform/` when another admin UI, such as Admin Shell, owns the root (`VirtoCommerce:PlatformUI:RootApp`).
+- `GetAppLinkAsync(appId, route)` links a screen of another admin UI app the same way, by the app's id: the MCP module links the Admin Shell (`admin-shell`), where its own screens are. The rules for a null link are the same, and a link is null too when no installed admin UI has the id.
+- A toolset registers nothing for it: the MCP module, which serves the toolset, registers `IMcpLinkResolver`. Only a service that also runs without the MCP module installed needs its own `TryAddTransient<IMcpLinkResolver, McpLinkResolver>()`; its links are null there, outside any MCP request. A solution replaces it to send the links elsewhere.
 
 ## Time windows
 
@@ -116,6 +139,45 @@ public object SearchErrors(
 - `hours` or `days` below 1, and a `since` in the future, are refused with an `McpException` whose message the agent can pass on.
 - A `since` without a kind is read as UTC; a local time is converted.
 - Take `TimeProvider` from DI, so tests can fix the time.
+
+## Setups that modules plug into
+
+Some setups span modules. A store's setup takes the basics from Store, the payment methods from Payment, the shipping methods from Shipping and the tax providers from Tax. The module that owns the setup defines its contract: the interfaces, the context and the service. Each module then adds a part. These shapes are what the parts exchange, in any such contract:
+
+| Type | What it is |
+| --- | --- |
+| `McpSetupChoice` | An allowed value of a section field, such as the code of a shipping method, with the settings it takes |
+| `McpSetupSetting` | A setting with the value of the object being set up, and whether a setup can change it. It derives `McpSetting` ([Describe settings](#describe-settings)); a secret is described without its values |
+| `McpSetupPartPlan` | What applying a part's section would change (`McpFieldChange` items), why it cannot be applied, and what the approver should know. A part derives it to carry the state after the change. `RequiredPermissions` names the permissions the plan needs when they follow what it does, as the catalog part's do (`RequirePermission` adds one); otherwise the part's `Create` or `Update` permission applies |
+| `McpSetupPartResult`, `McpSetupPartStatus` | What a setup changes or changed in one part, and how it went: `NoChange`, `WillChange`, `Applied`, `Failed` or `NotApplied`; with the permissions its plan needs (`RequiredPermissions`) |
+| `McpSetupPermissions` | The existing permissions that guard a part: `Read`, `Update`, `Create`, and the permission scope that limits them (`ScopeType`) |
+| `IMcpSetupValues` | Compares a value from a request with a stored one or a default: numbers and booleans by value when either side is one (`10` equals `"10.0"`), two texts by their exact text (`"007"` and `"7"` differ), as the platform compares setting values; an overload takes a `StringComparison`, such as `OrdinalIgnoreCase` to find an allowed value sent in another case. A service: `AddMcpSettingRules` registers the MCP module's `McpSetupValues`, and a solution replaces it for every setup |
+| `McpFinding` | What the object is missing, with `why` and `screen` ([Findings](#findings)) |
+
+The rules belong to the contract, not to these shapes: what refuses a request, the order of the parts, what blocks going live. Store's setup is the example: its parts and their rules are in the Store module's README, under "A module's part of a store's setup".
+
+## Describe settings
+
+A tool that describes settings, such as `explain_setting`, shows them as the back office does and never shows a secret. The same helpers serve every toolset:
+
+- `McpSetting` is a setting described for a person: its name, title, description, module, type, default, value and allowed values, whether it is required and whether its value was changed. A toolset derives it to add what it knows, as `McpSetupSetting` does for a setup.
+- `IMcpSettingTexts` gives a setting's title and description: `GetTranslation` reads the texts once for an answer, and `Find` looks a setting up in them. The MCP module's `McpSettingTexts` reads the modules' English localization files, as the back office shows them. A title the files do not have is the setting's display name, or else its name; such a description is null.
+- `IMcpSecretSettings.IsSecret` is the rule that keeps secrets out, the same one the settings tools use. The MCP module's `McpSecretSettings` makes a setting a secret when it is typed `SecureString`, when it is a setting of a Virto Commerce module known to be a secret (`McpKnownSecretSettings`), when a module names it with `AddMcpSecretSettings`, or when its name has the whole word Key, Secret, Password, Token or Credential, also as a plural or followed by digits: `ApiKey`, `ApiKeys` and `ApiKey2` do, `Keyword` does not. A secret is never listed and its value is never returned, so an agent never proposes to send one.
+- Every toolset shares the two rules, and every setup the comparison of values (`IMcpSetupValues`), so a solution changes one for all of them by registering its own. `AddMcpSettingRules` registers the MCP module's three; a module whose services use them without the MCP module calls it too.
+
+```csharp
+// Module.Initialize: the module's own secrets that the rule does not find, and the rules for its services
+serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
+serviceCollection.AddMcpSettingRules();
+
+// The service that describes the settings, given IMcpSettingTexts and IMcpSecretSettings
+var translation = settingTexts.GetTranslation();
+var (title, description) = settingTexts.Find(translation, descriptor.Name, descriptor.DisplayName);
+var isSecret = secretSettings.IsSecret(descriptor.Name, descriptor.ValueType);
+
+// A solution's own rule, for every toolset: registered in its module's Initialize
+serviceCollection.AddSingleton<IMcpSecretSettings, MySecretSettings>();
+```
 
 ## The testing package
 
@@ -199,7 +261,7 @@ public class PromotionToolsTests : IAsyncDisposable
 | `PendingApproval` | The tool requires approval for these arguments (`[McpRequiresApproval]`, with its `Condition`): it ran as a dry run, and the result is the preview an approver sees |
 | `Declined` | The tool asks for confirmation and the test declined it (`DeclineConfirmation`); it did not run |
 | `Forbidden` | The tool threw `McpForbiddenException`; `Error` is its message |
-| `Failed` | The tool threw `McpException` or answered with an error; `Error` is the message |
+| `Failed` | The tool threw `McpException` or answered with an error, or the call named an argument the tool does not take, which the MCP module refuses; `Error` is the message |
 | `NotAvailable` | The user may not see the tool |
 | `NotFound` | No tool of that name in the scope |
 
@@ -207,7 +269,7 @@ public class PromotionToolsTests : IAsyncDisposable
 - `AskedForConfirmation` and `WasDryRun` say what happened on the way; `EnsureSucceeded()` throws with the outcome and the message otherwise.
 - `McpToolCallOptions.AsApprovedChange` runs a call that needs approval for real, as an approved change does; `DeclineConfirmation` answers a confirmation with **Decline** (by default the harness confirms).
 - The scope is the admin scope (signed-in users, approval with `mcp:approve`); pass another `McpScope` to `Create` for a scope of your own. Tools a test registers itself go through `McpToolHarness.Create(services => services.AddMcpTools<MyTools>(), configureServices, scope)`.
-- During a call, `IHttpContextAccessor.HttpContext` carries the user and the scope, as on the MCP endpoint.
+- During a call, `IHttpContextAccessor.HttpContext` carries the user and the scope, as on the MCP endpoint, and `IMcpLinkResolver` gives links from the scope's `IMcpPublicOriginResolver`, which the test registers.
 
 The harness reproduces the rules above; it does not run the module's call filters, write the audit, or store pending changes. Test those through the MCP module's endpoint, as a [scenario on a test environment](role-toolsets.md#on-a-test-environment).
 
