@@ -53,8 +53,9 @@ public static class McpServerPrimitiveExtensions
         return _dryRunParameterNames.FirstOrDefault(name => properties.TryGetProperty(name, out _));
     }
 
-    // The names of the arguments the tool's input schema takes, in its order; null when the schema takes other names too
-    // (no properties, or additionalProperties other than false).
+    // The names of the arguments the tool's input schema takes, in its order; null when the schema takes other names too:
+    // it has no properties, or an additionalProperties that is present and not false. A schema without additionalProperties
+    // takes only its properties' names.
     public static IList<string> GetArgumentNames(this McpServerTool tool)
     {
         var schema = tool.ProtocolTool.InputSchema;

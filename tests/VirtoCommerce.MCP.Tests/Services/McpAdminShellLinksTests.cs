@@ -13,7 +13,8 @@ using Xunit;
 namespace VirtoCommerce.MCP.Tests.Services;
 
 // The links go through McpLinkResolver.GetAppLinkAsync, whose McpLinkResolverTests cover the cases without a link: no
-// MCP request, no public origin, and the platform's admin UI switched off.
+// MCP request, no public origin, and the back office while the platform's admin UI is switched off, which leaves the
+// Admin Shell its link.
 [Trait("Category", "Unit")]
 public class McpAdminShellLinksTests
 {
@@ -64,7 +65,28 @@ public class McpAdminShellLinksTests
         Assert.Null(link);
     }
 
+    // VirtoCommerce:PlatformUI:Enable = false: no admin UI owns the site root and the AngularJS back office refuses its
+    // page, but the platform still serves the Admin Shell at /apps/admin-shell/
+    [Fact]
+    public async Task GetLinkAsync_Should_BeTheAdminShell_When_ThePlatformsAdminUIIsSwitchedOff()
+    {
+        // Arrange
+        var backOffice = new AdminUIApp { Id = McpLinkResolver.BackOfficeAppId, Path = "/apps/platform", Url = "/apps/platform/" };
+        var links = CreateLinks(platformUIEnabled: false, backOffice, _adminShell);
+
+        // Act
+        var link = await links.GetLinkAsync();
+
+        // Assert
+        Assert.Equal($"{PublicOrigin}/apps/admin-shell/", link);
+    }
+
     private static McpAdminShellLinks CreateLinks(params AdminUIApp[] apps)
+    {
+        return CreateLinks(platformUIEnabled: true, apps);
+    }
+
+    private static McpAdminShellLinks CreateLinks(bool platformUIEnabled, params AdminUIApp[] apps)
     {
         var originResolver = new Mock<IMcpPublicOriginResolver>();
         originResolver.Setup(x => x.GetOriginAsync(It.IsAny<HttpContext>(), It.IsAny<McpScope>())).ReturnsAsync($"{PublicOrigin}/");
@@ -76,7 +98,7 @@ public class McpAdminShellLinksTests
         adminUIs.Setup(x => x.GetAdminUIs()).Returns(apps);
 
         var options = new Mock<IOptionsMonitor<PlatformUIOptions>>();
-        options.Setup(x => x.CurrentValue).Returns(new PlatformUIOptions());
+        options.Setup(x => x.CurrentValue).Returns(new PlatformUIOptions { Enable = platformUIEnabled });
 
         return new McpAdminShellLinks(new McpLinkResolver(new HttpContextAccessor { HttpContext = context }, adminUIs.Object, options.Object));
     }

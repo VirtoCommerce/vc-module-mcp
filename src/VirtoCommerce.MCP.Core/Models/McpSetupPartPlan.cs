@@ -19,6 +19,8 @@ public class McpSetupPartPlan
     // catalog part asks for catalog:read when it shows a catalog, catalog:update when it changes one and catalog:create
     // when it creates one. The setup's tools check them, with the part's ScopeType, for the requester and again at
     // approval, before the plan is shown or applied. Null: the part's Create or Update permission (McpSetupPermissions).
+    // Empty: no permission is checked, so it suits only a plan that reads and changes nothing, such as one refused before
+    // it reads anything.
     public IList<string> RequiredPermissions { get; set; }
 
     // Records a change, unless the two values are equal (object.Equals), as McpChangePreview.AddChange does. A part

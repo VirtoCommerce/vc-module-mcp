@@ -9,8 +9,8 @@ using VirtoCommerce.Platform.Core.Common;
 namespace VirtoCommerce.MCP.Core.Services;
 
 // The routes of GetLinkAsync are those of the AngularJS back office, the admin UI app "platform"; GetAppLinkAsync links
-// any admin UI app. A link follows where the platform serves the app: at the site root, or at /apps/{appId}/ when another
-// admin UI owns the root (VirtoCommerce:PlatformUI:RootApp).
+// any admin UI app. A link follows where the platform serves the app: at the site root when the app owns it
+// (VirtoCommerce:PlatformUI:RootApp), at /apps/{appId}/ otherwise.
 public class McpLinkResolver(
     IHttpContextAccessor httpContextAccessor,
     IAdminUIAppService adminUIAppService,
@@ -41,10 +41,12 @@ public class McpLinkResolver(
     }
 
     // The admin UI app as the platform serves it (Url is "/" at the site root, "/apps/{appId}/" otherwise); null when it is
-    // not installed, or when the platform's admin UI is switched off (VirtoCommerce:PlatformUI:Enable).
+    // not installed. With the platform's admin UI switched off (VirtoCommerce:PlatformUI:Enable), the back office is null
+    // too: the AngularJS admin then refuses its page, also at /apps/platform/, while the platform still serves the other
+    // admin UI apps, such as Admin Shell, at /apps/{appId}/.
     protected virtual AdminUIApp GetAdminUI(string appId)
     {
-        if (!platformUIOptions.CurrentValue.Enable)
+        if (!platformUIOptions.CurrentValue.Enable && appId.EqualsIgnoreCase(BackOfficeAppId))
         {
             return null;
         }

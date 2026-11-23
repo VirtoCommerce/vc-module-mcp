@@ -11,7 +11,8 @@ public interface IMcpLinkResolver
     // scope has no public origin, and when the back office is not installed or the platform's admin UI is switched off.
     Task<string> GetLinkAsync(string route);
 
-    // The link to a route of an admin UI app by its id, such as "/" of "admin-shell"; null in the same cases, and when no
-    // installed admin UI has the id.
+    // The link to a route of an admin UI app by its id, such as "/" of "admin-shell"; null outside an MCP request, when the
+    // scope has no public origin, and when no installed admin UI has the id. With the platform's admin UI switched off,
+    // only the back office's link is null: the platform still serves the other apps at /apps/{appId}/.
     Task<string> GetAppLinkAsync(string appId, string route);
 }

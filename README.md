@@ -799,8 +799,8 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
-| `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the admin UIs: the classic back office, or any admin UI app by its id, wherever the platform serves it |
-| `McpAdminShellLinks` | | The Admin Shell's address (`IMcpLinkResolver.GetAppLinkAsync`), which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell |
+| `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the admin UIs: the classic back office, or any admin UI app by its id, wherever the platform serves it; none to the classic back office while the platform's admin UI is switched off (`VirtoCommerce:PlatformUI:Enable`) |
+| `McpAdminShellLinks` | | The Admin Shell's address (`IMcpLinkResolver.GetAppLinkAsync`), which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell. It stays while the platform's admin UI is switched off, as the platform still serves the Admin Shell at `/apps/admin-shell/` |
 | `McpSecretSettings` | `IMcpSecretSettings` | The secret rule of every tool that describes settings |
 | `McpSettingTexts` | `IMcpSettingTexts` | Settings' titles and descriptions, from the modules' English localization files |
 | `McpSetupValues` | `IMcpSetupValues` | How a setup compares a value from a request with a stored one: numbers and booleans by value, two texts exactly |

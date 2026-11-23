@@ -87,6 +87,9 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
 
     // The installed admin UIs: the classic back office, and the Admin Shell when a test adds it
     private readonly List<AdminUIApp> _adminUIs = [new AdminUIApp { Id = McpLinkResolver.BackOfficeAppId, Url = "/", IsRoot = true }];
+
+    // When a test sets it, reading the admin UIs throws it, so the links to an admin UI fail
+    private Exception _adminUIsError;
     private IHost _host;
     private HttpClient _client;
 
@@ -654,6 +657,25 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
         Assert.Contains($"in {McpAdminShellLinks.ApprovalsScreen} ({Origin}/apps/admin-shell/). ", PendingApprovalMessage(result));
         // The raw text, as the agent reads it: the path's characters as they are, not as \u escapes
         Assert.Contains("Admin Shell > Configuration > AI agents (MCP) > Agent approvals", Text(result));
+    }
+
+    // The link is looked up before the change is stored, so a lookup that fails leaves no change waiting for approval
+    // behind an answer that says the call failed.
+    [Fact]
+    public async Task ToolsCall_Should_StoreNoChange_When_TheApprovalsLinkCannotBeLookedUp()
+    {
+        // Arrange
+        _adminUIsError = new InvalidOperationException("The admin UIs cannot be read.");
+
+        // Act
+        var result = await CallAsync(Token(permissions: [WritePermission]), ToolsCall("submit_tool", new { promotionId = "p1" }));
+
+        // Assert
+        Assert.True(IsError(result));
+        Assert.Empty(_submittedChanges);
+        var entry = Assert.Single(_auditEntries);
+        Assert.Equal(McpAuditOutcome.Error, entry.Outcome);
+        Assert.Null(entry.PendingChangeId);
     }
 
     [Fact]
@@ -2042,7 +2064,7 @@ public sealed class McpScopedEndpointTests : IAsyncLifetime
     private IAdminUIAppService CreateAdminUIAppService()
     {
         var adminUIAppService = new Mock<IAdminUIAppService>();
-        adminUIAppService.Setup(x => x.GetAdminUIs()).Returns(() => _adminUIs.ToList());
+        adminUIAppService.Setup(x => x.GetAdminUIs()).Returns(() => _adminUIsError != null ? throw _adminUIsError : _adminUIs.ToList());
 
         return adminUIAppService.Object;
     }

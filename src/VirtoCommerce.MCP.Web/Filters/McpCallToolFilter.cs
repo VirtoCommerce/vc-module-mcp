@@ -284,11 +284,14 @@ public class McpCallToolFilter(
             throw new McpException($"Tool '{audit.ToolName}' requires approval but has no dry run, so its change cannot be previewed for the approver. The call was not executed.");
         }
 
+        // The link is looked up before the change is stored, so a lookup that fails leaves no change waiting for approval
+        // behind an answer that says the call failed.
+        var approvalsLink = await GetApprovalsLinkAsync(context);
         var change = await SubmitForApprovalAsync(next, context, scope, tool, cancellationToken);
         audit.Outcome = McpAuditOutcome.PendingApproval;
         audit.PendingChangeId = change.Id;
 
-        return CreatePendingApprovalResult(change, scope, await GetApprovalsLinkAsync(context));
+        return CreatePendingApprovalResult(change, scope, approvalsLink);
     }
 
     // The link to the Admin Shell, where an approver opens Agent approvals; null names the screen without a link
