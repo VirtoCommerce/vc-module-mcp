@@ -60,8 +60,12 @@ public static class McpServerPrimitiveExtensions
     {
         var schema = tool.ProtocolTool.InputSchema;
         if (schema.ValueKind != JsonValueKind.Object || !schema.TryGetProperty("properties", out var properties) ||
-            properties.ValueKind != JsonValueKind.Object ||
-            (schema.TryGetProperty("additionalProperties", out var additional) && additional.ValueKind != JsonValueKind.False))
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (schema.TryGetProperty("additionalProperties", out var additional) && additional.ValueKind != JsonValueKind.False)
         {
             return null;
         }
