@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
@@ -15,16 +19,21 @@ using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Testing;
 using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.MCP.Web.Tools;
+using VirtoCommerce.Platform.Caching;
 using VirtoCommerce.Platform.Core;
+using VirtoCommerce.Platform.Core.Events;
 using VirtoCommerce.Platform.Core.Localizations;
 using VirtoCommerce.Platform.Core.Settings;
+using VirtoCommerce.Platform.Data.Model;
+using VirtoCommerce.Platform.Data.Repositories;
 using VirtoCommerce.Platform.Data.Settings;
 using Xunit;
 
 namespace VirtoCommerce.MCP.Tests.Tools;
 
-// The settings tools over the platform's own Settings V2 service, which reads a faked settings manager: what the back
-// office shows, the platform-wide values, and the settings forced by the configuration come from the platform's code.
+// The settings tools over the platform's own Settings V2 service and settings manager, which read faked database rows
+// and an in-memory configuration: what the back office shows, the platform-wide values, the settings the configuration
+// sets and the defaults it sets come from the platform's code.
 [Trait("Category", "Unit")]
 public sealed class McpSettingsToolsTests : IAsyncDisposable
 {
@@ -53,10 +62,16 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         DefaultValue = 60, RestartRequired = true,
     };
 
+    // A fixed setting of the PlatformSettings section, as the platform's documentation shows one.
+    private static readonly SettingDescriptor _sitemapLimit = Setting("Sitemap.RecordsLimitPerFile", "VirtoCommerce.Sitemaps", "Sitemap|General", SettingValueType.PositiveInteger, 10000);
+
     // Secrets: by a word of the name, by the type, and by a name a module declared.
     private static readonly SettingDescriptor _stripeKey = Setting("Payment.Stripe.ApiKey", "VirtoCommerce.Payment", "Payment|Stripe", SettingValueType.ShortText, "sk_test_0000");
     private static readonly SettingDescriptor _smtpSignature = Setting("Notifications.Smtp.Signature", "VirtoCommerce.Notifications", "Notifications|Email", SettingValueType.SecureString, null);
     private static readonly SettingDescriptor _erpSigningCode = Setting("Erp.SigningCode", "Partner.Erp", "ERP|Connection", SettingValueType.ShortText, null);
+
+    // A secret the configuration sets.
+    private static readonly SettingDescriptor _payPalSecret = Setting("Payment.PayPal.Secret", "VirtoCommerce.Payment", "Payment|PayPal", SettingValueType.ShortText, null);
 
     private static readonly SettingDescriptor _hidden = new()
     {
@@ -66,9 +81,19 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
 
     private static readonly SettingDescriptor[] _descriptors =
     [
-        _taxCalculation, _fullTextSearch, _imageCategories, _orderStatus, _senderEmail, _cacheExpiration, _keywordLength,
-        _stripeKey, _smtpSignature, _erpSigningCode, _hidden,
+        _taxCalculation, _fullTextSearch, _imageCategories, _orderStatus, _senderEmail, _cacheExpiration, _keywordLength, _sitemapLimit,
+        _stripeKey, _smtpSignature, _erpSigningCode, _payPalSecret, _hidden,
     ];
+
+    // The configuration, as appsettings would hold it: the values of the sender's email and of a secret, and the defaults
+    // of two settings.
+    private static readonly Dictionary<string, string> _configuration = new()
+    {
+        [$"VirtoCommerce:Settings:Override:CurrentValue:Global:{_senderEmail.Name}"] = "orders@example.com",
+        [$"VirtoCommerce:Settings:Override:CurrentValue:Global:{_payPalSecret.Name}"] = "paypal-secret-0042",
+        [$"VirtoCommerce:Settings:Override:DefaultValue:Global:{_keywordLength.Name}"] = "2",
+        [$"VirtoCommerce:Settings:Override:DefaultValue:Global:{_cacheExpiration.Name}"] = "30",
+    };
 
     // The values saved for the platform; a dictionary setting saves its items.
     private static readonly Dictionary<string, object> _saved = new()
@@ -76,6 +101,8 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         [_fullTextSearch.Name] = true,
         [_imageCategories.Name] = new object[] { "Images", "Thumbnails", "Banners" },
         [_orderStatus.Name] = "Processing",
+        // The module's default, saved before the configuration set another default.
+        [_keywordLength.Name] = 3,
         [_stripeKey.Name] = "sk_live_4242",
         [_smtpSignature.Name] = "smtp-signature-0042",
         [_erpSigningCode.Name] = "erp-signing-0042",
@@ -93,21 +120,30 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
 
     private static readonly McpTestUser _settingsReader = McpTestUser.Create("reader").WithPermissions(PlatformConstants.Security.Permissions.SettingQuery);
 
-    private readonly Mock<ISettingsManager> _settingsManager = new();
+    private readonly Mock<IPlatformRepository> _repository = new();
     private readonly Mock<ITranslationService> _translationService = new();
+    private readonly ISettingsOverrideProvider _overrides = new ConfigurationSettingsOverrideProvider(new ConfigurationBuilder().AddInMemoryCollection(_configuration).Build());
+    private readonly IOptions<FixedSettings> _fixedSettings = Options.Create(new FixedSettings { Settings = [new ObjectSettingEntry(_sitemapLimit) { Value = 20000 }] });
     private readonly SettingsPropertyService _settingsPropertyService;
     private readonly McpToolHarness _harness;
 
     public McpSettingsToolsTests()
     {
-        _settingsManager.Setup(x => x.AllRegisteredSettings).Returns(_descriptors);
-        _settingsManager.Setup(x => x.GetSettingTypeAssignments()).Returns(new Dictionary<string, string[]> { [_taxCalculation.Name] = ["Store"] });
-        _settingsManager
-            .Setup(x => x.GetObjectSettingsAsync(It.IsAny<IEnumerable<string>>(), null, null))
-            .ReturnsAsync((IEnumerable<string> names, string _, string _) => names.Select(GetSavedSetting).ToList().AsEnumerable());
+        _repository
+            .Setup(x => x.GetObjectSettingsByNamesAsync(It.IsAny<string[]>(), null, null))
+            .ReturnsAsync((string[] names, string _, string _) => names.Where(_saved.ContainsKey).Select(GetSavedRow).ToArray());
+
+        var settingsManager = new SettingsManager(() => _repository.Object, CreateCache(), new Mock<IEventPublisher>().Object, _fixedSettings, _overrides);
+
+        foreach (var module in _descriptors.GroupBy(x => x.ModuleId))
+        {
+            settingsManager.RegisterSettings(module, module.Key);
+        }
+
+        settingsManager.RegisterSettingsForType([_taxCalculation], "Store");
 
         _translationService.Setup(x => x.GetTranslationDataForLanguage("en")).Returns(JObject.Parse(Translations));
-        _settingsPropertyService = new SettingsPropertyService(_settingsManager.Object, new FixedOverrides(_senderEmail.Name));
+        _settingsPropertyService = new SettingsPropertyService(settingsManager, _overrides);
 
         var pageSize = new Mock<IMcpPageSizeResolver>();
         pageSize.Setup(x => x.GetPageSizeAsync(It.IsAny<int?>())).ReturnsAsync((int? take) => Math.Clamp(take ?? 20, 1, 50));
@@ -119,6 +155,8 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
             services => services.AddMcpTools<McpSettingsTools>(),
             services => services
                 .AddSingleton<ISettingsPropertyService>(_settingsPropertyService)
+                .AddSingleton(_overrides)
+                .AddSingleton(_fixedSettings)
                 .AddSingleton(_translationService.Object)
                 .AddSingleton(pageSize.Object)
                 .AddSingleton(originResolver.Object)
@@ -166,9 +204,9 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         // Assert
         result.EnsureSucceeded();
         Assert.Equal(
-            [_imageCategories.Name, _fullTextSearch.Name, _senderEmail.Name, _orderStatus.Name, _cacheExpiration.Name, _keywordLength.Name, _taxCalculation.Name],
+            [_imageCategories.Name, _fullTextSearch.Name, _orderStatus.Name, _cacheExpiration.Name, _keywordLength.Name, _taxCalculation.Name],
             GetNames(result));
-        Assert.All(new[] { "sk_live_4242", "sk_test_0000", "smtp-signature-0042", "erp-signing-0042", "hidden-0042" }, value => Assert.DoesNotContain(value, result.Text));
+        Assert.All(new[] { "sk_live_4242", "sk_test_0000", "smtp-signature-0042", "erp-signing-0042", "paypal-secret-0042", "hidden-0042" }, value => Assert.DoesNotContain(value, result.Text));
         Assert.Equal($"Secrets are not listed. A person enters them in the back office: Settings ({Origin}/#!/workspace/settings).",
             result.Json.GetProperty("secrets").GetString());
     }
@@ -202,7 +240,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
 
         // Assert
         Assert.Equal([_imageCategories.Name, _fullTextSearch.Name], GetNames(catalog));
-        Assert.Equal([_imageCategories.Name, _fullTextSearch.Name, _orderStatus.Name], GetNames(changed));
+        Assert.Equal([_imageCategories.Name, _fullTextSearch.Name, _orderStatus.Name, _keywordLength.Name], GetNames(changed));
 
         var fullTextSearch = GetRow(changed, _fullTextSearch.Name);
         Assert.True(fullTextSearch.GetProperty("value").GetBoolean());
@@ -240,13 +278,49 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         var second = await CallAsync("search_settings", new { skip = nextSkip, take = 4 });
 
         // Assert
-        Assert.Equal(7, first.Json.GetProperty("settings").GetProperty("total_count").GetInt32());
+        Assert.Equal(6, GetTotalCount(first));
         Assert.True(first.Json.GetProperty("settings").GetProperty("has_more").GetBoolean());
         Assert.False(second.Json.GetProperty("settings").GetProperty("has_more").GetBoolean());
 
         var names = GetNames(first).Concat(GetNames(second)).ToList();
-        Assert.Equal(7, names.Count);
-        Assert.Equal(7, names.Distinct().Count());
+        Assert.Equal(6, names.Count);
+        Assert.Equal(6, names.Distinct().Count());
+    }
+
+    // A value the configuration forces (Settings:Override:CurrentValue) and a fixed setting (PlatformSettings) differ from
+    // their defaults, and still neither is listed nor counted, changed or not.
+    [Fact]
+    public async Task SearchSettings_LeavesOutTheSettingsTheConfigurationSets_AndTheCountsFollow()
+    {
+        // Act
+        var all = await CallAsync("search_settings", new { take = 50 });
+        var changed = await CallAsync("search_settings", new { changed_only = true });
+
+        // Assert
+        Assert.DoesNotContain(_senderEmail.Name, GetNames(all));
+        Assert.DoesNotContain(_sitemapLimit.Name, GetNames(all));
+        Assert.Equal(6, GetTotalCount(all));
+        Assert.Equal([_imageCategories.Name, _fullTextSearch.Name, _orderStatus.Name, _keywordLength.Name], GetNames(changed));
+        Assert.Equal(4, GetTotalCount(changed));
+        Assert.DoesNotContain("orders@example.com", all.Text);
+    }
+
+    // Sitemaps has one setting, which the configuration fixes; Notifications has a secret and a value the configuration
+    // forces. Neither is a wrong module id: an empty page, with the note on the settings the configuration sets.
+    [Theory]
+    [InlineData("VirtoCommerce.Sitemaps")]
+    [InlineData("VirtoCommerce.Notifications")]
+    public async Task SearchSettings_AModuleWhoseSettingsTheConfigurationSets_IsAnEmptyPage_WithTheNoteOnThem(string moduleId)
+    {
+        // Act
+        var result = await CallAsync("search_settings", new { module_id = moduleId });
+
+        // Assert
+        Assert.Equal(McpToolCallOutcome.Succeeded, result.Outcome);
+        Assert.Empty(GetNames(result));
+        Assert.Equal(0, GetTotalCount(result));
+        Assert.Equal("Settings the platform's configuration sets are not listed. A person changes them in the configuration, such as appsettings or environment variables, not in the back office.",
+            result.Json.GetProperty("set_by_configuration").GetString());
     }
 
     [Fact]
@@ -268,6 +342,8 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         Assert.True(json.GetProperty("default_value").GetBoolean());
         Assert.False(json.GetProperty("is_changed").GetBoolean());
         Assert.False(json.GetProperty("is_secret").GetBoolean());
+        // A setting the configuration sets is never explained, so the answer does not say whether it is one.
+        Assert.False(json.TryGetProperty("is_set_by_configuration", out _));
         Assert.Equal(["Store"], json.GetProperty("own_values_in").EnumerateArray().Select(x => x.GetString()));
         Assert.Contains("Each Store keeps its own value of this setting; this is the platform-wide value.", GetNotes(result));
         Assert.Equal($"Settings > Stores > General ({Origin}/#!/workspace/settings?setting=Stores.TaxCalculationEnabled).",
@@ -295,17 +371,54 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task ExplainSetting_SaysWhenTheConfigurationSetsTheValue_AndWhenAChangeNeedsARestart()
+    public async Task ExplainSetting_SaysWhenAChangeNeedsARestart()
     {
         // Act
-        var senderEmail = await CallAsync("explain_setting", new { name = _senderEmail.Name });
-        var cacheExpiration = await CallAsync("explain_setting", new { name = _cacheExpiration.Name });
+        var result = await CallAsync("explain_setting", new { name = _cacheExpiration.Name });
 
         // Assert
-        Assert.True(senderEmail.Json.GetProperty("is_set_by_configuration").GetBoolean());
-        Assert.Contains(GetNotes(senderEmail), x => x.Contains("the back office shows it but cannot change it"));
-        Assert.True(cacheExpiration.Json.GetProperty("restart_required").GetBoolean());
-        Assert.Equal(["A change takes effect after the platform restarts."], GetNotes(cacheExpiration));
+        Assert.True(result.Json.GetProperty("restart_required").GetBoolean());
+        Assert.Equal(["A change takes effect after the platform restarts."], GetNotes(result));
+    }
+
+    // A value the configuration forces, a fixed setting, and a secret the configuration sets: the refusal names the
+    // setting as the platform registered it.
+    [Theory]
+    [InlineData("notifications.senderemail", "Notifications.SenderEmail")]
+    [InlineData("Sitemap.RecordsLimitPerFile", "Sitemap.RecordsLimitPerFile")]
+    [InlineData("Payment.PayPal.Secret", "Payment.PayPal.Secret")]
+    public async Task ExplainSetting_ASettingTheConfigurationSets_IsRefused(string name, string settingName)
+    {
+        // Act
+        var result = await CallAsync("explain_setting", new { name });
+
+        // Assert
+        Assert.Equal(McpToolCallOutcome.Failed, result.Outcome);
+        Assert.Equal($"Setting '{settingName}' is set by the platform's configuration, so the tools do not show it.", result.Error);
+    }
+
+    // The configuration sets the defaults of two settings: Cache.AbsoluteExpiration keeps its default, and
+    // Search.Keyword.MinLength holds the module's default 3, saved before, which differs from the configured 2.
+    [Fact]
+    public async Task TheSettingsTools_ShowTheDefaultTheConfigurationSets_AndCompareTheValueWithIt()
+    {
+        // Act
+        var cacheExpiration = await CallAsync("explain_setting", new { name = _cacheExpiration.Name });
+        var keywordLength = await CallAsync("explain_setting", new { name = _keywordLength.Name });
+        var changed = await CallAsync("search_settings", new { changed_only = true });
+
+        // Assert
+        Assert.Equal(30, cacheExpiration.Json.GetProperty("default_value").GetInt32());
+        Assert.Equal(30, cacheExpiration.Json.GetProperty("value").GetInt32());
+        Assert.False(cacheExpiration.Json.GetProperty("is_changed").GetBoolean());
+
+        Assert.Equal(2, keywordLength.Json.GetProperty("default_value").GetInt32());
+        Assert.Equal(3, keywordLength.Json.GetProperty("value").GetInt32());
+        Assert.True(keywordLength.Json.GetProperty("is_changed").GetBoolean());
+
+        var row = GetRow(changed, _keywordLength.Name);
+        Assert.Equal(2, row.GetProperty("default_value").GetInt32());
+        Assert.Equal(3, row.GetProperty("value").GetInt32());
     }
 
     [Fact]
@@ -341,7 +454,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
     {
         // Arrange
         var secretOptions = new McpSecretSettingsOptions();
-        var service = new McpSettingsService(_settingsPropertyService, new McpSecretSettings(Options.Create(secretOptions)), new McpSettingTexts(_translationService.Object));
+        var service = new McpSettingsService(_settingsPropertyService, new McpSecretSettings(Options.Create(secretOptions)), new McpSettingTexts(_translationService.Object), _overrides, _fixedSettings);
 
         // Act
         var setting = await service.GetSettingAsync(_stripeKey.Name);
@@ -352,7 +465,7 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         Assert.Null(setting.Value);
         Assert.Null(setting.DefaultValue);
         Assert.False(setting.IsChanged);
-        _settingsManager.Verify(x => x.GetObjectSettingsAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _repository.Verify(x => x.GetObjectSettingsByNamesAsync(It.IsAny<string[]>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Theory]
@@ -386,44 +499,35 @@ public sealed class McpSettingsToolsTests : IAsyncDisposable
         return result.Json.GetProperty("notes").EnumerateArray().Select(x => x.GetString()).ToList();
     }
 
+    private static int GetTotalCount(McpToolCallResult result)
+    {
+        return result.Json.GetProperty("settings").GetProperty("total_count").GetInt32();
+    }
+
     private static SettingDescriptor Setting(string name, string moduleId, string groupName, SettingValueType valueType, object defaultValue)
     {
         return new SettingDescriptor { Name = name, ModuleId = moduleId, GroupName = groupName, ValueType = valueType, DefaultValue = defaultValue };
     }
 
-    private static ObjectSettingEntry GetSavedSetting(string name)
+    // A saved value as the platform's database holds it: a row per value, so a dictionary setting's items are several rows.
+    private static SettingEntity GetSavedRow(string name)
     {
         var descriptor = _descriptors.Single(x => x.Name == name);
-        var setting = new ObjectSettingEntry(descriptor);
+        object[] values = descriptor.IsDictionary ? (object[])_saved[name] : [_saved[name]];
 
-        if (_saved.TryGetValue(name, out var value))
+        return new SettingEntity
         {
-            if (descriptor.IsDictionary)
-            {
-                setting.AllowedValues = (object[])value;
-            }
-            else
-            {
-                setting.Value = value;
-            }
-        }
-
-        return setting;
+            Name = name,
+            SettingValues = new ObservableCollection<SettingValueEntity>(values.Select(x => new SettingValueEntity().SetValue(descriptor.ValueType, x))),
+        };
     }
 
-    // The configuration sets the values of the named settings.
-    private sealed class FixedOverrides(params string[] settingNames) : ISettingsOverrideProvider
+    // A cache of its own for each test, so that no test reads the values another test loaded.
+    private static PlatformMemoryCache CreateCache()
     {
-        public bool TryGetCurrentValue(SettingDescriptor descriptor, string objectType, string objectId, out object value)
-        {
-            value = null;
-            return settingNames.Contains(descriptor.Name);
-        }
-
-        public bool TryGetDefaultValue(SettingDescriptor descriptor, string objectType, string objectId, out object value)
-        {
-            value = null;
-            return false;
-        }
+        return new PlatformMemoryCache(
+            new MemoryCache(new MemoryCacheOptions()),
+            Options.Create(new CachingOptions { CacheEnabled = true }),
+            NullLogger<PlatformMemoryCache>.Instance);
     }
 }

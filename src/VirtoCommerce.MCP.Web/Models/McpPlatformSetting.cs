@@ -18,7 +18,8 @@ public class McpPlatformSetting : McpSetting
 
     public bool IsLocalizable { get; set; }
 
-    // The platform's configuration (appsettings, environment variables) sets the value, so the back office cannot change it.
+    // The platform's configuration (appsettings, environment variables) sets the value, so the back office cannot change it
+    // and the settings tools do not show it.
     public bool IsSetByConfiguration { get; set; }
 
     public bool RestartRequired { get; set; }

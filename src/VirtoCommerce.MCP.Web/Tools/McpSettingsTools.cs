@@ -18,7 +18,8 @@ using VirtoCommerce.Platform.Core.Common;
 namespace VirtoCommerce.MCP.Web.Tools;
 
 // Read-only tools over the platform's settings, for every role: what a setting means, its platform-wide value, and the
-// back-office screen that changes it. No tool changes a setting. Secrets are never listed and their values never returned.
+// back-office screen that changes it. No tool changes a setting. Secrets are never listed and their values never returned;
+// a setting the platform's configuration sets is neither listed nor explained.
 [McpServerToolType]
 [McpScope(McpScopes.Admin)]
 [Authorize(PlatformConstants.Security.Permissions.SettingQuery)]
@@ -34,8 +35,8 @@ public class McpSettingsTools(
     [Description("Find platform-wide settings of the installed modules by words in their name, title, description or group. " +
         "Each row has the title, description, module, group, type, current platform-wide value and default, and whether the " +
         "value was changed. Filter by module, or to the settings changed from their defaults. Secrets are not listed: a person " +
-        "enters them in the back office. Use explain_setting for one setting's details and the screen that changes it. " +
-        "Returns one page: when has_more is true, call again with next_skip.")]
+        "enters them in the back office. Settings the platform's configuration sets are not listed either. Use explain_setting " +
+        "for one setting's details and the screen that changes it. Returns one page: when has_more is true, call again with next_skip.")]
     public async Task<object> SearchSettings(
         [Description("Words to find in the name, title, description or group, such as \"tax calculation\". Every word must be found. Omit it to list every setting.")] string keyword = null,
         [Description("Module id, such as VirtoCommerce.Catalog, to search that module's settings only.")] string module_id = null,
@@ -51,7 +52,7 @@ public class McpSettingsTools(
             settings = settings.Where(x => x.ModuleId.EqualsIgnoreCase(module_id.Trim())).ToList();
 
             // A wrong module id would otherwise read as a module without settings. A module whose settings are all secrets
-            // gets an empty page, with the note on secrets.
+            // or set by the configuration gets an empty page, with the notes on both.
             if (settings.Count == 0 && !await settingsService.HasSettingsAsync(module_id))
             {
                 throw new McpException($"Module '{module_id}' has no settings here. Module ids look like VirtoCommerce.Catalog; " +
@@ -68,20 +69,28 @@ public class McpSettingsTools(
         {
             settings = found.ToMcpPage(paging, ToRow),
             secrets = AddLink("Secrets are not listed. A person enters them in the back office: Settings", await GetSettingsLinkAsync()),
+            set_by_configuration = "Settings the platform's configuration sets are not listed. A person changes them in the configuration, " +
+                "such as appsettings or environment variables, not in the back office.",
             next_step = "explain_setting tells what one setting does, the values it allows, and where to change it.",
         };
     }
 
     [McpServerTool(Name = ModuleConstants.ToolNames.ExplainSetting, ReadOnly = true, Destructive = false, Idempotent = true)]
     [Description("Explain one platform setting: what it does, its type, its platform-wide value and default, the values it allows, " +
-        "whether the platform's configuration sets it, whether a change needs a restart, whether objects such as stores keep " +
-        "their own values, and the back-office screen that changes it, with a link. A secret is explained without its value. " +
-        "Find the name with search_settings.")]
+        "whether a change needs a restart, whether objects such as stores keep their own values, and the back-office screen " +
+        "that changes it, with a link. A secret is explained without its value. A setting the platform's configuration sets " +
+        "is not explained. Find the name with search_settings.")]
     public async Task<object> ExplainSetting(
         [Description("The setting's name, as search_settings returns it, such as Catalog.ImageCategories.")] string name)
     {
         var setting = await settingsService.GetSettingAsync(name)
             ?? throw new McpException($"Setting '{name}' was not found. search_settings finds settings by words in their name, title, description or group.");
+
+        // Before the secret rule: a secret the configuration sets is not explained either.
+        if (setting.IsSetByConfiguration)
+        {
+            throw new McpException($"Setting '{setting.Name}' is set by the platform's configuration, so the tools do not show it.");
+        }
 
         var backOffice = AddLink(GetScreen(setting), await GetSettingsLinkAsync(setting.Name));
 
@@ -115,7 +124,6 @@ public class McpSettingsTools(
             allowed_values = setting.AllowedValues,
             is_required = setting.IsRequired,
             is_secret = false,
-            is_set_by_configuration = setting.IsSetByConfiguration,
             restart_required = setting.RestartRequired,
             own_values_in = setting.TenantTypes,
             notes = GetNotes(setting),
@@ -135,11 +143,6 @@ public class McpSettingsTools(
     protected virtual IList<string> GetNotes(McpPlatformSetting setting)
     {
         var notes = new List<string>();
-
-        if (setting.IsSetByConfiguration)
-        {
-            notes.Add("The platform's configuration (appsettings or environment variables) sets this value: the back office shows it but cannot change it.");
-        }
 
         if (setting.RestartRequired)
         {

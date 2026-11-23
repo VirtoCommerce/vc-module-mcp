@@ -158,7 +158,7 @@ The rules belong to the contract, not to these shapes: what refuses a request, t
 
 ## Describe settings
 
-A tool that describes settings, such as `explain_setting`, shows them as the back office does and never shows a secret. The same helpers serve every toolset:
+A tool that describes settings, such as `explain_setting`, shows them as the back office does and never shows a secret, nor a setting the platform's configuration sets (the platform's settings manager marks it `IsReadOnly`). The same helpers serve every toolset:
 
 - `McpSetting` is a setting described for a person: its name, title, description, module, type, default, value and allowed values, whether it is required and whether its value was changed. A toolset derives it to add what it knows, as `McpSetupSetting` does for a setup.
 - `IMcpSettingTexts` gives a setting's title and description: `GetTranslation` reads the texts once for an answer, and `Find` looks a setting up in them. The MCP module's `McpSettingTexts` reads the modules' English localization files, as the back office shows them. A title the files do not have is the setting's display name, or else its name; such a description is null.

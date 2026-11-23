@@ -422,12 +422,12 @@ Changes are reviewed in the back office or with the first four tools below, pres
 
 ### Settings tools
 
-Two read-only tools in the `admin` scope answer questions about the platform's settings, for every role. They need `platform:setting:read`, the permission the back office's **Settings** screen reads with, and they show what that screen shows: hidden settings are left out, and the values are the platform-wide ones.
+Two read-only tools in the `admin` scope answer questions about the platform's settings, for every role. They need `platform:setting:read`, the permission the back office's **Settings** screen reads with, and they show what that screen shows: hidden settings are left out, and the values are the platform-wide ones. Unlike the screen, they leave out a setting the platform's configuration sets, by `VirtoCommerce:Settings:Override:CurrentValue` or in the `PlatformSettings` section: it is neither listed nor explained. A default the configuration sets (`VirtoCommerce:Settings:Override:DefaultValue`) is the default they show, and a value is changed when it differs from that default.
 
 | Tool | Purpose |
 | --- | --- |
 | `search_settings` | Settings found by words in their name, title, description or group, by module, or changed from their defaults, each with its title, description, module, group, type, value and default; pages with `skip` and `take` |
-| `explain_setting` | One setting: what it does, its value, default and allowed values, whether the platform's configuration sets it, whether a change needs a restart, whether objects such as stores keep their own values, and a link that opens it on the **Settings** screen |
+| `explain_setting` | One setting: what it does, its value, default and allowed values, whether a change needs a restart, whether objects such as stores keep their own values, and a link that opens it on the **Settings** screen |
 
 No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential, also as a plural or followed by digits (`ApiKeys`, `ApiKey2`), when it is a setting of a Virto Commerce module known to be a secret, or when a module names it:
 
@@ -808,7 +808,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
 | `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |
-| `McpSettingsService` | | The settings the settings tools describe: the platform's settings with their platform-wide values (Settings V2), titles from the localization files, and the secret rule |
+| `McpSettingsService` | | The settings the settings tools describe: the platform's settings with their platform-wide values (Settings V2) and the defaults the configuration sets, titles from the localization files, and the secret rule; the settings the configuration sets are left out |
 
 ### REST API
 

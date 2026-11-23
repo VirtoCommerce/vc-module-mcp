@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using VirtoCommerce.MCP.Core.Settings;
 using VirtoCommerce.MCP.Web.Models;
@@ -12,29 +13,33 @@ namespace VirtoCommerce.MCP.Web.Services;
 
 // The platform's settings as the settings tools describe them: the settings the back office shows, with their
 // platform-wide values, from the platform's Settings V2 service; titles and descriptions from IMcpSettingTexts. A secret
-// (IMcpSecretSettings) is never listed and is described without its values.
+// (IMcpSecretSettings) is never listed and is described without its values. A setting the platform's configuration sets
+// is never listed either, and a default the configuration sets is the setting's default.
 public class McpSettingsService(
     ISettingsPropertyService settingsPropertyService,
     IMcpSecretSettings secretSettings,
-    IMcpSettingTexts settingTexts)
+    IMcpSettingTexts settingTexts,
+    ISettingsOverrideProvider settingsOverrideProvider,
+    IOptions<FixedSettings> fixedSettings)
 {
-    // The settings the back office shows, without secrets, with their platform-wide values, in the order of the Settings
-    // screen: by group, then by name.
+    // The settings the back office shows, without secrets and the settings the configuration sets, with their
+    // platform-wide values, in the order of the Settings screen: by group, then by name.
     public virtual async Task<IList<McpPlatformSetting>> GetSettingsAsync()
     {
         var schemas = await settingsPropertyService.GetSchemaAsync(AbstractTypeFactory<SettingsPropertySearchCriteria>.TryCreateInstance());
-        // One read for the changed values of every setting, secrets' too: the secrets are dropped before any is described.
+        // One read for the changed values of every setting, secrets' too: the secrets and the settings the configuration
+        // sets are dropped before any is described.
         var changedValues = await settingsPropertyService.GetValuesAsync(modifiedOnly: true);
         var translation = settingTexts.GetTranslation();
 
         return schemas
-            .Where(x => !IsSecret(x))
+            .Where(x => !IsSecret(x) && !IsSetByConfiguration(x))
             .Select(x => ToSetting(x, changedValues, translation))
             .ToList();
     }
 
-    // Whether the back office shows settings of the module, secrets included: a module whose settings are all secrets is
-    // a module, not a wrong id.
+    // Whether the back office shows settings of the module, secrets and the settings the configuration sets included: a
+    // module whose settings are all left out is a module, not a wrong id.
     public virtual async Task<bool> HasSettingsAsync(string moduleId)
     {
         if (string.IsNullOrWhiteSpace(moduleId))
@@ -47,7 +52,8 @@ public class McpSettingsService(
         return schemas.Any(x => x.ModuleId.EqualsIgnoreCase(moduleId.Trim()));
     }
 
-    // One setting the back office shows, a secret too, without its values; null for a name the back office does not show.
+    // One setting the back office shows, a secret too, without its values, and a setting the configuration sets, marked
+    // IsSetByConfiguration; null for a name the back office does not show.
     public virtual async Task<McpPlatformSetting> GetSettingAsync(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -85,6 +91,14 @@ public class McpSettingsService(
         return secretSettings.IsSecret(schema.Name, schema.ValueType);
     }
 
+    // The configuration forces the setting's value: by VirtoCommerce:Settings:Override:CurrentValue, which the schema
+    // marks read-only, or as a fixed setting of the PlatformSettings section, which the schema does not mark but the
+    // settings manager serves read-only and never saves.
+    protected virtual bool IsSetByConfiguration(SettingPropertySchema schema)
+    {
+        return schema.IsReadOnly || fixedSettings.Value.Settings?.Any(x => x.Name.EqualsIgnoreCase(schema.Name)) == true;
+    }
+
     // changedValues holds the values that differ from the defaults, as the Settings V2 service compares them; every other
     // setting has its default value.
     protected virtual McpPlatformSetting ToSetting(SettingPropertySchema schema, IDictionary<string, object> changedValues, JObject translation)
@@ -102,14 +116,14 @@ public class McpSettingsService(
         setting.IsRequired = schema.IsRequired;
         setting.IsDictionary = schema.IsDictionary;
         setting.IsLocalizable = schema.IsLocalizable;
-        setting.IsSetByConfiguration = schema.IsReadOnly;
+        setting.IsSetByConfiguration = IsSetByConfiguration(schema);
         setting.RestartRequired = schema.RestartRequired;
         setting.TenantTypes = schema.AssignedToTenants?.ToList() ?? [];
 
         // A secret is described without its values, whoever asks.
         if (!setting.IsSecret)
         {
-            var defaultValue = schema.IsDictionary ? schema.AllowedValues : schema.DefaultValue;
+            var defaultValue = GetDefaultValue(schema);
 
             setting.IsChanged = changedValues.TryGetValue(schema.Name, out var changedValue);
             setting.DefaultValue = defaultValue;
@@ -118,5 +132,24 @@ public class McpSettingsService(
         }
 
         return setting;
+    }
+
+    // The default the Settings V2 service compares the value with: the one the configuration sets
+    // (VirtoCommerce:Settings:Override:DefaultValue), else the module's, the only one the schema holds. A dictionary
+    // setting's default is the list of items the module registered, which the service compares the items with.
+    protected virtual object GetDefaultValue(SettingPropertySchema schema)
+    {
+        if (schema.IsDictionary)
+        {
+            return schema.AllowedValues;
+        }
+
+        // The platform-wide default, for no object, as the settings manager asks for it when it reads the values the service
+        // compares; the configuration finds it by the setting's name and converts it to the setting's type.
+        var descriptor = new SettingDescriptor { Name = schema.Name, ValueType = schema.ValueType };
+
+        return settingsOverrideProvider.TryGetDefaultValue(descriptor, objectType: null, objectId: null, out var configuredDefault)
+            ? configuredDefault
+            : schema.DefaultValue;
     }
 }
