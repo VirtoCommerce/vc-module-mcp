@@ -64,6 +64,13 @@ public class McpSecretSettingsTests
         Assert.All(McpKnownSecretSettings.SettingNames, name => Assert.True(_rule.IsSecret(name.ToUpperInvariant(), SettingValueType.ShortText)));
     }
 
+    // A Json setting whose projects may hold an API token as a literal: its name has no secret word, so only the list finds it.
+    [Fact]
+    public void IsSecret_SanityProjects_WhichMayHoldALiteralToken()
+    {
+        Assert.True(_rule.IsSecret("Sanity.Projects", SettingValueType.Json));
+    }
+
     [Fact]
     public void IsSecret_WhenAModuleNamesIt_WhateverTheCase()
     {

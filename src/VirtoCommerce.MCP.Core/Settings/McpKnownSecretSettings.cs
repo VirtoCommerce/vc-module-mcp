@@ -19,6 +19,8 @@ public static class McpKnownSecretSettings
         "PushMessages.FcmReceiverOptions.VapidKey",
         "Return.ReturnPassword",
         "Sanity.ApiToken",
+        // Json: a project may hold its API token as a literal, although the setting asks for a ${secretName} reference.
+        "Sanity.Projects",
         "Shipping.Bopis.GoogleMaps.ApiKey",
         "ShipStation.ShipStationPassword",
     ];
