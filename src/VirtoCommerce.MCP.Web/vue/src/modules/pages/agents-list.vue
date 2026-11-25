@@ -12,6 +12,7 @@
       :pagination="pagination"
       :searchable="true"
       :search-placeholder="$t('MCP.AGENTS.SEARCH')"
+      search-bar
       :state-key="STATE_KEY"
       :global-filters="globalFilters"
       :empty-state="{ icon: 'lucide-plug', title: $t('MCP.AGENTS.EMPTY'), description: $t('MCP.AGENTS.EMPTY_HINT') }"

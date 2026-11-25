@@ -20,6 +20,7 @@
       :items="items"
       :total-count="totalCount"
       :pagination="pagination"
+      search-bar
       :state-key="STATE_KEY"
       :active-item-id="activeChildParam"
       :show-all-columns="!activeChildParam"
