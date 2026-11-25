@@ -105,6 +105,7 @@ export interface AuditCriteria {
   traceId?: string;
   pendingChangeId?: string;
   startDate?: string;
+  endDate?: string;
   sort?: string;
   skip?: number;
   take?: number;

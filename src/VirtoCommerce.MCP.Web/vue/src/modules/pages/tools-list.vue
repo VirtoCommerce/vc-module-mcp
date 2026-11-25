@@ -34,6 +34,7 @@
         :items="visibleTools"
         :total-count="visibleTools.length"
         :searchable="true"
+        search-bar
         :state-key="STATE_KEY"
         :global-filters="globalFilters"
         :empty-state="{ icon: 'lucide-wrench', title: $t('MCP.TOOLS.EMPTY') }"

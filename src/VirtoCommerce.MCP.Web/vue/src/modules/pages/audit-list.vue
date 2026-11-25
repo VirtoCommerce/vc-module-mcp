@@ -14,6 +14,7 @@
       :pagination="pagination"
       :searchable="true"
       :search-placeholder="$t('MCP.AUDIT.SEARCH')"
+      search-bar
       :state-key="STATE_KEY"
       :active-item-id="activeChildParam"
       :show-all-columns="!activeChildParam"
@@ -88,6 +89,7 @@ import {
   useFunctions,
   useLatestRequest,
   useTableSearch,
+  type GlobalFilterConfig,
   type IBladeToolbar,
 } from "@vc-shell/framework";
 import { VcBlade, VcColumn, VcDataTable, VcStatus } from "@vc-shell/framework/ui";
@@ -119,7 +121,7 @@ const { debounce } = useFunctions();
 const items = ref<McpAuditEntry[]>([]);
 const totalCount = ref(0);
 const scopes = ref<McpScopeInfo[]>([]);
-const filters = ref<{ outcomes?: string[]; scopeName?: string }>({});
+const filters = ref<{ outcomes?: string[]; scopeName?: string; startDate?: string; endDate?: string }>({});
 
 const { sortField, sortOrder, sortExpression } = useDataTableSort({
   stateKey: STATE_KEY,
@@ -168,7 +170,16 @@ const globalFilters = computed(() => [
     label: t("MCP.FIELDS.SCOPE"),
     filter: { options: scopes.value.map((x) => ({ value: x.name, label: x.title ?? x.name })) },
   },
-]);
+  // what agents did on a day or in a week, for an incident or a review
+  { id: "createdDate", label: t("MCP.FIELDS.DATE"), filter: { range: ["startDate", "endDate"] } },
+] satisfies GlobalFilterConfig[]);
+
+// the search bar sends days (YYYY-MM-DD, both ends included); the API compares times, so the end is that day's last moment
+function localDay(ymd: unknown, endOfDay = false) {
+  if (typeof ymd !== "string" || !ymd) return undefined;
+  const day = new Date(`${ymd}T00:00`);
+  return (endOfDay ? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 0, 0, 0, -1) : day).toISOString();
+}
 
 function onFilter(event: { filters: Record<string, unknown> }) {
   const outcomes = event.filters.outcomes;
@@ -176,6 +187,8 @@ function onFilter(event: { filters: Record<string, unknown> }) {
   filters.value = {
     outcomes: outcomes ? ([] as string[]).concat(outcomes as string | string[]) : undefined,
     scopeName: (Array.isArray(scopeName) ? scopeName[0] : (scopeName as string)) || undefined,
+    startDate: localDay(event.filters.startDate),
+    endDate: localDay(event.filters.endDate, true),
   };
   if (pagination.skip) pagination.setPage(1);
   else load();
