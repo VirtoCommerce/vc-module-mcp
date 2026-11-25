@@ -1,6 +1,5 @@
 using System;
 using System.ComponentModel;
-using System.Linq;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
@@ -38,6 +37,15 @@ public class McpCapabilitiesRegistrationTests
         Assert.Equal("""{"store_id":"B2B-store","already_snake":1}""", json);
         Assert.True(McpSerialization.Options.IsReadOnly);
         Assert.Throws<InvalidOperationException>(() => McpSerialization.Options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
+    }
+
+    // An agent reads the JSON as text: characters as they are, not as \u escapes; a quote is still escaped, as JSON needs.
+    [Fact]
+    public void Options_Should_WriteCharactersAsTheyAre()
+    {
+        var json = JsonSerializer.Serialize(new { Text = "Agent approvals > Müller & Söhne's \"Café\" 東京" }, McpSerialization.Options);
+
+        Assert.Equal("""{"text":"Agent approvals > Müller & Söhne's \"Café\" 東京"}""", json);
     }
 
     [McpServerToolType]

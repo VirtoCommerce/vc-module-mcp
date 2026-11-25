@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
-using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Models;
@@ -268,7 +267,7 @@ public class McpController(
     {
         if (await agentTokenClassifier.IsAgentTokenAsync(User))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "An AI agent cannot review pending changes here. The user reviews them in the back office (MCP > Pending changes)." });
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = $"An AI agent cannot review pending changes here. The user reviews them in {McpAdminShellLinks.ApprovalsScreen}." });
         }
 
         return await ReviewAsync(review);

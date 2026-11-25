@@ -4,12 +4,14 @@ using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Server;
 using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.MCP.Web;
 using VirtoCommerce.MCP.Web.Filters;
+using VirtoCommerce.MCP.Web.Services;
 using VirtoCommerce.Platform.Core.Jobs;
 using Xunit;
 
@@ -21,6 +23,8 @@ public class ModuleTests
     [Theory]
     [InlineData(typeof(IMcpScopeRegistry), ServiceLifetime.Singleton)]
     [InlineData(typeof(McpCallToolFilter), ServiceLifetime.Scoped)]
+    [InlineData(typeof(McpSettingsService), ServiceLifetime.Transient)]
+    [InlineData(typeof(IMcpLinkResolver), ServiceLifetime.Transient)]
     public void Initialize_Should_RegisterServicesWithTheExpectedLifetime(Type serviceType, ServiceLifetime lifetime)
     {
         // Act
@@ -28,6 +32,20 @@ public class ModuleTests
 
         // Assert
         Assert.Equal(lifetime, services.Single(x => x.ServiceType == serviceType).Lifetime);
+    }
+
+    [Fact]
+    public void Initialize_Should_RegisterTheSettingsTools()
+    {
+        // Arrange
+        using var serviceProvider = Initialize().BuildServiceProvider();
+
+        // Act
+        var names = serviceProvider.GetServices<McpServerTool>().Select(x => x.ProtocolTool.Name).ToList();
+
+        // Assert
+        Assert.Contains(ModuleConstants.ToolNames.SearchSettings, names);
+        Assert.Contains(ModuleConstants.ToolNames.ExplainSetting, names);
     }
 
     [Fact]

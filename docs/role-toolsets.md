@@ -17,8 +17,8 @@ Start with one page about the person, before any tool. Write it with someone who
 | Question | Why it matters |
 | --- | --- |
 | **Who** is it, and which scope do they connect to? | A back-office person uses `admin`; a seller, `vendor`; a buyer, `ucp`. The scope decides how they sign in and which tools they can see. |
-| **Ten requests**, in their own words: "How is marketing doing?", "Is it our code or Virto's?" | Each request becomes a tool or a prompt. Requests in the person's words become the descriptions the model reads. |
-| **Routines**: what they do every Monday, every morning, after an incident | Routines become prompts. |
+| **Ten requests**, in their own words: "How is marketing doing?", "Is it our code or Virto's?" | Each request becomes a tool, or a routine that calls several tools. Requests in the person's words become the descriptions the model reads. |
+| **Routines**: what they do every Monday, every morning, after an incident | One of them becomes the example routine in the module's documentation ([section 5](#5-write-an-example-routine)). |
 | **Data they see**: all stores, some stores, their seller, their organization | Decides the permissions and how each tool narrows its data. |
 | **Changes they make**, and which of them a second person checks today | Decides the safeguard of each action ([section 3](#3-choose-the-safeguard-for-each-action)). |
 | **What must never happen**: a discount above policy, a restart in business hours | Becomes a warning in a preview, an approval condition, or a tool that is not built. |
@@ -72,8 +72,8 @@ public object GetMarketingOverview(
 
 - **Compact rows**: an id and the 5–8 fields the decision needs, never the full object. Names, not only ids: an organization by name, a store by name.
 - **Units and context**: money with its currency, a percentage with what it is a percentage of, "774 MB of 1024 MB (75.6%)".
-- **Reasons, not only results**: an analysis returns findings with evidence and a suggested fix, as [`McpFinding`](toolset-helpers.md#findings): an id, severity, title, evidence, fix and category. The agent turns them into an action list.
-- **The next step**: name the tool or the screen that continues the work: "Approve it in Agent approvals", "Call get_job_status with job_id".
+- **Reasons, not only results**: an analysis returns findings with evidence and a suggested fix, as [`McpFinding`](toolset-helpers.md#findings): an id, severity, title, evidence, fix and category, and when it helps, why it matters and the screen that fixes it. The agent turns them into an action list.
+- **The next step**: name the tool or the screen that continues the work: "Approve it in Agent approvals", "Call get_job_status with job_id". What the tools do not cover is answered the same way: the screen that does it, with its link from [`IMcpLinkResolver`](toolset-helpers.md#links-to-screens).
 - **Say what you cannot see.** A tool that cannot read something answers "not available" with the reason, never zero or "no problems". System Operations read only Hangfire's storage on a platform that runs RabbitMQ jobs, and reported no failed jobs while jobs were failing.
 - **Measure what you name.** A figure is compared with the limit it names: the container's memory limit, not the GC heap limit. A false "scale up" costs the person's trust in every other answer.
 - **Name the instance.** On a cluster, data held in the memory of an instance (an error journal, counters since start) is per instance; the answer names the instance it came from.
@@ -106,6 +106,7 @@ Every action of the brief gets the lightest safeguard that matches its risk:
 
 - Confirmation guards the user against the agent's mistake; approval guards the business against the user's. A client answers a confirmation itself, so confirmation is never the only control on a change that needs a second person.
 - Every write returns a [preview](../README.md#previews): the dry run, the approver and the audit see the same diff. Put what must never happen into the preview's warnings: "The discount is above the 30% policy".
+- A change held for approval waits, up to 72 hours by default, and the approver sees the preview made when it was submitted. The approval runs the tool with the same arguments on the data as they are then: a dry run that now fails keeps the change pending, to be rejected, and an argument that holds a complete list removes what was added in the meantime. The result recorded with the change shows what was applied. Tell the approvers of the role to approve soon and to reject a change whose object changed since it was submitted; [Approval](../README.md#approval) has the rules.
 - Mark personal data in arguments with [`[McpSensitive]`](../README.md#sensitive-arguments), so it shows as `***` in the audit log and in approvals.
 
 ## 4. Give the role its permissions
@@ -134,38 +135,31 @@ Agents have no permissions of their own: an agent sees the tools whose permissio
 5. **Add the back-office permissions the role needs to follow its agent**: `mcp:audit:read` for **Agent audit log**; `mcp:manage` only for whoever switches tools off and disconnects other people's agents.
 6. **Register one OAuth client per kind of agent, not per role.** "Claude Code" or "ChatGPT" is a client; the role comes from the user who signs in. See [Set up the platform for agents](../README.md#set-up-the-platform-for-agents).
 
-## 5. Add prompts and resources for the routines
+## 5. Write an example routine
 
-A routine of the brief, such as a weekly review, is a prompt: a template the client offers as a slash command, `/weekly_marketing_review` in Claude. A prompt holds the know-how of the role, which tools to call in which order and what to report; the tools still decide what the user may see and do.
+A routine of the brief, such as a weekly review, is not built into the module. Each person keeps their own routines in their assistant, for example as a skill or a saved prompt, because people run the same job differently. The module's documentation gives one example routine for the role, as text to copy and adapt: the [Store module](https://github.com/VirtoCommerce/vc-module-store#an-example-routine-launching-a-new-store) has one for launching a store. The tools still decide what the user may see and do.
 
-```csharp
-[McpServerPrompt(Name = "weekly_marketing_review")]
-[Description("Monday review of promotions: what runs, what needs attention, and a short action list.")]
-public static string WeeklyMarketingReview(
-    [Description("Store id. Leave empty for every store you manage.")] string store_id = null)
-{
-    return $"""
-        Run my weekly marketing review.
+```text
+Run my weekly marketing review with the Virto Commerce marketing tools.
 
-        1. Call get_marketing_overview.
-        2. Call find_promotion_issues and find_promotion_conflicts.
-        3. Call analyze_promotion_performance with last_days 7.
+1. Call get_marketing_overview.
+2. Call find_promotion_issues and find_promotion_conflicts.
+3. Call analyze_promotion_performance with last_days 7.
 
-        Then write the review for me:
-        - Three numbers first: discount spend this month against the budget, active promotions, open high-severity issues.
-        - What needs action: at most five items, most urgent first, each with the action you propose and the tool you would use.
+Then write the review for me:
+- Three numbers first: discount spend this month against the budget, active promotions, open high-severity issues.
+- What needs action: at most five items, most urgent first, each with the action you propose and the tool you would use.
 
-        Do not change anything. Ask me which actions to take; changes that need approval are submitted for approval.
-        """;
-}
+Do not change anything. Ask me which actions to take; changes that need approval are submitted for approval.
 ```
 
+- **Pick the routine that walks through the most tools**, so the example shows the toolset at work: launching a store goes from the options through the create and the readiness report to opening the store.
 - **Number the tool calls**, name the tools exactly, and say what to report and in which order.
-- **Say what not to do**: a review prompt changes nothing and asks before any action.
-- **Prefer optional arguments.** When a required argument is missing, `prompts/get` is answered today with `-32603 An error occurred.` instead of an error that names the argument. Clients that read `prompts/list` pass required arguments, but a person typing the command may not.
-- **Put reference material in resources**: the discount policy, the playbook for a sale event (`marketing://policies/discounts`, `marketing://playbooks/sale-event` in the marketing sample). A prompt tells the agent to read them, and the business changes them without a release.
+- **Say what not to do**: a review changes nothing and asks before any action; an action shows its dry run and waits for the person's word.
+- **Keep secrets out**: where the role meets keys or passwords, the routine tells the agent to leave them to the back office.
+- **Put reference material in resources**: the discount policy, the playbook for a sale event (`marketing://policies/discounts`, `marketing://playbooks/sale-event` in the marketing sample). The routine tells the agent to read them, and the business changes them without a release.
 
-System Operations' prompts follow the same pattern: `daily_health_check`, `production_readiness`, `capacity_review`, `incident_rca`, `is_it_us_or_virto`, `prepare_support_case`.
+The MCP module still serves prompts (`AddMcpPrompts<T>()`), and the samples and System Operations ship their routines as prompts. A new toolset documents its routine instead: a prompt fixes one routine for everyone, and changing it takes a release.
 
 ## 6. Test the toolset as the role
 
@@ -185,8 +179,8 @@ Turn the ten requests of the brief into a table, and run it with a real agent, s
 
 | # | The person asks | Expected tools | Expected result |
 | --- | --- | --- | --- |
-| 1 | What can I do here? | `tools/list`, `prompts/list` | The role's tools and prompts; nothing the role does not allow |
-| 2 | Run the daily health check | prompt `daily_health_check` | Health, new errors, failed jobs, capacity and configuration, with an action list |
+| 1 | What can I do here? | `tools/list` | The role's tools; nothing the role does not allow |
+| 2 | Run my daily health check (the example routine, kept in the assistant) | the tools the routine names, in its order | Health, new errors, failed jobs, capacity and configuration, with an action list |
 | 3 | Restart the platform | `restart_platform` | Not restarted: a change id; another person rejects or approves it in **Agent approvals** |
 | 4 | (an approver) Show me what the operator did | **Agent audit log** | Every call with the user, the client and the outcome |
 
@@ -216,5 +210,5 @@ Before a role's toolset ships:
 - [ ] Errors are sentences the user can act on, with no internals and no secrets.
 - [ ] Personal data in arguments is `[McpSensitive]`.
 - [ ] The role is written down with its permissions; approvers are another role.
-- [ ] The routines are prompts, with optional arguments where possible; reference material is in resources.
+- [ ] The module's documentation has an example routine for the role, as text to copy and adapt; reference material is in resources.
 - [ ] The scenarios pass as the role, on an environment with several instances and its real infrastructure.

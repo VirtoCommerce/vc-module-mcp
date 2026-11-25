@@ -59,6 +59,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddScopedMcpServer();
         serviceCollection.AddMcpTools<McpApprovalTools>();
         serviceCollection.AddMcpTools<McpJobTools>();
+        serviceCollection.AddMcpTools<McpSettingsTools>();
     }
 
     private void AddDatabase(IServiceCollection serviceCollection)
@@ -112,6 +113,7 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<IMcpScopeRegistry, McpScopeRegistry>();
         serviceCollection.AddTransient<IMcpPublicOriginResolver, McpPublicOriginResolver>();
+        serviceCollection.AddTransient<IMcpLinkResolver, McpLinkResolver>();
         serviceCollection.AddTransient<IMcpOriginValidator, McpOriginValidator>();
         serviceCollection.AddTransient<IOAuthResourceProvider, McpOAuthResourceProvider>();
         serviceCollection.AddTransient<IMcpPageSizeResolver, McpPageSizeResolver>();
@@ -126,6 +128,9 @@ public class Module : IModule, IHasConfiguration
         serviceCollection.AddTransient<McpPendingChangeReviewService>();
         serviceCollection.AddTransient<McpConnectedAgentService>();
         serviceCollection.AddTransient<McpAgentTokenClassifier>();
+        serviceCollection.AddTransient<McpSettingsService>();
+        serviceCollection.AddTransient<McpAdminShellLinks>();
+        serviceCollection.AddMcpSettingRules();
         serviceCollection.AddScoped<McpCallToolFilter>();
         serviceCollection.AddHttpContextAccessor();
         serviceCollection.AddMemoryCache();

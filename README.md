@@ -349,7 +349,7 @@ A step that decides per operation, such as a quota for write tools or an extra a
 1. The agent sends `tools/call` to a scope's endpoint with the user's bearer token.
 1. The module resolves the scope from the path or the host, reads the token with the platform's OpenIddict validation, and checks that it was issued for this endpoint, to an OAuth client, for a user (not to the client itself), and is still valid in the platform token store.
 1. The scope's permission, if it has one, and the tool's `[Authorize]` permissions are checked, then the tool switch (`MCP.Tools.Disabled`), then `[McpPermission]` and, for review tools, whether the user is an approver.
-1. Required arguments are validated. A missing argument is returned as the tool's error, not a protocol error, so the model can correct the call.
+1. Arguments are validated. An argument the tool does not take, its name compared exactly (`dry_run` or `DryRun` for `dryRun`), and a missing required argument are returned as the tool's error, not a protocol error, so the model can correct the call; the first names the arguments the tool takes.
 1. A tool marked `[McpRequiresConfirmation]` asks the user in the chat first, when the client can ask (see [Confirmation in the chat](#confirmation-in-the-chat)); a call the user declines does not run.
 1. A tool marked `[McpRequiresApproval]` does not run: it runs once with its `dryRun` (or `dry_run`) parameter set, and the call is stored as a pending change with that preview. If the dry run fails, nothing is submitted and the agent gets the error. A tool that requires approval but has no dry-run parameter is refused, and reported as an error at startup. With a `Condition`, only the calls the condition selects are held.
 1. Otherwise the tool runs as the user and calls the module's services.
@@ -402,7 +402,8 @@ The MCP endpoints check that a token was issued for them. The platform accepts t
 - The change runs as the approver, whose access may be wider. A tool held for approval should store the scope of the change explicitly in its arguments (for example the store ids), not "every store I may use", which differs between the requester and the approver.
 - The requester's dry run sees the requester as `RequestContext.User` only; `HttpContext.User` and the platform services that read the current user still see the approver. A tool's dry run should take the user from its request context.
 - The dry run runs again at approval, so a dry run must not have side effects (counters, lookups that write).
-- A change expires after `MCP.Approval.PendingChangeLifetimeHours` and can no longer be approved.
+- The approver sees the preview of the dry run made when the change was submitted, but an approval does not apply that preview: the tool runs with the request's arguments on the data as they are at approval. When the data changed while the change waited, the approval is either refused, because the requester's dry run now fails (the change stays pending: reject it, or ask the requester to submit it again), or it applies what the preview did not show: an argument that holds a complete list, for example, removes an entry added in the meantime. The result recorded with the change shows what the tool did, in **Agent approvals** and in `get_pending_change`. So approve a change soon, and reject one whose object changed since it was submitted, so that the requester submits it again.
+- A change expires after `MCP.Approval.PendingChangeLifetimeHours` (72 by default) and can no longer be approved.
 - A change is executed at most once, even if two approvers, or two replicas, approve it at the same time.
 - A call with `dryRun: true` changes nothing, so it runs right away instead of being submitted.
 - Changes are approved in scopes with approval only (`McpScope.ApprovalPermission`; `admin` by default). In any other scope, a call to a tool marked `[McpRequiresApproval]` is refused and audited as `Error`, and the tool is reported as an error in the log at startup. So is such a tool without `[McpScope]`, because on endpoints without a scope its calls are not held for approval.
@@ -418,6 +419,24 @@ Changes are reviewed in the back office or with the first four tools below, pres
 | `reject_pending_change` | Rejects the change; the requester uses it to withdraw their own change | approvers: any change; others: their own |
 | `get_job_status` | Status and progress of a background job started by a bulk tool | the user who started it, the requester of the change that started it, approvers |
 | `cancel_job` | Cancels a queued or running background job | as `get_job_status` |
+
+### Settings tools
+
+Two read-only tools in the `admin` scope answer questions about the platform's settings, for every role. They need `platform:setting:read`, the permission the back office's **Settings** screen reads with, and they show what that screen shows: hidden settings are left out, and the values are the platform-wide ones. Unlike the screen, they leave out a setting the platform's configuration sets, by `VirtoCommerce:Settings:Override:CurrentValue` or in the `PlatformSettings` section: it is neither listed nor explained. A default the configuration sets (`VirtoCommerce:Settings:Override:DefaultValue`) is the default they show, and a value is changed when it differs from that default.
+
+| Tool | Purpose |
+| --- | --- |
+| `search_settings` | Settings found by words in their name, title, description or group, by module, or changed from their defaults, each with its title, description, module, group, type, value and default; pages with `skip` and `take` |
+| `explain_setting` | One setting: what it does, its value, default and allowed values, whether a change needs a restart, whether objects such as stores keep their own values, and a link that opens it on the **Settings** screen |
+
+No tool changes a setting: the answers name the screen that does. A secret is never listed and its value is never returned, so an agent never proposes to send one. A setting is a secret when it is typed `SecureString`, when its name has the word Key, Secret, Password, Token or Credential, also as a plural or followed by digits (`ApiKeys`, `ApiKey2`), when it is a setting of a Virto Commerce module known to be a secret, or when a module names it:
+
+```csharp
+// Module.Initialize
+serviceCollection.AddMcpSecretSettings("MyModule.SigningCode");
+```
+
+The rule errs on the safe side: settings such as `VirtoCommerce.Search.ElasticSearch8.TokenFilter` are hidden too. A module whose own tools describe settings applies the same rule through `IMcpSecretSettings`, and a solution replaces the rule for every toolset by registering its own ([Describe settings](docs/toolset-helpers.md#describe-settings)).
 
 ### Audit and cleanup
 
@@ -467,7 +486,7 @@ serviceCollection.AddMcpTools<PromotionTools>();
 ```
 
 - `AddMcpPrompts<T>()` and `AddMcpResources<T>()` register prompts and resources the same way. A static class is registered with `AddMcpTools([typeof(MyTools)])`. `AddMcpCapabilities<TAssemblyMarker>()` registers every tool, prompt and resource class of the assembly of `TAssemblyMarker`, an empty class of the module's MCP project (`McpAssemblyMarker` by convention).
-- Every tool, prompt and resource is serialized with `McpSerialization.Options`, the same for all modules: the MCP SDK's defaults with snake_case names, so an agent sees one convention in every tool. A module does not pass options of its own, and the options are read-only.
+- Every tool, prompt and resource is serialized with `McpSerialization.Options`, the same for all modules: the MCP SDK's defaults with snake_case names, so an agent sees one convention in every tool. Characters are written as they are (`>`, `&`, `Müller`), not as `\u` escapes, because the agent reads the JSON as text. A module does not pass options of its own, and the options are read-only.
 - A primitive without `[McpScope]` is not exposed on any registered scope. Names must be unique within a scope; a duplicate is reported as an error in the log at startup.
 - `[Authorize]` hides the tool from `tools/list` and refuses `tools/call` for users without the permission, before the tool runs.
 - In a scope that requires a signed-in user, every tool must say who may use it: `[Authorize]`, `[McpPermission]`, `[AllowAnonymous]`, or `[McpAnyUser]` for a tool every signed-in user may call because it checks access to its data itself. A tool that says none of them is not served in that scope, and a warning at startup names it, so a forgotten permission hides the tool instead of opening it to every user. Prompts and resources are not covered by this rule; protect them with `[Authorize]` or `[McpPermission]` when they return data. A prompt or resource whose `[McpPermission]` the user does not have is neither listed nor readable; prompts and resources are not audited and have no switch.
@@ -559,7 +578,7 @@ public object SearchPromotions(RequestContext<CallToolRequestParams> context, st
 
 ### Design a toolset
 
-Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, prompts and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, time windows, and a test package that calls tools as a user and checks the conventions.
+Give each role a toolset with five layers, in roughly this ratio. [Build an MCP toolset for a role](docs/role-toolsets.md) is the whole method: the role brief, the tools, the safeguards, the role's permissions, an example routine and tests. [Helpers and tests for MCP toolsets](docs/toolset-helpers.md) has the building blocks: pages, findings, links to screens, time windows, the shapes of a setup that modules plug into, settings described as the back office does without secrets, and a test package that calls tools as a user and checks the conventions.
 
 | Layer | Count | What it is | The module helps with |
 | --- | --- | --- | --- |
@@ -695,7 +714,7 @@ A system integrator ships "Virto Commerce for Contoso" to a client's Claude orga
 1. **Address.** Serve the endpoint on a public HTTPS host, for example `https://virtostart-demo-admin.govirto.com/admin/mcp`, or give it a host of its own with `MCP:Scopes:admin:Hosts` (`https://mcp.contoso.com/mcp`), and add it to `Authorization:Resources`.
 1. **Roles.** Grant the client's people the permissions of their tools, limited to their stores; approvers get `mcp:approve`.
 1. **Claude organization.** An owner of the client's Claude Team or Enterprise organization adds a custom connector for everyone, with the URL alone (organization settings, connectors; the exact menu names change, check the current Claude documentation). Each person then connects once and signs in with their Virto account.
-1. **Routines.** The scope's MCP prompts appear in Claude as ready-made routines (for example a weekly review); longer playbooks can also be shared with the organization as Claude skills.
+1. **Routines.** Each person keeps their own routines in Claude, for example as skills. The solution's documentation gives one example routine per role to copy and adapt, and the organization can share the routines it agrees on as Claude skills.
 1. **Operations.** The client's administrators use the back office: approvals, the audit log, tool switches and connected agents.
 
 A listing in Claude's public connector directory is for a product every Virto Commerce customer could use, and goes through Anthropic's review; a client's own solution stays a custom connector of that client's organization. Claude identifies itself with a client ID metadata document, so no OAuth client is registered for it; to let only Claude register itself, set `Authorization:ClientRegistration:ClientIdMetadataDocuments:AllowedHosts` to `claude.ai`.
@@ -760,7 +779,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `VirtoCommerce.MCP.Data.SqlServer` | Data | SQL Server migrations |
 | `VirtoCommerce.MCP.Data.MySql` | Data | MySQL migrations |
 | `VirtoCommerce.MCP.Data.PostgreSql` | Data | PostgreSQL migrations |
-| `VirtoCommerce.MCP.Web` | Web | MCP endpoints, authentication middleware, execution pipeline, review and job tools, REST API, module bootstrapping; the Admin Shell plugin in `vue/` |
+| `VirtoCommerce.MCP.Web` | Web | MCP endpoints, authentication middleware, execution pipeline, review, job and settings tools, REST API, module bootstrapping; the Admin Shell plugin in `vue/` |
 | `VirtoCommerce.MCP.Tests` | Tests | Unit and endpoint tests |
 
 ### Key Services
@@ -768,7 +787,7 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | Service | Interface | Responsibility |
 | --- | --- | --- |
 | `McpScopeRegistry` | `IMcpScopeRegistry` | Scopes registered by modules and configuration; finds the scope of a request by path or host |
-| `McpCallToolFilter` | | The execution pipeline of every `tools/call`: switches, permissions, arguments, approval, audit, telemetry |
+| `McpCallToolFilter` | | The execution pipeline of every `tools/call`: switches, permissions, arguments (unknown and missing ones refused), approval, audit, telemetry |
 | `McpApprovalService` | `IMcpApprovalService` | Pending change lifecycle: submit, approve, complete, reject, expire |
 | `McpPendingChangeExecutor` | | Runs an approved change as the approver, in an MCP session or from the back office |
 | `McpPendingChangeReviewService` | | Back-office review with the same rules as the review tools |
@@ -780,10 +799,16 @@ The classes of `VirtoCommerce.MCP.Web` (`McpCallToolFilter`, `McpPendingChangeEx
 | `McpToolCatalog` | | The tools each scope serves, after `RemoveTool` and `ReplaceTool` |
 | `McpCleanupService` | `IMcpCleanupService` | Retention of audit entries, changes and jobs |
 | `McpPublicOriginResolver` | `IMcpPublicOriginResolver` | Public origin and OAuth resource of a scope |
+| `McpLinkResolver` | `IMcpLinkResolver` | Links to the screens of the admin UIs: the classic back office, or any admin UI app by its id, wherever the platform serves it; none to the classic back office while the platform's admin UI is switched off (`VirtoCommerce:PlatformUI:Enable`) |
+| `McpAdminShellLinks` | | The Admin Shell's address (`IMcpLinkResolver.GetAppLinkAsync`), which the answer to a submitted change gives for **Agent approvals**; none without the Admin Shell. It stays while the platform's admin UI is switched off, as the platform still serves the Admin Shell at `/apps/admin-shell/` |
+| `McpSecretSettings` | `IMcpSecretSettings` | The secret rule of every tool that describes settings |
+| `McpSettingTexts` | `IMcpSettingTexts` | Settings' titles and descriptions, from the modules' English localization files |
+| `McpSetupValues` | `IMcpSetupValues` | How a setup compares a value from a request with a stored one: numbers and booleans by value, two texts exactly |
 | `McpAgentTokenClassifier` | | Which tokens are an agent's: an MCP audience, or a client registered for an MCP resource (cached per client) |
 | `McpOriginValidator` | `IMcpOriginValidator` | Browser origins allowed to call a scope |
 | `McpSessionService` | `IMcpSessionService` | Sign-out, and token validity for tools |
 | `McpConnectedAgentService` | | Agents connected to MCP endpoints (OAuth clients with an MCP resource) and their disconnection |
+| `McpSettingsService` | | The settings the settings tools describe: the platform's settings with their platform-wide values (Settings V2) and the defaults the configuration sets, titles from the localization files, and the secret rule; the settings the configuration sets are left out |
 
 ### REST API
 
@@ -820,8 +845,8 @@ Do not install the samples on a shared or production environment.
 * [Samples](samples/README.md): what each sample shows and where to start
 * [MCP Sample Module](samples/VirtoCommerce.MCP.SampleModule/README.md): a ten-minute demo; Claude Code signs in to a local platform, calls tools, and a second user approves its change
 * [MCP Marketing Sample](samples/VirtoCommerce.MCP.MarketingSample/README.md): a marketer's toolset and a week of work with it
-* [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, prompts and tests
-* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `McpTimeWindow`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
+* [Build an MCP toolset for a role](docs/role-toolsets.md): from the person's requests to the tools, safeguards, permissions, an example routine and tests
+* [Helpers and tests for MCP toolsets](docs/toolset-helpers.md): `McpPage<T>`, `McpFinding`, `IMcpLinkResolver`, `McpTimeWindow`, the setup shapes (`McpSetupPartPlan` and others), `IMcpSettingTexts`, `IMcpSecretSettings`, and the `VirtoCommerce.MCP.Testing` package: call tools as a user, check the conventions
 * [UCP module](https://github.com/VirtoCommerce/vc-module-ucp): shopping assistants for buyers, served as the `ucp` scope
 * [View on GitHub](https://github.com/VirtoCommerce/vc-module-mcp/)
 

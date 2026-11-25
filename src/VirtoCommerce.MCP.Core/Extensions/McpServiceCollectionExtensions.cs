@@ -4,8 +4,10 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using VirtoCommerce.MCP.Core.Models;
 using VirtoCommerce.MCP.Core.Services;
+using VirtoCommerce.MCP.Core.Settings;
 
 namespace VirtoCommerce.MCP.Core.Extensions;
 
@@ -57,6 +59,29 @@ public static class McpServiceCollectionExtensions
                 ? context.Services.GetRequiredService<TFilter>().InvokeAsync(next, context, cancellationToken)
                 : next(context, cancellationToken)));
 
+        return services;
+    }
+
+    // Marks a module's settings as secrets for every tool that describes settings (IMcpSecretSettings): they are never
+    // listed, and their values never returned. A setting typed SecureString, known to be a secret (McpKnownSecretSettings),
+    // or with the word Key, Secret, Password, Token or Credential(s) in its name, is a secret already; this names the others.
+    public static IServiceCollection AddMcpSecretSettings(this IServiceCollection services, params string[] settingNames)
+    {
+        ArgumentNullException.ThrowIfNull(settingNames);
+
+        services.Configure<McpSecretSettingsOptions>(options => options.SettingNames.UnionWith(settingNames));
+        return services;
+    }
+
+    // The rules of every tool that describes settings: which settings are secrets (IMcpSecretSettings), where their
+    // titles and descriptions come from (IMcpSettingTexts), and how a setup compares their values (IMcpSetupValues). The
+    // MCP module adds them, and so does a module whose services use them without it. A solution replaces a rule by
+    // registering its own in its module's Initialize.
+    public static IServiceCollection AddMcpSettingRules(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IMcpSecretSettings, McpSecretSettings>();
+        services.TryAddSingleton<IMcpSettingTexts, McpSettingTexts>();
+        services.TryAddSingleton<IMcpSetupValues, McpSetupValues>();
         return services;
     }
 

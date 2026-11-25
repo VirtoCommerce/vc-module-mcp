@@ -20,14 +20,16 @@ using VirtoCommerce.MCP.Core;
 using VirtoCommerce.MCP.Core.Attributes;
 using VirtoCommerce.MCP.Core.Extensions;
 using VirtoCommerce.MCP.Core.Models;
+using VirtoCommerce.MCP.Core.Services;
 using VirtoCommerce.Platform.Core;
 
 namespace VirtoCommerce.MCP.Testing;
 
 /// <summary>
 /// Calls the tools of a module in-process, as a given user, the way the MCP module serves them in a scope: the tools are
-/// registered with the module's own AddMcpCapabilities, a user sees only the tools whose permissions they have, a call
-/// that needs approval runs as a dry run and ends as PendingApproval, and McpForbiddenException ends as Forbidden.
+/// registered with the module's own AddMcpCapabilities, a user sees only the tools whose permissions they have, an
+/// argument the tool does not take fails the call, a call that needs approval runs as a dry run and ends as
+/// PendingApproval, and McpForbiddenException ends as Forbidden.
 /// It needs no platform, database or HTTP server: the test registers the services the tools use.
 /// It reproduces the rules the module applies; it does not run the module's call filters, audit or approval storage.
 /// </summary>
@@ -96,6 +98,9 @@ public sealed class McpToolHarness : IAsyncDisposable
         services.TryAddSingleton(TimeProvider.System);
         configureServices?.Invoke(services);
         services.TryAddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+        services.TryAddTransient<IMcpLinkResolver, McpLinkResolver>();
+        services.TryAddSingleton<IAdminUIAppService, McpTestAdminUIAppService>();
+        services.AddMcpSettingRules();
         registerTools(services);
 
         return new McpToolHarness(services.BuildServiceProvider(), scope ?? DefaultScope());
@@ -186,6 +191,15 @@ public sealed class McpToolHarness : IAsyncDisposable
         }
 
         var values = ToArguments(arguments);
+
+        // The MCP module refuses an argument the tool does not take, so a misspelled one never goes unnoticed.
+        var argumentNames = tool.GetArgumentNames();
+        var unknownArguments = argumentNames == null ? [] : values.Keys.Where(x => !argumentNames.Contains(x, StringComparer.Ordinal)).ToList();
+        if (unknownArguments.Count > 0)
+        {
+            return new McpToolCallResult { ToolName = toolName, Outcome = McpToolCallOutcome.Failed, Error = $"Tool '{toolName}' has no argument {string.Join(", ", unknownArguments.Select(x => $"'{x}'"))}; the MCP module refuses the call." };
+        }
+
         var dryRunParameter = tool.FindDryRunParameter();
         var isDryRun = dryRunParameter != null && values.TryGetValue(dryRunParameter, out var dryRun) && dryRun.ValueKind == JsonValueKind.True;
         var askedForConfirmation = !isDryRun && tool.GetConfirmation() != null;
