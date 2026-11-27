@@ -30,7 +30,7 @@ Not in the module, by design: rate limits and CORS, which belong to the infrastr
 > [!NOTE]
 > The steps below are an example, with the back-office endpoint `/admin/mcp`. The MCP module is the infrastructure: on its own it serves only its approval and job tools. The tools an agent works with, and every scope besides `admin`, are registered by other modules. See [UCP](https://github.com/VirtoCommerce/vc-module-ucp) for a buyer scope, `/ucp/mcp`, with its shopping tools, and the [Samples](#samples) for back-office tools (marketing, content); to write your own, see the [Developer guide](#developer-guide).
 
-You need the **endpoint URL** from your administrator. Claude Code, Claude Desktop and claude.ai identify themselves to the platform, so the URL is all they need. Another agent may also need a **client id**, which your administrator registers for it.
+You need the **endpoint URL** from your administrator. Claude Code, Claude Desktop and claude.ai identify themselves to the platform, so the URL is all they need, from MCP 3.1002.0 on; with an earlier MCP module they need a **client id** like any other agent. Another agent may also need a **client id**, which your administrator registers for it.
 
 ```text
 https://virtostart-demo-admin.govirto.com/admin/mcp
@@ -86,7 +86,7 @@ Menu names in the agents change from release to release; if a step does not matc
 
 ## Set up the platform for agents
 
-An administrator does this once per platform. Agents that identify themselves with a client ID metadata document, such as Claude Code, Claude Desktop and claude.ai, need no OAuth client: skip step 3 for them.
+An administrator does this once per platform. Agents that identify themselves with a client ID metadata document, such as Claude Code, Claude Desktop and claude.ai, need no OAuth client from MCP 3.1002.0 on: skip step 3 for them. With an earlier MCP module, register a client for them as well.
 
 1. **Install** `VirtoCommerce.MCP` (platform 3.1100.0 or later) and the modules that register the tools and scopes, such as UCP or your own (see the [Samples](#samples)). Bulk tools also need `VirtoCommerce.BackgroundJobs`; without it, a bulk tool answers that background jobs are not available.
 1. **Allow tokens for the endpoint** in `appsettings.json`:
@@ -136,7 +136,25 @@ An administrator does this once per platform. Agents that identify themselves wi
 * **Consent** *Explicit*: the user sees which agent they let act as them, once per user and agent.
 * **Grant types**: an agent signs the user in with an authorization code and renews the token with a refresh token. *Client credentials* and *Password* would let a client get tokens without the user's sign-in, so they stay off.
 * **Resources**: the resources the client may ask a token for (RFC 8707), stored as `rsrc:` permissions; it must match the URL the agent uses exactly, scheme and port included. It limits what a client may request, not what it receives: a token request that names no resource gets a token for the whole platform API (`resource_server`). MCP clients name the MCP endpoint, so their tokens are for that endpoint only; see [What the token protects today](#what-the-token-protects-today).
-* What the screen shows after **Save** is what is stored. Scripts can send the same fields to `POST /api/platform/oauthapps`.
+* **Scopes**: an agent asks for the scopes the endpoint lists in its metadata (`/.well-known/oauth-protected-resource/admin/mcp`): `openid`, `profile` and `offline_access`. The client needs a `scp:` permission for each but `openid`; one it lacks ends the sign-in with *This client application is not allowed to use the specified scope*.
+* What the screen shows after **Save** is what is stored. Scripts can send the same fields to `POST /api/platform/oauthapps`, as permissions and requirements:
+
+    ```json
+    {
+      "clientId": "claude-code",
+      "displayName": "Claude Code",
+      "clientType": "public",
+      "consentType": "explicit",
+      "redirectUris": [ "http://localhost:65111/callback" ],
+      "permissions": [
+        "ept:authorization", "ept:token", "ept:end_session",
+        "gt:authorization_code", "gt:refresh_token", "rst:code",
+        "scp:profile", "scp:offline_access",
+        "rsrc:https://virtostart-demo-admin.govirto.com/admin/mcp"
+      ],
+      "requirements": [ "ft:pkce" ]
+    }
+    ```
 
 </details>
 
@@ -154,7 +172,8 @@ Which sites may register, and dynamic client registration for agents that don't 
 | Symptom | Cause |
 | --- | --- |
 | The sign-in page does not open, or the sign-in ends with an error page | The redirect URI or the callback port of the client does not match its registration |
-| A self-registered agent gets *This client application is not allowed to use the specified resource(s)* | The scope doesn't allow agents that register themselves (`MCP:Scopes:{scope}:AllowSelfRegisteredClients`), or the endpoint is not in `Authorization:Resources` |
+| A self-registered agent gets *This client application is not allowed to use the specified resource(s)* | The MCP module is older than 3.1002.0, which lets agents register themselves (register a client for the agent instead); or the scope doesn't allow agents that register themselves (`MCP:Scopes:{scope}:AllowSelfRegisteredClients`); or the endpoint is not in `Authorization:Resources` |
+| A registered client gets *This client application is not allowed to use the specified scope* | The client lacks a `scp:` permission for a scope the agent asks for: `scp:profile` and `scp:offline_access` (see *Why each field of the client*) |
 | An agent without a client id gets *The specified 'client_id' is invalid* | The platform could not use the agent's client metadata document: the documents are turned off, the site is not in `AllowedHosts`, or the document is invalid, and the platform log tells why. Or the agent does not support metadata documents: register a client for it |
 | `invalid_token` after the sign-in | The token was issued for another address: the URL the agent uses must be listed in `Authorization:Resources` and ticked in the client's **Resources** exactly, scheme and port included. Or it was issued without an OAuth client (password grant): connect with the registered client |
 | HTTP 403 | The scope requires a permission the user lacks, for example `vendor_portal:access` for `/vendor/mcp` |
